@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>Bambu 连接设置</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body data-mode="cloud" data-step="login">
+  <header class="topbar">
+    <h1>Bambu 连接</h1>
+    <div class="mode-switch" role="tablist">
+      <button id="modeCloud" class="mode-btn active" data-mode="cloud" type="button">Bambu Cloud 账号</button>
+      <button id="modeLan" class="mode-btn" data-mode="lan" type="button">Bambu LAN 本地</button>
+    </div>
+  </header>
+
+  <main id="content">
+    <!-- ===== Cloud ===== -->
+    <section id="cloudPane" class="pane">
+      <!-- 步骤 1：登录 -->
+      <div id="cloudLogin" class="step">
+        <label>区域
+          <select id="cloudRegion">
+            <option value="global">全球 / Overseas</option>
+            <option value="china">中国大陆</option>
+          </select>
+        </label>
+        <label>账号（邮箱）
+          <input id="cloudAccount" type="email" autocomplete="username" />
+        </label>
+        <label>密码
+          <input id="cloudPassword" type="password" autocomplete="current-password" />
+        </label>
+        <button id="cloudLoginBtn" class="primary" type="button">登录</button>
+      </div>
+
+      <!-- 步骤 2：验证码 / 2FA -->
+      <div id="cloudVerify" class="step hidden">
+        <p class="hint">已向你的邮箱发送验证码，请输入：</p>
+        <label>验证码
+          <input id="cloudCode" type="text" inputmode="numeric" placeholder="6 位验证码" />
+        </label>
+        <button id="cloudVerifyBtn" class="primary" type="button">提交</button>
+        <button id="cloudVerifyBack" class="link" type="button">← 返回登录</button>
+      </div>
+
+      <!-- 步骤 3：设备列表 -->
+      <div id="cloudDevices" class="step hidden">
+        <p class="hint">选择要连接的打印机：</p>
+        <ul id="deviceList" class="device-list"></ul>
+        <p id="noDevices" class="hint hidden">未发现绑定的打印机，请先在 Bambu Studio / 手机 App 中绑定设备。</p>
+        <button id="cloudDevicesBack" class="link" type="button">← 返回登录</button>
+      </div>
+
+      <!-- 步骤 4：已连接摘要 -->
+      <div id="cloudSummary" class="step hidden">
+        <div class="summary">
+          <div><span class="k">名称</span><span id="sumName" class="v">—</span></div>
+          <div><span class="k">序列号</span><span id="sumSerial" class="v">—</span></div>
+          <div><span class="k">区域</span><span id="sumRegion" class="v">—</span></div>
+        </div>
+        <button id="sumLogout" class="danger" type="button">退出登录</button>
+        <button id="sumClose" class="link" type="button">关闭</button>
+      </div>
+    </section>
+
+    <!-- ===== LAN ===== -->
+    <section id="lanPane" class="pane hidden">
+      <div class="step">
+        <label>打印机 IP 地址
+          <input id="lanHost" type="text" placeholder="192.168.1.x" />
+        </label>
+        <label>访问码（Access Code）
+          <input id="lanAccessCode" type="text" placeholder="机身屏幕可查" />
+        </label>
+        <label>序列号
+          <input id="lanSerial" type="text" placeholder="01S00C..." />
+        </label>
+        <div class="row">
+          <button id="lanTestBtn" type="button">测试连接</button>
+          <button id="lanSaveBtn" class="primary" type="button">保存并连接</button>
+        </div>
+      </div>
+    </section>
+
+    <p id="err" class="err hidden"></p>
+  </main>
+
+  <script src="settings.js"></script>
+</body>
+</html>

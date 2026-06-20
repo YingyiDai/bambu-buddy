@@ -1,0 +1,19 @@
+// 预加载脚本：通过 contextBridge 暴露受控 API 给渲染层（§5.1）。
+
+const { contextBridge, ipcRenderer } = require('electron');
+
+contextBridge.exposeInMainWorld('pet', {
+  // 主进程推送的状态：{ stateKey, videoFile, label }
+  onState: (cb) => {
+    ipcRenderer.on('pet:state', (_e, state) => cb(state));
+  },
+  // 鼠标进入/离开熊猫实体像素 → 切换点击穿透
+  setInteractive: (interactive) => {
+    ipcRenderer.send('pet:setInteractive', !!interactive);
+  },
+  // 手动拖拽：开始跟随光标 / 结束
+  dragStart: () => ipcRenderer.send('pet:dragStart'),
+  dragEnd: () => ipcRenderer.send('pet:dragEnd'),
+  // 右键宠物 → 弹出上下文菜单
+  showMenu: () => ipcRenderer.send('pet:contextmenu'),
+});

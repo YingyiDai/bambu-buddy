@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; media-src 'self' file:; img-src 'self' data:; style-src 'self' 'unsafe-inline';" />
+  <title>Bambu Pet</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- 熊猫容器：实体像素区域，鼠标进入时关闭点击穿透并允许拖窗 -->
+  <div id="pet" class="pet">
+    <!-- 两个叠放的 video 做交叉淡入淡出（§8） -->
+    <video id="videoA" class="layer" muted playsinline autoplay loop></video>
+    <video id="videoB" class="layer" muted playsinline autoplay loop></video>
+  </div>
+
+  <!-- 状态文本 pill（§8.1），点击穿透的非交互区 -->
+  <div id="label" class="status-pill">启动中…</div>
+
+  <script src="pet.js"></script>
+</body>
+</html>

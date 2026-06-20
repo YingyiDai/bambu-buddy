@@ -1,0 +1,174 @@
+/* Bambu 连接设置窗：自包含样式，复用 renderer 字体栈。 */
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #f5f5f7;
+  color: #1d1d1f;
+  font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+  font-size: 14px;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.topbar {
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  background: #fff;
+}
+.topbar h1 {
+  margin: 0 0 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.mode-switch {
+  display: flex;
+  gap: 8px;
+}
+.mode-btn {
+  flex: 1;
+  padding: 7px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 8px;
+  background: #fff;
+  color: #424245;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+.mode-btn.active {
+  border-color: #03AE42;
+  color: #03AE42;
+  background: rgba(3, 174, 66, 0.06);
+}
+
+main {
+  padding: 18px 20px;
+}
+
+.pane { display: block; }
+.pane.hidden { display: none; }
+
+.step.hidden { display: none; }
+
+label {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: #6e6e73;
+}
+input, select {
+  display: block;
+  width: 100%;
+  margin-top: 5px;
+  padding: 8px 10px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 7px;
+  background: #fff;
+  color: #1d1d1f;
+  font-size: 14px;
+  -webkit-user-select: text;
+  user-select: text;
+}
+input:focus, select:focus {
+  outline: none;
+  border-color: #03AE42;
+  box-shadow: 0 0 0 3px rgba(3, 174, 66, 0.15);
+}
+
+button {
+  padding: 8px 14px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+  border-radius: 7px;
+  background: #fff;
+  color: #1d1d1f;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 120ms ease;
+}
+button:active { transform: translateY(1px); }
+button.primary {
+  background: #03AE42;
+  border-color: #03AE42;
+  color: #fff;
+  width: 100%;
+  margin-top: 4px;
+}
+button.primary:disabled { opacity: 0.5; cursor: default; }
+button.danger {
+  background: #ff3b30;
+  border-color: #ff3b30;
+  color: #fff;
+  width: 100%;
+}
+button.link {
+  border: none;
+  background: transparent;
+  color: #03AE42;
+  padding: 8px 0;
+  width: 100%;
+  text-align: center;
+}
+
+.row { display: flex; gap: 10px; margin-top: 4px; }
+.row button { flex: 1; width: auto; }
+
+.hint {
+  font-size: 12px;
+  color: #6e6e73;
+  line-height: 1.5;
+  margin: 4px 0 12px;
+}
+
+.device-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+}
+.device-list li {
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  background: #fff;
+  transition: all 120ms ease;
+}
+.device-list li:hover {
+  border-color: #03AE42;
+  background: rgba(3, 174, 66, 0.04);
+}
+.device-list .d-name { font-weight: 600; color: #1d1d1f; }
+.device-list .d-meta { font-size: 11px; color: #8e8e93; margin-top: 2px; }
+.device-list .d-meta.offline { color: #ff3b30; }
+
+.summary {
+  background: #fff;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+}
+.summary > div {
+  display: flex;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
+.summary > div:last-child { border-bottom: none; }
+.summary .k { color: #6e6e73; font-size: 12px; }
+.summary .v { color: #1d1d1f; font-size: 13px; font-weight: 500; }
+
+.err {
+  margin-top: 14px;
+  padding: 9px 12px;
+  background: rgba(255, 59, 48, 0.08);
+  border: 1px solid rgba(255, 59, 48, 0.25);
+  border-radius: 7px;
+  color: #ff3b30;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.err.hidden { display: none; }

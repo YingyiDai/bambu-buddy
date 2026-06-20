@@ -1,0 +1,36 @@
+{
+  "name": "bambu-desktop-pet",
+  "version": "0.1.0",
+  "description": "Bambu 打印机桌面宠物 — 一只熊猫常驻桌面，根据打印机状态播放对应动画",
+  "main": "src/main.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "process-videos": "bash scripts/process-videos.sh",
+    "build:mac": "electron-builder --mac"
+  },
+  "dependencies": {
+    "electron-store": "^8.2.0",
+    "mqtt": "^5.10.1"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.bambupets.desktop",
+    "productName": "BambuPet",
+    "files": [
+      "src/**/*",
+      "assets/anim/**/*"
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": "dmg",
+      "extendInfo": {
+        "LSUIElement": true
+      }
+    }
+  }
+}

@@ -1,0 +1,70 @@
+/* 透明桌面宠物：body 与容器全透明（§8） */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  /* 整窗默认不可拖动；仅熊猫容器可拖 */
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+}
+
+/* 熊猫容器：实体像素区域，可拖动窗口（§5.1）。
+   填满窗口（底部留出 label 空间），随窗口尺寸缩放 —— 大小由主进程
+   调整 BrowserWindow 尺寸驱动（见 main.js 的 size 预设）。 */
+.pet {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 26px;             /* 给下方 label 留空间 */
+  cursor: grab;             /* 手动拖拽（见 pet.js）*/
+}
+.pet:active {
+  cursor: grabbing;
+}
+
+/* 两个叠放视频层，绝对定位重合，靠 opacity 做交叉淡入 */
+.layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  opacity: 0;
+  transition: opacity 350ms ease-in-out;
+  pointer-events: none;     /* 视频本身不拦事件，交互交给 .pet 容器 */
+  background: transparent;
+}
+.layer.active {
+  opacity: 1;
+}
+
+/* 状态文本 pill（§8.1）：半透明深色底 + 浅色字 + 轻阴影，浮在任意壁纸上可读 */
+.status-pill {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  transform: translateX(-50%);
+  max-width: 280px;
+  box-sizing: border-box;
+  padding: 4px 12px;
+  font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+  font-size: 12px;
+  line-height: 1.4;
+  color: #f5f5f7;
+  background: rgba(20, 20, 22, 0.62);
+  border-radius: 999px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  pointer-events: none;     /* 非交互、点击穿透 */
+  transition: opacity 300ms ease;
+}
