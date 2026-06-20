@@ -46,11 +46,12 @@ async function init() {
       el('lanSerial').value = st.serial || '';
       return;
     }
-    if (st.mode === 'cloud' && st.hasToken && st.serial) {
+    if (st.mode === 'cloud' && st.hasToken && st.activePrinter) {
       // 已登录 → 摘要
       pending.region = st.region || 'global';
-      el('sumName').textContent = st.name || st.serial;
-      el('sumSerial').textContent = st.serial;
+      const activePrinter = (st.printers || []).find(p => p.serial === st.activePrinter);
+      el('sumName').textContent = activePrinter ? activePrinter.name : (st.name || st.activePrinter);
+      el('sumSerial').textContent = st.activePrinter;
       el('sumRegion').textContent = REGION_LABELS[st.region] || st.region || '—';
       setCloudStep('summary');
       return;
@@ -112,6 +113,7 @@ el('cloudDevicesBack').addEventListener('click', () => {
 async function showDevices() {
   setBusy(true);
   const r = await window.bambu.listDevices();
+  const st = await window.bambu.getStoredState();
   setBusy(false);
   if (!r.ok) { showError(r.error || '获取设备列表失败'); return; }
   const list = el('deviceList');
@@ -122,19 +124,22 @@ async function showDevices() {
     return;
   }
   el('noDevices').classList.add('hidden');
+  const knownSerials = new Set((st.printers || []).map(p => p.serial));
   for (const d of r.devices) {
+    const isKnown = knownSerials.has(d.serial);
     const li = document.createElement('li');
-    li.innerHTML = `<div class="d-name">${escapeHtml(d.name)}</div>` +
+    li.className = isKnown ? 'known' : '';
+    li.innerHTML = `<div class="d-name">${escapeHtml(d.name)}${isKnown ? ' ✓' : ''}</div>` +
       `<div class="d-meta ${d.online ? '' : 'offline'}">${escapeHtml(d.model || '')} · ${d.serial} · ${d.online ? '在线' : '离线'}</div>`;
-    li.addEventListener('click', () => saveDevice(d.serial, d.name));
+    li.addEventListener('click', () => saveDevice(d.serial, d.name, d.model || ''));
     list.appendChild(li);
   }
   setCloudStep('devices');
 }
 
-async function saveDevice(serial, name) {
+async function saveDevice(serial, name, model) {
   setBusy(true);
-  const r = await window.bambu.saveDevice(serial, name);
+  const r = await window.bambu.saveDevice(serial, name, model || '');
   setBusy(false);
   if (r.ok) {
     window.bambu.close();
