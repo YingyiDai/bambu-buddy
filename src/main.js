@@ -11,6 +11,36 @@ const bambuAuth = require('./core/bambu-auth');
 
 const store = new Store();
 
+// 将旧版 bambu 存储格式迁移到新版（账号与打印机解耦）。
+// 幂等：检测到旧格式才迁移，已迁移则跳过。
+function migrateStorage() {
+  const bambu = store.get('bambu');
+  if (!bambu || !bambu.mode) return; // 无旧格式数据，跳过
+
+  if (bambu.mode === 'cloud' && bambu.token) {
+    store.set('bambuAccount', {
+      region: bambu.region || 'global',
+      account: bambu.account || '',
+      token: bambu.token,
+      uid: bambu.uid,
+    });
+    store.set('bambuPrinters', [{
+      serial: bambu.serial,
+      name: bambu.name || bambu.serial,
+      model: bambu.model || '',
+    }]);
+    store.set('bambuActivePrinter', bambu.serial);
+  } else if (bambu.mode === 'lan') {
+    store.set('bambuLan', {
+      host: bambu.host,
+      accessCode: bambu.accessCode,
+      serial: bambu.serial,
+      name: bambu.name || bambu.serial,
+    });
+  }
+  store.delete('bambu');
+}
+
 let win = null;
 let tray = null;
 let dataSource = null;
@@ -461,6 +491,7 @@ ipcMain.on('pet:dragEnd', () => {
 // ---- 生命周期 ----
 app.whenReady().then(() => {
   if (process.platform === 'darwin' && app.dock) app.dock.hide();
+  migrateStorage();
   createWindow();
   createTray();
   buildDataSource();
