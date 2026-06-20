@@ -80,7 +80,7 @@ async function login(region, account, password) {
       return { ok: false, needsVerify: true, tfaKey: res.tfaKey, raw: res };
     }
     if (!res.accessToken) return { ok: false, error: '登录响应缺少 token' };
-    return { ok: true, token: res.accessToken, uid: res.uid || decodeUidFromToken(res.accessToken) };
+    return { ok: true, token: res.accessToken, uid: res.uid || decodeUidFromToken(res.accessToken), account };
   } catch (e) {
     return { ok: false, error: humanizeError(e) };
   }
@@ -100,7 +100,7 @@ async function sendVerifyCode(region, account, password, tfaKey, code) {
       code,
     });
     if (!res.accessToken) return { ok: false, error: res.message || '验证码无效' };
-    return { ok: true, token: res.accessToken, uid: res.uid || decodeUidFromToken(res.accessToken) };
+    return { ok: true, token: res.accessToken, uid: res.uid || decodeUidFromToken(res.accessToken), account };
   } catch (e) {
     return { ok: false, error: humanizeError(e) };
   }
