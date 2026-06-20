@@ -76,3 +76,68 @@ test('IDLE → idle', () => {
 test('未知状态兜底 idle', () => {
   assert.equal(resolveState({ connected: true, gcode_state: 'WHATEVER' }).stateKey, 'idle');
 });
+
+const { extractTemps, formatRemainingTime } = require('../src/core/state-machine');
+
+test('extractTemps 取 nozzle_temps 数组第一个元素', () => {
+  const r = extractTemps({ nozzle_temps: [220, 0], bed_temps: [55, 0], target_nozzle_temp: 220, target_bed_temp: 55 });
+  assert.equal(r.nozzleTemp, 220);
+  assert.equal(r.bedTemp, 55);
+  assert.equal(r.targetNozzleTemp, 220);
+  assert.equal(r.targetBedTemp, 55);
+});
+
+test('extractTemps 兼容 nozzle_temp 标量字段', () => {
+  const r = extractTemps({ nozzle_temp: 210, bed_temp: 60 });
+  assert.equal(r.nozzleTemp, 210);
+  assert.equal(r.bedTemp, 60);
+});
+
+test('extractTemps 数组优先于标量', () => {
+  const r = extractTemps({ nozzle_temps: [230, 0], nozzle_temp: 210 });
+  assert.equal(r.nozzleTemp, 230);
+});
+
+test('extractTemps 缺失字段返回 null', () => {
+  const r = extractTemps({});
+  assert.equal(r.nozzleTemp, null);
+  assert.equal(r.bedTemp, null);
+  assert.equal(r.targetNozzleTemp, null);
+  assert.equal(r.targetBedTemp, null);
+  assert.equal(r.chamberTemp, null);
+  assert.equal(r.remainingTime, null);
+});
+
+test('extractTemps chamber_temp 通过', () => {
+  const r = extractTemps({ chamber_temp: 35 });
+  assert.equal(r.chamberTemp, 35);
+});
+
+test('extractTemps remaining_time 通过', () => {
+  const r = extractTemps({ remaining_time: 83 });
+  assert.equal(r.remainingTime, 83);
+});
+
+test('extractTemps 非数字容错', () => {
+  const r = extractTemps({ nozzle_temp: 'abc', bed_temps: null });
+  assert.equal(r.nozzleTemp, null);
+  assert.equal(r.bedTemp, null);
+});
+
+test('formatRemainingTime 小于 60 分钟', () => {
+  assert.equal(formatRemainingTime(5), '剩余 5 分钟');
+  assert.equal(formatRemainingTime(59), '剩余 59 分钟');
+});
+
+test('formatRemainingTime 大于等于 60 分钟', () => {
+  assert.equal(formatRemainingTime(60), '剩余 1h');
+  assert.equal(formatRemainingTime(83), '剩余 1h23m');
+  assert.equal(formatRemainingTime(120), '剩余 2h');
+});
+
+test('formatRemainingTime 边界值返回 null', () => {
+  assert.equal(formatRemainingTime(null), null);
+  assert.equal(formatRemainingTime(0), null);
+  assert.equal(formatRemainingTime(-1), null);
+  assert.equal(formatRemainingTime(undefined), null);
+});

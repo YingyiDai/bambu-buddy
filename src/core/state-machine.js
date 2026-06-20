@@ -142,4 +142,36 @@ function resolveState(report = {}) {
   return { stateKey: 'idle', videoFile: VIDEO.idle, label: '空闲' };
 }
 
-module.exports = { resolveState, stageLabel, pauseLabel, hasFatalHms, GCODE };
+/**
+ * 从 MQTT 报文中提取温度等实时指标，兼容不同固件版本的字段名。
+ * @param {object} report - MQTT print 对象（已合并的完整状态）
+ * @returns {{ nozzleTemp: number|null, targetNozzleTemp: number|null, bedTemp: number|null, targetBedTemp: number|null, chamberTemp: number|null, remainingTime: number|null }}
+ */
+function extractTemps(report) {
+  const r = report || {};
+  const nozzleTemp = Array.isArray(r.nozzle_temps) ? r.nozzle_temps[0] : r.nozzle_temp;
+  const bedTemp = Array.isArray(r.bed_temps) ? r.bed_temps[0] : r.bed_temp;
+  return {
+    nozzleTemp: Number.isFinite(nozzleTemp) ? Math.round(nozzleTemp) : null,
+    targetNozzleTemp: Number.isFinite(r.target_nozzle_temp) ? Math.round(r.target_nozzle_temp) : null,
+    bedTemp: Number.isFinite(bedTemp) ? Math.round(bedTemp) : null,
+    targetBedTemp: Number.isFinite(r.target_bed_temp) ? Math.round(r.target_bed_temp) : null,
+    chamberTemp: Number.isFinite(r.chamber_temp) ? Math.round(r.chamber_temp) : null,
+    remainingTime: Number.isFinite(r.remaining_time) ? r.remaining_time : null,
+  };
+}
+
+/**
+ * 将剩余时间（分钟）格式化为用户可读字符串。
+ * @param {number|null|undefined} minutes
+ * @returns {string|null}
+ */
+function formatRemainingTime(minutes) {
+  if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return null;
+  if (minutes < 60) return `剩余 ${minutes} 分钟`;
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  return m > 0 ? `剩余 ${h}h${m}m` : `剩余 ${h}h`;
+}
+
+module.exports = { resolveState, stageLabel, pauseLabel, hasFatalHms, extractTemps, formatRemainingTime, GCODE };
