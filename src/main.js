@@ -450,18 +450,28 @@ ipcMain.handle('bambu:listDevices', async () => {
   return bambuAuth.listDevices(region, token);
 });
 
-ipcMain.handle('bambu:saveDevice', async (_e, serial, name) => {
+ipcMain.handle('bambu:saveDevice', async (_e, serial, name, model) => {
   const { region, token, uid } = resolveActiveToken();
   if (!token) return { ok: false, error: '登录已失效，请重新登录' };
-  store.set('bambu', {
-    mode: 'cloud',
+
+  // 存账号凭据
+  const existingAccount = store.get('bambuAccount', {});
+  store.set('bambuAccount', {
     region,
+    account: (pendingAuth && pendingAuth.account) || existingAccount.account || '',
     uid,
     token: encryptSecret(token),
-    serial,
-    name,
-    updatedAt: Date.now(),
   });
+
+  // 加入/更新打印机列表
+  const printers = store.get('bambuPrinters', []);
+  const idx = printers.findIndex(p => p.serial === serial);
+  const entry = { serial, name: name || serial, model: model || '' };
+  if (idx >= 0) printers[idx] = entry;
+  else printers.push(entry);
+  store.set('bambuPrinters', printers);
+  store.set('bambuActivePrinter', serial);
+
   afterSave();
   return { ok: true };
 });
@@ -479,13 +489,11 @@ ipcMain.handle('bambu:testLan', async (_e, host, accessCode, serial) => {
 });
 
 ipcMain.handle('bambu:saveLan', async (_e, host, accessCode, serial, name) => {
-  store.set('bambu', {
-    mode: 'lan',
+  store.set('bambuLan', {
     host,
     accessCode: encryptSecret(accessCode),
     serial,
-    name,
-    updatedAt: Date.now(),
+    name: name || serial,
   });
   afterSave();
   return { ok: true };
@@ -494,27 +502,34 @@ ipcMain.handle('bambu:saveLan', async (_e, host, accessCode, serial, name) => {
 // 返回脱敏状态给设置窗预填（永不回 token / accessCode 明文）
 ipcMain.handle('bambu:getState', async () => {
   const mode = store.get('dataSource', 'mock');
-  const bambu = store.get('bambu', {});
-  if (bambu.mode === 'lan') {
-    return { mode: 'lan', host: bambu.host, serial: bambu.serial, name: bambu.name };
+  if (mode === 'lan') {
+    const lan = store.get('bambuLan', {});
+    return { mode: 'lan', host: lan.host, serial: lan.serial, name: lan.name };
   }
+  const account = store.get('bambuAccount', {});
+  const printers = store.get('bambuPrinters', []);
+  const activePrinter = store.get('bambuActivePrinter');
   return {
     mode: 'cloud',
-    region: bambu.region,
-    hasToken: !!bambu.token,
-    uid: bambu.uid,
-    serial: bambu.serial,
-    name: bambu.name,
-    activeMode: mode,
+    region: account.region,
+    hasToken: !!account.token,
+    account: account.account,
+    uid: account.uid,
+    printers,
+    activePrinter,
+    name: printers.find(p => p.serial === activePrinter)?.name || '',
   };
 });
 
 ipcMain.handle('bambu:logout', async () => {
-  store.delete('bambu');
+  store.delete('bambuAccount');
+  store.delete('bambuPrinters');
+  store.delete('bambuActivePrinter');
   pendingAuth = null;
   if (dataSource) { dataSource.stop(); dataSource = null; }
   lastState = null;
-  if (win && !win.isDestroyed()) win.webContents.send('pet:state', { stateKey: 'offline', label: '未连接打印机' });
+  lastReport = null;
+  if (win && !win.isDestroyed()) win.webContents.send('pet:state', { stateKey: 'offline', videoFile: 'offline.webm', label: '未连接打印机' });
   rebuildTray();
   return { ok: true };
 });
@@ -526,11 +541,11 @@ function resolveActiveToken() {
   if (pendingAuth) {
     return { region: pendingAuth.region, token: pendingAuth.token, uid: pendingAuth.uid };
   }
-  const bambu = store.get('bambu', {});
-  if (bambu.mode === 'cloud' && bambu.token) {
-    return { region: bambu.region, token: decryptSecret(bambu.token), uid: bambu.uid };
+  const account = store.get('bambuAccount', {});
+  if (account.token) {
+    return { region: account.region, token: decryptSecret(account.token), uid: account.uid };
   }
-  return { region: bambu.region, token: null, uid: bambu.uid };
+  return { region: account.region, token: null, uid: account.uid };
 }
 
 // 保存成功后：清会话缓存、重建数据源、关窗、刷新托盘
