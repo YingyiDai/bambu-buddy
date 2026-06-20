@@ -4,7 +4,7 @@ const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, safeStorag
 const path = require('path');
 const Store = require('electron-store');
 
-const { resolveState } = require('./core/state-machine');
+const { resolveState, extractTemps, formatRemainingTime } = require('./core/state-machine');
 const { MockDataSource, SCENARIO_LABELS } = require('./core/mock');
 const { BambuCloudDataSource, BambuLanDataSource } = require('./core/bambu-mqtt');
 const bambuAuth = require('./core/bambu-auth');
@@ -187,6 +187,63 @@ function buildDataSource() {
 }
 
 // ---- 托盘（§5.2）----
+// 构建托盘菜单中的打印机身份行。
+function getPrinterLabel() {
+  const mode = store.get('dataSource', 'mock');
+  if (mode === 'cloud') {
+    const printers = store.get('bambuPrinters', []);
+    const active = store.get('bambuActivePrinter');
+    const printer = printers.find(p => p.serial === active);
+    if (printer) {
+      const label = printer.model
+        ? `${printer.model} · ${printer.serial}`
+        : `${printer.name} · ${printer.serial}`;
+      return `打印机：${label}`;
+    }
+    return active ? `打印机：${active}` : null;
+  }
+  if (mode === 'lan') {
+    const lan = store.get('bambuLan', {});
+    const label = lan.name ? `${lan.name} · ${lan.host}` : (lan.host || lan.serial);
+    return label ? `打印机：${label}` : null;
+  }
+  return null;
+}
+
+// 构建托盘菜单中的账号行（仅 Cloud 模式）。
+function getAccountLabel() {
+  const mode = store.get('dataSource', 'mock');
+  if (mode !== 'cloud') return null;
+  const account = store.get('bambuAccount', {});
+  if (!account.account) return null;
+  const regionLabel = account.region === 'china' ? '中国大陆' : '全球';
+  return `账号：${account.account} [${regionLabel}]`;
+}
+
+// 构建托盘菜单中的实时指标行（温度 + 剩余时间）。
+function getMetricsLabel(report) {
+  if (!report || !report.connected) return null;
+  const temps = extractTemps(report);
+  const parts = [];
+  if (temps.nozzleTemp != null) {
+    if (temps.targetNozzleTemp != null && temps.targetNozzleTemp > 0) {
+      parts.push(`喷嘴 ${temps.nozzleTemp}→${temps.targetNozzleTemp}°C`);
+    } else {
+      parts.push(`喷嘴 ${temps.nozzleTemp}°C`);
+    }
+  }
+  if (temps.bedTemp != null) {
+    if (temps.targetBedTemp != null && temps.targetBedTemp > 0) {
+      parts.push(`热床 ${temps.bedTemp}→${temps.targetBedTemp}°C`);
+    } else {
+      parts.push(`热床 ${temps.bedTemp}°C`);
+    }
+  }
+  const remaining = formatRemainingTime(temps.remainingTime);
+  if (remaining) parts.push(remaining);
+  return parts.length > 0 ? parts.join(' | ') : null;
+}
+
 function makeTrayIcon() {
   // 一个简单的 16x16 模板图标（圆点），避免依赖外部资源。
   const size = 16;
@@ -209,14 +266,50 @@ function makeTrayIcon() {
 function buildMenuTemplate() {
   const mode = store.get('dataSource', 'mock');
   const statusLabel = lastState ? lastState.label : '启动中…';
+  const template = [];
 
-  const template = [
-    { label: `状态：${statusLabel}`, enabled: false },
-    { label: `数据源：${mode === 'cloud' ? 'Bambu Cloud' : (mode === 'lan' ? 'Bambu LAN' : 'Mock')}`, enabled: false },
-    { type: 'separator' },
-  ];
+  // ── 设备 / 账号 / 实时信息（Mock 模式不展示）──
+  if (mode !== 'mock') {
+    const printerLabel = getPrinterLabel();
+    if (printerLabel) template.push({ label: printerLabel, enabled: false });
 
-  // Mock 模式：手动切状态子菜单
+    const accountLabel = getAccountLabel();
+    if (accountLabel) template.push({ label: accountLabel, enabled: false });
+  }
+
+  // 状态行（总是展示）
+  template.push({ label: `状态：${statusLabel}`, enabled: false });
+
+  // 实时指标（仅 Cloud / LAN 且已连接时）
+  const metricsLabel = getMetricsLabel(lastReport);
+  if (metricsLabel) template.push({ label: metricsLabel, enabled: false });
+
+  // Mock 模式：数据源标识
+  if (mode === 'mock') {
+    template.push({ label: '数据源：Mock', enabled: false });
+  }
+
+  template.push({ type: 'separator' });
+
+  // ── 切换打印机（仅 Cloud 模式，多台打印机时显示）──
+  if (mode === 'cloud') {
+    const printers = store.get('bambuPrinters', []);
+    const activePrinter = store.get('bambuActivePrinter');
+    if (printers.length > 1) {
+      const printerItems = printers.map((p) => ({
+        label: `${p.name} · ${p.serial}`,
+        type: 'radio',
+        checked: p.serial === activePrinter,
+        click: () => {
+          store.set('bambuActivePrinter', p.serial);
+          buildDataSource();
+        },
+      }));
+      template.push({ label: '切换打印机', submenu: printerItems });
+    }
+  }
+
+  // ── Mock 模式：手动切状态子菜单 ──
   if (mode === 'mock' && dataSource instanceof MockDataSource) {
     const scenarioItems = Object.keys(SCENARIO_LABELS).map((key) => ({
       label: SCENARIO_LABELS[key],
@@ -227,6 +320,7 @@ function buildMenuTemplate() {
     template.push({ type: 'separator' });
   }
 
+  // ── 数据源 / 大小 / 设置 / 退出 ──
   template.push(
     {
       label: '数据源',
@@ -239,8 +333,8 @@ function buildMenuTemplate() {
           label: 'Bambu Cloud 真机', type: 'radio', checked: mode === 'cloud',
           click: () => {
             store.set('dataSource', 'cloud');
-            const bambu = store.get('bambu', {});
-            if (bambu.mode === 'cloud' && bambu.token && bambu.serial) buildDataSource();
+            const account = store.get('bambuAccount');
+            if (account && account.token && store.get('bambuActivePrinter')) buildDataSource();
             else createSettingsWindow();
           },
         },
@@ -248,8 +342,8 @@ function buildMenuTemplate() {
           label: 'Bambu LAN 本地', type: 'radio', checked: mode === 'lan',
           click: () => {
             store.set('dataSource', 'lan');
-            const bambu = store.get('bambu', {});
-            if (bambu.mode === 'lan' && bambu.host && bambu.accessCode && bambu.serial) buildDataSource();
+            const lan = store.get('bambuLan', {});
+            if (lan.host && lan.accessCode && lan.serial) buildDataSource();
             else createSettingsWindow();
           },
         },
