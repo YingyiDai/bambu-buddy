@@ -46,6 +46,7 @@ let tray = null;
 let dataSource = null;
 let settingsWin = null; // Bambu 连接设置窗（Cloud 登录 / LAN 配置）
 let lastState = null; // 最近一次 resolveState 结果，用于托盘展示
+let lastReport = null; // 最近一次 MQTT 原始报文，供托盘菜单读取实时指标
 
 // 尺寸预设（窗口为正方形，熊猫随窗口缩放）。可在右键菜单「大小」切换。
 const SIZE_PRESETS = { small: 160, medium: 220, large: 280 };
@@ -138,30 +139,30 @@ function buildDataSource() {
   if (dataSource) { dataSource.stop(); dataSource = null; }
   const mode = store.get('dataSource', 'mock');
   if (mode === 'cloud') {
-    const bambu = store.get('bambu', {});
-    if (bambu.mode !== 'cloud' || !bambu.token || !bambu.serial) {
-      // 未配置账号/设备 → 弹登录窗，而不是用空凭据建一个必然失败的连接
+    const account = store.get('bambuAccount');
+    const activePrinter = store.get('bambuActivePrinter');
+    if (!account || !account.token || !activePrinter) {
       createSettingsWindow();
       return;
     }
-    const token = decryptSecret(bambu.token);
+    const token = decryptSecret(account.token);
     dataSource = new BambuCloudDataSource({
-      region: bambu.region,
+      region: account.region,
       token,
-      uid: bambu.uid,
-      serial: bambu.serial,
+      uid: account.uid,
+      serial: activePrinter,
     });
   } else if (mode === 'lan') {
-    const bambu = store.get('bambu', {});
-    if (bambu.mode !== 'lan' || !bambu.host || !bambu.accessCode || !bambu.serial) {
+    const lan = store.get('bambuLan', {});
+    if (!lan.host || !lan.accessCode || !lan.serial) {
       createSettingsWindow();
       return;
     }
-    const accessCode = decryptSecret(bambu.accessCode);
+    const accessCode = decryptSecret(lan.accessCode);
     dataSource = new BambuLanDataSource({
-      host: bambu.host,
+      host: lan.host,
       accessCode,
-      serial: bambu.serial,
+      serial: lan.serial,
     });
   } else {
     dataSource = new MockDataSource();
@@ -174,6 +175,7 @@ function buildDataSource() {
     });
   }
   dataSource.onState((report) => {
+    lastReport = report; // 保留原始报文供托盘菜单
     const resolved = resolveState(report);
     lastState = resolved;
     if (win && !win.isDestroyed()) {
