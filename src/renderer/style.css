@@ -10,6 +10,13 @@ html, body {
   -webkit-user-select: none;
   user-select: none;
   cursor: default;
+
+  /* 拖动热区：居中圆角矩形（基于帧分析的非透明区域边界）*/
+  --hotzone-left: 20%;
+  --hotzone-right: 20%;
+  --hotzone-top: 28%;
+  --hotzone-bottom: 5%;
+  --hotzone-radius: 20%;        /* 圆角半径，相对于热区宽度 */
 }
 
 /* 熊猫容器：实体像素区域，可拖动窗口（§5.1）。

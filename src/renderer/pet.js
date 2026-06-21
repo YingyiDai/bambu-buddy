@@ -81,9 +81,56 @@ window.pet.onState(applyState);
 petEl.addEventListener('mouseenter', () => window.pet.setInteractive(true));
 petEl.addEventListener('mouseleave', () => { if (!dragging) window.pet.setInteractive(false); });
 
+// —— 热区命中判断：居中圆角矩形 ——
+const hotzoneCS = getComputedStyle(document.documentElement);
+
+function insideHotzone(px, py) {
+  const w = petEl.clientWidth;
+  const h = petEl.clientHeight;
+
+  const hl = parseFloat(hotzoneCS.getPropertyValue('--hotzone-left')) / 100 * w;
+  const hr = parseFloat(hotzoneCS.getPropertyValue('--hotzone-right')) / 100 * w;
+  const ht = parseFloat(hotzoneCS.getPropertyValue('--hotzone-top')) / 100 * h;
+  const hb = parseFloat(hotzoneCS.getPropertyValue('--hotzone-bottom')) / 100 * h;
+  const r  = parseFloat(hotzoneCS.getPropertyValue('--hotzone-radius')) / 100 * (w - hl - hr);
+
+  const left   = hl;
+  const right  = w - hr;
+  const top    = ht;
+  const bottom = h - hb;
+
+  // 在矩形外 → 否
+  if (px < left || px > right || py < top || py > bottom) return false;
+
+  // 四个圆角区域检测
+  // 左上角
+  if (px < left + r && py < top + r) {
+    const dx = px - (left + r), dy = py - (top + r);
+    if (dx * dx + dy * dy > r * r) return false;
+  }
+  // 右上角
+  if (px > right - r && py < top + r) {
+    const dx = px - (right - r), dy = py - (top + r);
+    if (dx * dx + dy * dy > r * r) return false;
+  }
+  // 左下角
+  if (px < left + r && py > bottom - r) {
+    const dx = px - (left + r), dy = py - (bottom - r);
+    if (dx * dx + dy * dy > r * r) return false;
+  }
+  // 右下角
+  if (px > right - r && py > bottom - r) {
+    const dx = px - (right - r), dy = py - (bottom - r);
+    if (dx * dx + dy * dy > r * r) return false;
+  }
+
+  return true;
+}
+
 let dragging = false;
 petEl.addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
+  if (!insideHotzone(e.offsetX, e.offsetY)) return;
   dragging = true;
   window.pet.dragStart();
   e.preventDefault();
