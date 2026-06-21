@@ -12,7 +12,7 @@ const https = require('https');
 // 区域 → API host / MQTT host
 const REGIONS = {
   global: { api: 'api.bambulab.com', mqtt: 'us.mqtt.bambulab.com' },
-  china: { api: 'api.bambulab.com', mqtt: 'cn.mqtt.bambulab.com' },
+  china: { api: 'api.bambulab.cn', mqtt: 'cn.mqtt.bambulab.com' },
 };
 
 // 端点常量：实现后若与 pybambu 不符，单点修正。
