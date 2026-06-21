@@ -29,7 +29,7 @@ function httpsJson(host, path, method, body, headers = {}) {
         host, path, method,
         headers: {
           'Content-Type': 'application/json',
-          'User-Agent': 'bambu-desktop-pet/0.1',
+          'User-Agent': 'bambu-buddy/0.1',
           ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}),
           ...headers,
         },

@@ -797,9 +797,9 @@ ipcMain.handle('locale:getCurrent', () => store.get('locale', 'zh-CN'));
 ipcMain.handle('app:info', () => {
   const pkg = require('../package.json');
   return {
-    name: 'BambuPet',
+    name: 'Bambu Buddy',
     version: pkg.version,
-    description: 'Bambu 打印机桌面宠物',
+    description: 'Bambu Buddy',
   };
 });
 

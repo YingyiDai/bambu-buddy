@@ -1,4 +1,4 @@
-// Bambu 设置窗：三 Tab + i18n。
+// 设置窗：多 Tab + i18n。
 const el = (id) => document.getElementById(id);
 const pending = { region: 'global', account: '', password: '', tfaKey: null };
 

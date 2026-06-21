@@ -123,7 +123,7 @@ const STRINGS = {
     'tray.sourceLive': '真机',
     'tray.sourceCloud': 'Bambu Cloud 真机',
     'tray.sourceLan': 'Bambu LAN 本地',
-    'tray.settings': '宠物设置…',
+    'tray.settings': '设置…',
     'tray.size': '大小',
     'tray.sizeSmall': '小',
     'tray.sizeMedium': '中',
@@ -132,10 +132,10 @@ const STRINGS = {
     'tray.showInDock': '在程序坞显示',
     'tray.exit': '退出',
     'tray.starting': '启动中…',
-    'tray.tooltip': 'Bambu 桌面宠物',
+    'tray.tooltip': 'Bambu Buddy',
 
     // ── 设置窗 ──
-    'settings.title': '宠物设置',
+    'settings.title': '设置',
     'settings.tabConnection': '连接',
     'settings.tabAppearance': '外观',
     'settings.tabAbout': '关于',
@@ -189,8 +189,8 @@ const STRINGS = {
     'settings.renameSave': '保存',
     'settings.renameCancel': '取消',
     // 关于 Tab
-    'settings.aboutName': 'BambuPet',
-    'settings.aboutDesc': 'Bambu 打印机桌面宠物 — 一只熊猫常驻桌面，根据打印机状态播放对应动画。',
+    'settings.aboutName': 'Bambu Buddy',
+    'settings.aboutDesc': 'Bambu Buddy — 一只熊猫常驻桌面，根据打印机状态播放对应动画。',
     'settings.aboutAuthor': '作者',
 
     // 设置窗 — 连接模式/区域/错误
@@ -349,7 +349,7 @@ const STRINGS = {
     'tray.sourceLive': 'Live Printer',
     'tray.sourceCloud': 'Bambu Cloud',
     'tray.sourceLan': 'Bambu LAN',
-    'tray.settings': 'Pet Settings…',
+    'tray.settings': 'Settings…',
     'tray.size': 'Size',
     'tray.sizeSmall': 'Small',
     'tray.sizeMedium': 'Medium',
@@ -358,10 +358,10 @@ const STRINGS = {
     'tray.showInDock': 'Show in Dock',
     'tray.exit': 'Exit',
     'tray.starting': 'Starting…',
-    'tray.tooltip': 'Bambu Desktop Pet',
+    'tray.tooltip': 'Bambu Buddy',
 
     // ── Settings window ──
-    'settings.title': 'Pet Settings',
+    'settings.title': 'Settings',
     'settings.tabConnection': 'Connection',
     'settings.tabAppearance': 'Appearance',
     'settings.tabAbout': 'About',
@@ -414,7 +414,7 @@ const STRINGS = {
     'settings.renameSave': 'Save',
     'settings.renameCancel': 'Cancel',
     // About Tab
-    'settings.aboutName': 'BambuPet',
+    'settings.aboutName': 'Bambu Buddy',
     'settings.aboutDesc': 'A desktop pet panda that lives on your screen and reacts to your Bambu Lab 3D printer status.',
     'settings.aboutAuthor': 'Author',
 

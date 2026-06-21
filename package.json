@@ -1,7 +1,7 @@
 {
-  "name": "bambu-desktop-pet",
+  "name": "bambu-buddy",
   "version": "0.1.0",
-  "description": "Bambu 打印机桌面宠物 — 一只熊猫常驻桌面，根据打印机状态播放对应动画",
+  "description": "Bambu Buddy — 一只熊猫常驻桌面，根据打印机状态播放对应动画",
   "main": "src/main.js",
   "author": "",
   "license": "MIT",
@@ -19,8 +19,8 @@
     "electron-builder": "^25.1.8"
   },
   "build": {
-    "appId": "com.bambupets.desktop",
-    "productName": "BambuPet",
+    "appId": "com.bambubuddy.desktop",
+    "productName": "Bambu Buddy",
     "files": [
       "src/**/*",
       "assets/anim/**/*"
