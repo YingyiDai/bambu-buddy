@@ -394,7 +394,7 @@ function buildMenuTemplate() {
         },
       ],
     },
-    { label: t(locale, 'tray.settings'), enabled: mode === 'live',
+    { label: t(locale, 'tray.settings'),
       click: () => createSettingsWindow() },
     {
       label: t(locale, 'tray.checkUpdate'),
