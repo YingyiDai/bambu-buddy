@@ -1,26 +1,28 @@
-// 纯函数单测：resolveState 的解析优先级与 label（技术文档 §6）。
+// 纯函数单测：resolveState 的解析优先级与 labelKey / labelParams。
 // 用内置 node:test 运行：node --test test/
-
 const test = require('node:test');
 const assert = require('node:assert');
-const { resolveState } = require('../src/core/state-machine');
+const { resolveState, extractTemps, formatRemainingTime } = require('../src/core/state-machine');
 
 test('连接断开 → offline', () => {
   const r = resolveState({ connected: false, gcode_state: 'RUNNING' });
   assert.equal(r.stateKey, 'offline');
   assert.equal(r.videoFile, 'offline.webm');
-  assert.equal(r.label, '未连接打印机');
+  assert.equal(r.labelKey, 'label.offline');
+  assert.deepStrictEqual(r.labelParams, {});
 });
 
 test('FAILED 优先于其它', () => {
   const r = resolveState({ connected: true, gcode_state: 'FAILED' });
   assert.equal(r.stateKey, 'failed');
+  assert.equal(r.labelKey, 'label.failed');
 });
 
-test('致命 HMS → failed 且 label 带 code', () => {
+test('致命 HMS → failed 且 labelKey 带 code', () => {
   const r = resolveState({ connected: true, gcode_state: 'RUNNING', hms: [{ code: 'HMS_0300', severity: 'fatal' }] });
   assert.equal(r.stateKey, 'failed');
-  assert.match(r.label, /HMS_0300/);
+  assert.equal(r.labelKey, 'label.failed.hms');
+  assert.equal(r.labelParams.code, 'HMS_0300');
 });
 
 test('可恢复 HMS（info）不进 failed', () => {
@@ -29,30 +31,32 @@ test('可恢复 HMS（info）不进 failed', () => {
 });
 
 test('FINISH → finished', () => {
-  assert.equal(resolveState({ connected: true, gcode_state: 'FINISH' }).stateKey, 'finished');
+  const r = resolveState({ connected: true, gcode_state: 'FINISH' });
+  assert.equal(r.stateKey, 'finished');
+  assert.equal(r.labelKey, 'label.finished');
 });
 
-test('PAUSE 断料 label', () => {
+test('PAUSE 断料 labelKey', () => {
   const r = resolveState({ connected: true, gcode_state: 'PAUSE', stg_cur: 6 });
   assert.equal(r.videoFile, 'paused.webm');
-  assert.equal(r.label, '缺料，等待续料');
+  assert.equal(r.labelKey, 'label.paused.runout');
 });
 
 test('PAUSE 舱门打开', () => {
   const r = resolveState({ connected: true, gcode_state: 'PAUSE', door_open: true });
-  assert.equal(r.label, '舱门已打开');
+  assert.equal(r.labelKey, 'label.doorOpen');
 });
 
-test('PREPARE 预热热床 label', () => {
+test('PREPARE 预热热床 labelKey', () => {
   const r = resolveState({ connected: true, gcode_state: 'PREPARE', stg_cur: 2 });
   assert.equal(r.stateKey, 'prepare');
-  assert.equal(r.label, '预热热床');
+  assert.equal(r.labelKey, 'label.prepare.heatbed');
 });
 
 test('RUNNING 换料 stage → changing_filament', () => {
   const r = resolveState({ connected: true, gcode_state: 'RUNNING', stg_cur: 4 });
   assert.equal(r.stateKey, 'changing_filament');
-  assert.equal(r.label, '换料中');
+  assert.equal(r.labelKey, 'label.changingFilament');
 });
 
 test('RUNNING 进度分档', () => {
@@ -64,21 +68,33 @@ test('RUNNING 进度分档', () => {
   assert.equal(resolveState({ connected: true, gcode_state: 'RUNNING', mc_percent: 99 }).videoFile, 'printing_75.webm');
 });
 
-test('RUNNING label 含进度与层数', () => {
+test('RUNNING labelKey 含进度与层数', () => {
   const r = resolveState({ connected: true, gcode_state: 'RUNNING', mc_percent: 50, layer_num: 100, total_layer_num: 200 });
-  assert.equal(r.label, '打印中 50% · 第100/200层');
+  assert.equal(r.labelKey, 'label.printing.layer');
+  assert.equal(r.labelParams.p, 50);
+  assert.equal(r.labelParams.layer, 100);
+  assert.equal(r.labelParams.total, 200);
+});
+
+test('RUNNING labelKey 仅进度（无层数）', () => {
+  const r = resolveState({ connected: true, gcode_state: 'RUNNING', mc_percent: 30 });
+  assert.equal(r.labelKey, 'label.printing');
+  assert.equal(r.labelParams.p, 30);
 });
 
 test('IDLE → idle', () => {
-  assert.equal(resolveState({ connected: true, gcode_state: 'IDLE' }).stateKey, 'idle');
+  const r = resolveState({ connected: true, gcode_state: 'IDLE' });
+  assert.equal(r.stateKey, 'idle');
+  assert.equal(r.labelKey, 'label.idle');
 });
 
 test('未知状态兜底 idle', () => {
-  assert.equal(resolveState({ connected: true, gcode_state: 'WHATEVER' }).stateKey, 'idle');
+  const r = resolveState({ connected: true, gcode_state: 'WHATEVER' });
+  assert.equal(r.stateKey, 'idle');
+  assert.equal(r.labelKey, 'label.idle');
 });
 
-const { extractTemps, formatRemainingTime } = require('../src/core/state-machine');
-
+// extractTemps + formatRemainingTime tests (unchanged from Task 1, keep all 10)
 test('extractTemps 取 nozzle_temps 数组第一个元素', () => {
   const r = extractTemps({ nozzle_temps: [220, 0], bed_temps: [55, 0], target_nozzle_temp: 220, target_bed_temp: 55 });
   assert.equal(r.nozzleTemp, 220);
