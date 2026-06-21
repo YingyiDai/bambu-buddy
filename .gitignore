@@ -4,3 +4,4 @@ assets/anim/*.webm
 dist/
 .DS_Store
 *.log
+.superpowers/
