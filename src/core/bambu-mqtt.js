@@ -49,7 +49,12 @@ class BambuMQTTBase {
       });
     });
     this._client.on('message', (_topic, payload) => this._onMessage(payload));
-    this._client.on('error', (err) => { console.error('[bambu-mqtt] 连接错误:', err && (err.message || err.code)); this._emitOffline(); });
+    this._client.on('error', (err) => {
+      console.error('[bambu-mqtt] 连接错误:', err && (err.message || err.code));
+      // LAN 连接错误需驱动主进程的云回退逻辑；云端 error 也会触发，但主进程回退仅在 tp==='lan' 时动作，安全。
+      this._emitAuthFailure();
+      this._emitOffline();
+    });
     this._client.on('offline', () => this._emitOffline());
     this._client.on('close', () => this._emitOffline());
   }
