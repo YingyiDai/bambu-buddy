@@ -5,7 +5,7 @@ const path = require('path');
 const Store = require('electron-store');
 
 const { resolveState, extractTemps, formatRemainingTime } = require('./core/state-machine');
-const { MockDataSource, SCENARIO_LABELS } = require('./core/mock');
+const { MockDataSource } = require('./core/mock');
 const { BambuCloudDataSource, BambuLanDataSource } = require('./core/bambu-mqtt');
 const bambuAuth = require('./core/bambu-auth');
 const { t, STRINGS } = require('./config/locales');
@@ -614,6 +614,38 @@ ipcMain.handle('bambu:saveDevice', async (_e, serial, name, model) => {
   store.set('dataSource', 'live');
 
   afterSave();
+  return { ok: true };
+});
+
+// 合并登录流程：登录成功后一次性持久化账号 + 拉取全部云端打印机进统一列表，
+// 设一台为当前并切到 live —— 不关闭设置窗（用户停留在「打印机」区域看到已同步的列表）。
+ipcMain.handle('bambu:completeCloudLogin', async () => {
+  const { region, token, uid } = resolveActiveToken();
+  if (!token) return { ok: false, error: '登录已失效，请重新登录' };
+  const existingAccount = store.get('bambuAccount', {});
+  store.set('bambuAccount', {
+    region,
+    account: (pendingAuth && pendingAuth.account) || existingAccount.account || '',
+    uid,
+    token: encryptSecret(token),
+  });
+  const r = await bambuAuth.listDevices(region, token);
+  if (r.ok) {
+    const prevBySerial = new Map(store.get('bambuPrinters', []).map((p) => [p.serial, p]));
+    store.set('bambuPrinters', r.devices.map((d) => ({
+      serial: d.serial,
+      name: prevBySerial.get(d.serial)?.name || d.name,
+      model: d.model, online: d.online, printStatus: d.printStatus || null,
+    })));
+    const active = store.get('activePrinterSerial');
+    const stillThere = r.devices.some((d) => d.serial === active);
+    if (!stillThere && r.devices.length > 0) store.set('activePrinterSerial', r.devices[0].serial);
+  }
+  store.set('dataSource', 'live');
+  pendingAuth = null;
+  buildDataSource();
+  rebuildTray();
+  if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('printers:changed');
   return { ok: true };
 });
 

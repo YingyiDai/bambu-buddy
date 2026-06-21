@@ -91,8 +91,7 @@ el('sumLogout').addEventListener('click', async () => {
 // 登录成功：拉取设备并入统一列表（无需单独选设备步骤），刷新账号块 + 列表。
 async function afterLogin() {
   setBusy(true);
-  const r = await window.bambu.listDevices();
-  if (r.ok) for (const d of r.devices) await window.bambu.saveDevice(d.serial, d.name, d.model || '');
+  await window.bambu.completeCloudLogin();
   setBusy(false);
   await refreshAccountBlock();
   renderPrinters();
@@ -227,8 +226,8 @@ function renderPlayState(st) {
     el('playStateLabel').textContent = t('play.inLiveMode');
     document.querySelector('.play-now-cap').textContent = '';
   }
-  // 进度滑杆仅在演示 printing 时显示
-  const showProg = st.isPlaying && st.currentScenario === 'printing';
+  // 进度滑杆仅在场景声明 hasProgress 时显示（目前仅 printing）
+  const showProg = st.isPlaying && !!(sc && sc.hasProgress);
   el('progressRow').classList.toggle('hidden', !showProg);
   if (showProg) { el('playProgress').value = st.percent; el('playProgressVal').textContent = st.percent + '%'; }
   // 画廊高亮当前

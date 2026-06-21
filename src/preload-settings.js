@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('bambu', {
     ipcRenderer.invoke('bambu:verify', region, account, password, tfaKey, code),
   listDevices: () => ipcRenderer.invoke('bambu:listDevices'),
   saveDevice: (serial, name, model) => ipcRenderer.invoke('bambu:saveDevice', serial, name, model),
+  completeCloudLogin: () => ipcRenderer.invoke('bambu:completeCloudLogin'),
 
   // LAN 测试 / 保存
   testLan: (host, accessCode, serial) =>

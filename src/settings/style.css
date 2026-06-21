@@ -4,6 +4,7 @@
 :root {
   --brand: #03AE42;
   --brand-weak: rgba(3, 174, 66, 0.10);
+  --danger-weak: rgba(255, 59, 48, 0.10);
   --danger: #ff3b30;
   --bg: #f5f5f7;
   --surface: #ffffff;
@@ -30,6 +31,7 @@
   :root {
     --brand: #34d058;            /* 深色下更亮的绿，保对比 */
     --brand-weak: rgba(52, 208, 88, 0.16);
+    --danger-weak: rgba(255, 105, 97, 0.16);
     --danger: #ff6961;
     --bg: #1c1c1e;
     --surface: #2c2c2e;
@@ -84,7 +86,7 @@ input:focus, select:focus { border-color: var(--brand); box-shadow: 0 0 0 3px va
 .btn-primary { background: var(--brand); border-color: var(--brand); color: #fff; }
 .btn-danger { background: var(--danger); border-color: var(--danger); color: #fff; }
 .btn-link { border: none; background: transparent; color: var(--brand); padding: 8px 0; cursor: pointer; }
-.err { margin-top: 12px; padding: 9px 12px; background: rgba(255,59,48,.10); border: 1px solid rgba(255,59,48,.28); border-radius: var(--radius-sm); color: var(--danger); font-size: 12px; }
+.err { margin-top: 12px; padding: 9px 12px; background: var(--danger-weak); border: 1px solid var(--danger); border-radius: var(--radius-sm); color: var(--danger); font-size: 12px; }
 .err.hidden { display: none; }
 .hidden { display: none; }
 
@@ -137,6 +139,10 @@ input:focus, select:focus { border-color: var(--brand); box-shadow: 0 0 0 3px va
 .btn-update { padding: 6px 20px; font-size: 13px; border: 1px solid var(--brand); border-radius: 6px; background: transparent; color: var(--brand); cursor: pointer; }
 .btn-update:hover { background: var(--brand); color: #fff; }
 .update-status { font-size: 12px; margin: 10px 0 0; padding: 6px 10px; border-radius: 6px; }
+.update-status.uptodate  { color: var(--status-online); background: var(--brand-weak); }
+.update-status.available { color: var(--brand); background: var(--brand-weak); }
+.update-status.error     { color: var(--danger); background: var(--danger-weak); }
+.update-status .release-link { color: var(--brand); text-decoration: underline; cursor: pointer; }
 .about-meta { display: inline-block; text-align: left; margin-top: 8px; }
 .about-meta > div { display: flex; justify-content: space-between; gap: 20px; padding: 5px 0; }
 .about-meta .k { color: var(--text-dim); font-size: 12px; }
