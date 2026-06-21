@@ -9,6 +9,7 @@ const { MockDataSource, SCENARIO_LABELS } = require('./core/mock');
 const { BambuCloudDataSource, BambuLanDataSource } = require('./core/bambu-mqtt');
 const bambuAuth = require('./core/bambu-auth');
 const { t, STRINGS } = require('./config/locales');
+const registry = require('./core/printer-registry');
 
 const store = new Store();
 
@@ -48,6 +49,11 @@ function migrateStorage() {
     store.set('sizePx', SIZE_PRESETS[oldSize] || 220);
     store.delete('size');
   }
+
+  // 多打印机：旧存储结构 → 统一注册表
+  const { set, del } = registry.computeMigration(store.store);
+  for (const [k, v] of Object.entries(set)) store.set(k, v);
+  for (const k of del) store.delete(k);
 }
 
 let win = null;

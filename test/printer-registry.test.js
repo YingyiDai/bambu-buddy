@@ -65,3 +65,31 @@ test('renameInList 改名', () => {
   assert.equal(r.find((x) => x.serial === 'B').name, 'BB');
   assert.equal(r.find((x) => x.serial === 'A').name, 'a');
 });
+
+const { computeMigration } = require('../src/core/printer-registry');
+
+test('迁移：旧单台 bambuLan → bambuLanPrinters[]', () => {
+  const { set, del } = computeMigration({
+    bambuLan: { host: '1.2.3.4', accessCode: 'enc', serial: 'S1', name: '机器' },
+  });
+  assert.deepEqual(set.bambuLanPrinters, [{ serial: 'S1', name: '机器', model: '', host: '1.2.3.4', accessCode: 'enc' }]);
+  assert.ok(del.includes('bambuLan'));
+});
+
+test('迁移：dataSource cloud/lan → live；activePrinter 键改名', () => {
+  const { set, del } = computeMigration({ dataSource: 'cloud', bambuActivePrinter: 'S9' });
+  assert.equal(set.dataSource, 'live');
+  assert.equal(set.activePrinterSerial, 'S9');
+  assert.ok(del.includes('bambuActivePrinter'));
+});
+
+test('迁移幂等：已是新结构则无操作', () => {
+  const { set, del } = computeMigration({ dataSource: 'live', bambuLanPrinters: [], activePrinterSerial: 'X' });
+  assert.deepEqual(set, {});
+  assert.deepEqual(del, []);
+});
+
+test('迁移：mock 保持 mock', () => {
+  const { set } = computeMigration({ dataSource: 'mock' });
+  assert.equal(set.dataSource, undefined);
+});

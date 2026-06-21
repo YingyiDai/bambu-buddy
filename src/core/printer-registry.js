@@ -48,4 +48,23 @@ function renameInList(list, serial, name) {
   return (list || []).map((p) => (p.serial === serial ? { ...p, name } : p));
 }
 
-module.exports = { mergePrinters, pickTransport, addLan, removeLan, renameInList };
+function computeMigration(s = {}) {
+  const set = {}; const del = [];
+  if (s.bambuLan && s.bambuLan.host && !s.bambuLanPrinters) {
+    set.bambuLanPrinters = [{
+      serial: s.bambuLan.serial, name: s.bambuLan.name || s.bambuLan.serial,
+      model: '', host: s.bambuLan.host, accessCode: s.bambuLan.accessCode,
+    }];
+    del.push('bambuLan');
+  }
+  if (s.bambuActivePrinter && !s.activePrinterSerial) {
+    set.activePrinterSerial = s.bambuActivePrinter;
+    del.push('bambuActivePrinter');
+  }
+  if (s.dataSource === 'cloud' || s.dataSource === 'lan') {
+    set.dataSource = 'live';
+  }
+  return { set, del };
+}
+
+module.exports = { mergePrinters, pickTransport, addLan, removeLan, renameInList, computeMigration };
