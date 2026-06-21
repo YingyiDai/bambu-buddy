@@ -11,6 +11,7 @@ let switchTimer = null;
 // Locale
 let localeStrings = {};
 let currentLocale = 'zh-CN';
+let lastPetState = null; // 最近一次 printer state，用于 locale 切换时重绘
 
 function t(locale, key, params) {
   const map = localeStrings[locale] || localeStrings['zh-CN'] || {};
@@ -48,15 +49,19 @@ function crossfadeTo(videoFile) {
 
 function applyState(state) {
   if (!state) return;
+  lastPetState = state;
   labelEl.textContent = t(currentLocale, state.labelKey, state.labelParams);
   if (switchTimer) clearTimeout(switchTimer);
   switchTimer = setTimeout(() => { crossfadeTo(state.videoFile); }, 250);
 }
 
-// Locale 更新
+// Locale 更新 → 立即重绘标签
 window.pet.onLocale((locale, strings) => {
   currentLocale = locale;
-  localeStrings = { [locale]: strings };
+  localeStrings[locale] = strings;
+  if (lastPetState) {
+    labelEl.textContent = t(currentLocale, lastPetState.labelKey, lastPetState.labelParams);
+  }
 });
 
 // 偏好更新
