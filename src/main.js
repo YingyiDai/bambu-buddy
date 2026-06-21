@@ -389,6 +389,12 @@ function pushLocale() {
   }
 }
 
+function resendState() {
+  if (win && !win.isDestroyed() && lastState) {
+    win.webContents.send('pet:state', lastState);
+  }
+}
+
 // 推送偏好设置给宠物窗口
 function pushPetPrefs() {
   if (win && !win.isDestroyed()) {
@@ -641,7 +647,7 @@ ipcMain.handle('pref:set', (_e, key, value) => {
   store.set(key, value);
   if (key === 'sizePx') setPetSizePx(value);
   if (key === 'labelFontSize' || key === 'showLabel') pushPetPrefs();
-  if (key === 'locale') pushLocale();
+  if (key === 'locale') { pushLocale(); resendState(); }
   if (key === 'labelFontSize' || key === 'locale' || key === 'showLabel') rebuildTray();
   return { ok: true };
 });
