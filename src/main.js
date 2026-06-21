@@ -192,7 +192,7 @@ function buildDataSource() {
 
 // ---- 托盘（§5.2）----
 // 构建托盘菜单中的打印机身份行。
-function getPrinterLabel() {
+function getPrinterLabel(locale) {
   const mode = store.get('dataSource', 'mock');
   if (mode === 'cloud') {
     const printers = store.get('bambuPrinters', []);
@@ -202,49 +202,59 @@ function getPrinterLabel() {
       const label = printer.model
         ? `${printer.model} · ${printer.serial}`
         : `${printer.name} · ${printer.serial}`;
-      return `打印机：${label}`;
+      return `${t(locale, 'tray.printer')}：${label}`;
     }
-    return active ? `打印机：${active}` : null;
+    return active ? `${t(locale, 'tray.printer')}：${active}` : null;
   }
   if (mode === 'lan') {
     const lan = store.get('bambuLan', {});
     const label = lan.name ? `${lan.name} · ${lan.host}` : (lan.host || lan.serial);
-    return label ? `打印机：${label}` : null;
+    return label ? `${t(locale, 'tray.printer')}：${label}` : null;
   }
   return null;
 }
 
 // 构建托盘菜单中的账号行（仅 Cloud 模式）。
-function getAccountLabel() {
+function getAccountLabel(locale) {
   const mode = store.get('dataSource', 'mock');
   if (mode !== 'cloud') return null;
   const account = store.get('bambuAccount', {});
   if (!account.account) return null;
-  const regionLabel = account.region === 'china' ? '中国大陆' : '全球';
-  return `账号：${account.account} [${regionLabel}]`;
+  const regionLabel = account.region === 'china' ? (locale === 'zh-CN' ? '中国大陆' : 'China') : (locale === 'zh-CN' ? '全球' : 'Global');
+  return `${t(locale, 'tray.account')}：${account.account} [${regionLabel}]`;
 }
 
 // 构建托盘菜单中的实时指标行（温度 + 剩余时间）。
-function getMetricsLabel(report) {
+function getMetricsLabel(locale, report) {
   if (!report || !report.connected) return null;
   const temps = extractTemps(report);
   const parts = [];
   if (temps.nozzleTemp != null) {
     if (temps.targetNozzleTemp != null && temps.targetNozzleTemp > 0) {
-      parts.push(`喷嘴 ${temps.nozzleTemp}→${temps.targetNozzleTemp}°C`);
+      parts.push(`${t(locale, 'tray.nozzle')} ${temps.nozzleTemp}→${temps.targetNozzleTemp}°C`);
     } else {
-      parts.push(`喷嘴 ${temps.nozzleTemp}°C`);
+      parts.push(`${t(locale, 'tray.nozzle')} ${temps.nozzleTemp}°C`);
     }
   }
   if (temps.bedTemp != null) {
     if (temps.targetBedTemp != null && temps.targetBedTemp > 0) {
-      parts.push(`热床 ${temps.bedTemp}→${temps.targetBedTemp}°C`);
+      parts.push(`${t(locale, 'tray.bed')} ${temps.bedTemp}→${temps.targetBedTemp}°C`);
     } else {
-      parts.push(`热床 ${temps.bedTemp}°C`);
+      parts.push(`${t(locale, 'tray.bed')} ${temps.bedTemp}°C`);
     }
   }
-  const remaining = formatRemainingTime(temps.remainingTime);
-  if (remaining) parts.push(remaining);
+  // formatRemainingTime returns Chinese strings — use locale-aware version instead
+  if (temps.remainingTime != null && temps.remainingTime > 0) {
+    const mins = temps.remainingTime;
+    if (mins < 60) {
+      parts.push(t(locale, 'tray.remainingMin', { n: mins }));
+    } else {
+      const h = Math.floor(mins / 60);
+      const m = mins % 60;
+      const timeStr = m > 0 ? `${h}h${m}m` : `${h}h`;
+      parts.push(t(locale, 'tray.remaining', { time: timeStr }));
+    }
+  }
   return parts.length > 0 ? parts.join(' | ') : null;
 }
 
@@ -269,28 +279,29 @@ function makeTrayIcon() {
 // 构建菜单模板（托盘菜单与「右键宠物」上下文菜单共用，保证跨平台一致）。
 function buildMenuTemplate() {
   const mode = store.get('dataSource', 'mock');
-  const statusLabel = lastState ? lastState.label : '启动中…';
+  const locale = store.get('locale', 'zh-CN');
+  const statusLabel = lastState ? t(locale, lastState.labelKey, lastState.labelParams) : t(locale, 'tray.starting');
   const template = [];
 
   // ── 设备 / 账号 / 实时信息（Mock 模式不展示）──
   if (mode !== 'mock') {
-    const printerLabel = getPrinterLabel();
+    const printerLabel = getPrinterLabel(locale);
     if (printerLabel) template.push({ label: printerLabel, enabled: false });
 
-    const accountLabel = getAccountLabel();
+    const accountLabel = getAccountLabel(locale);
     if (accountLabel) template.push({ label: accountLabel, enabled: false });
   }
 
   // 状态行（总是展示）
-  template.push({ label: `状态：${statusLabel}`, enabled: false });
+  template.push({ label: `${t(locale, 'tray.status')}：${statusLabel}`, enabled: false });
 
   // 实时指标（仅 Cloud / LAN 且已连接时）
-  const metricsLabel = getMetricsLabel(lastReport);
+  const metricsLabel = getMetricsLabel(locale, lastReport);
   if (metricsLabel) template.push({ label: metricsLabel, enabled: false });
 
   // Mock 模式：数据源标识
   if (mode === 'mock') {
-    template.push({ label: '数据源：Mock', enabled: false });
+    template.push({ label: t(locale, 'tray.dataSourceMock'), enabled: false });
   }
 
   template.push({ type: 'separator' });
@@ -309,7 +320,7 @@ function buildMenuTemplate() {
           buildDataSource();
         },
       }));
-      template.push({ label: '切换打印机', submenu: printerItems });
+      template.push({ label: t(locale, 'tray.switchPrinter'), submenu: printerItems });
     }
   }
 
@@ -319,22 +330,22 @@ function buildMenuTemplate() {
       label: SCENARIO_LABELS[key],
       click: () => dataSource.setScenario(key),
     }));
-    template.push({ label: 'Mock · 切换状态', submenu: scenarioItems });
-    template.push({ label: 'Mock · 自动轮播 (demo)', click: () => dataSource.startAutoCycle() });
+    template.push({ label: t(locale, 'tray.mockSwitch'), submenu: scenarioItems });
+    template.push({ label: t(locale, 'tray.mockAuto'), click: () => dataSource.startAutoCycle() });
     template.push({ type: 'separator' });
   }
 
   // ── 数据源 / 大小 / 设置 / 退出 ──
   template.push(
     {
-      label: '数据源',
+      label: t(locale, 'tray.source'),
       submenu: [
         {
-          label: 'Mock 模式', type: 'radio', checked: mode === 'mock',
+          label: t(locale, 'tray.sourceMock'), type: 'radio', checked: mode === 'mock',
           click: () => { store.set('dataSource', 'mock'); buildDataSource(); },
         },
         {
-          label: 'Bambu Cloud 真机', type: 'radio', checked: mode === 'cloud',
+          label: t(locale, 'tray.sourceCloud'), type: 'radio', checked: mode === 'cloud',
           click: () => {
             store.set('dataSource', 'cloud');
             const account = store.get('bambuAccount');
@@ -343,7 +354,7 @@ function buildMenuTemplate() {
           },
         },
         {
-          label: 'Bambu LAN 本地', type: 'radio', checked: mode === 'lan',
+          label: t(locale, 'tray.sourceLan'), type: 'radio', checked: mode === 'lan',
           click: () => {
             store.set('dataSource', 'lan');
             const lan = store.get('bambuLan', {});
@@ -353,12 +364,18 @@ function buildMenuTemplate() {
         },
       ],
     },
+    { label: t(locale, 'tray.settings'), enabled: mode === 'cloud' || mode === 'lan',
+      click: () => createSettingsWindow() },
     {
-      label: 'Bambu 设置…',
-      click: () => createSettingsWindow(),
+      label: t(locale, 'tray.size'),
+      submenu: [
+        { label: t(locale, 'tray.sizeSmall'), click: () => setPetSizePx(160) },
+        { label: t(locale, 'tray.sizeMedium'), click: () => setPetSizePx(220) },
+        { label: t(locale, 'tray.sizeLarge'), click: () => setPetSizePx(280) },
+      ],
     },
     { type: 'separator' },
-    { label: '退出', click: () => app.quit() },
+    { label: t(locale, 'tray.exit'), click: () => app.quit() },
   );
 
   return template;
