@@ -555,9 +555,13 @@ async function refreshCloudPrinters() {
       name: prevBySerial.get(d.serial)?.name || d.name,
       model: d.model, online: d.online, printStatus: d.printStatus || null,
     })));
-    rebuildTray();
-    if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('printers:changed');
+  } else {
+    // token 过期等鉴权失败 → 清空所有打印机的在线/打印状态，避免显示过期快照
+    const printers = store.get('bambuPrinters', []);
+    store.set('bambuPrinters', printers.map((p) => ({ ...p, online: null, printStatus: null })));
   }
+  rebuildTray();
+  if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('printers:changed');
 }
 function startCloudPoll() {
   if (cloudPollTimer) clearInterval(cloudPollTimer);

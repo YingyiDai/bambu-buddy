@@ -142,12 +142,15 @@ async function showDevices() {
   const knownSerials = new Set((st.printers || []).map(p => p.serial));
   const onlineText = t('settings.deviceOnline');
   const offlineText = t('settings.deviceOffline');
+  const unknownText = t('settings.deviceUnknown');
   for (const d of r.devices) {
     const isKnown = knownSerials.has(d.serial);
     const li = document.createElement('li');
+    const statusCls = d.online === true ? 'online' : (d.online === false ? 'offline' : 'unknown');
+    const statusText = d.online === true ? onlineText : (d.online === false ? offlineText : unknownText);
     li.className = isKnown ? 'known' : '';
     li.innerHTML = '<div class="d-name">' + escapeHtml(d.name) + (isKnown ? ' ✓' : '') + '</div>' +
-      '<div class="d-meta ' + (d.online ? '' : 'offline') + '">' + escapeHtml(d.model || '') + ' · ' + d.serial + ' · ' + (d.online ? onlineText : offlineText) + '</div>';
+      '<div class="d-meta ' + statusCls + '">' + escapeHtml(d.model || '') + ' · ' + d.serial + ' · ' + statusText + '</div>';
     li.addEventListener('click', () => saveDevice(d.serial, d.name, d.model || ''));
     list.appendChild(li);
   }
@@ -259,7 +262,7 @@ async function renderPrinters() {
   for (const p of printers) {
     const isActive = p.serial === activeSerial;
     const status = isActive ? t('settings.statusActive')
-      : (p.hasCloud ? (p.online ? (p.printStatus === 'RUNNING' ? t('settings.statusPrinting') : t('settings.statusOnline')) : t('settings.statusOffline'))
+      : (p.hasCloud ? (p.online === true ? (p.printStatus === 'RUNNING' ? t('settings.statusPrinting') : t('settings.statusOnline')) : (p.online === false ? t('settings.statusOffline') : t('settings.statusUnknown')))
                     : t('settings.statusNotConnected'));
     const card = document.createElement('div');
     card.className = 'printer-card' + (isActive ? ' active' : '');
