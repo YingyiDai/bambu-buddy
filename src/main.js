@@ -206,6 +206,13 @@ function buildDataSource() {
     rebuildTray();
     return;
   }
+  // 切换打印机时先把宠物重置为「离线」，再等新机首帧报文覆盖：
+  //   - 在线机：pushall 回传后很快更新为真实状态；
+  //   - 离线机：永远收不到报文，保持离线（修复切到离线机仍显示上一台状态的问题）。
+  lastState = resolveState({ connected: false });
+  pushState();
+  rebuildTray();
+
   const transport = registry.pickTransport(entry);
   let triedCloudFallback = false;
   const connect = (tp) => {
