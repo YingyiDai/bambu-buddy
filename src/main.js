@@ -8,6 +8,7 @@ const { resolveState, extractTemps, formatRemainingTime } = require('./core/stat
 const { MockDataSource, SCENARIO_LABELS } = require('./core/mock');
 const { BambuCloudDataSource, BambuLanDataSource } = require('./core/bambu-mqtt');
 const bambuAuth = require('./core/bambu-auth');
+const { t, STRINGS } = require('./config/locales');
 
 const store = new Store();
 
@@ -15,30 +16,38 @@ const store = new Store();
 // 幂等：检测到旧格式才迁移，已迁移则跳过。
 function migrateStorage() {
   const bambu = store.get('bambu');
-  if (!bambu || !bambu.mode) return; // 无旧格式数据，跳过
-
-  if (bambu.mode === 'cloud' && bambu.token) {
-    store.set('bambuAccount', {
-      region: bambu.region || 'global',
-      account: bambu.account || '',
-      token: bambu.token,
-      uid: bambu.uid,
-    });
-    store.set('bambuPrinters', [{
-      serial: bambu.serial,
-      name: bambu.name || bambu.serial,
-      model: bambu.model || '',
-    }]);
-    store.set('bambuActivePrinter', bambu.serial);
-  } else if (bambu.mode === 'lan') {
-    store.set('bambuLan', {
-      host: bambu.host,
-      accessCode: bambu.accessCode,
-      serial: bambu.serial,
-      name: bambu.name || bambu.serial,
-    });
+  if (bambu && bambu.mode) {
+    if (bambu.mode === 'cloud' && bambu.token) {
+      store.set('bambuAccount', {
+        region: bambu.region || 'global',
+        account: bambu.account || '',
+        token: bambu.token,
+        uid: bambu.uid,
+      });
+      store.set('bambuPrinters', [{
+        serial: bambu.serial,
+        name: bambu.name || bambu.serial,
+        model: bambu.model || '',
+      }]);
+      store.set('bambuActivePrinter', bambu.serial);
+    } else if (bambu.mode === 'lan') {
+      store.set('bambuLan', {
+        host: bambu.host,
+        accessCode: bambu.accessCode,
+        serial: bambu.serial,
+        name: bambu.name || bambu.serial,
+      });
+    }
+    store.delete('bambu');
   }
-  store.delete('bambu');
+
+  // 迁移旧 size 预设 → sizePx
+  if (store.get('size') !== undefined) {
+    const SIZE_PRESETS = { small: 160, medium: 220, large: 280 };
+    const oldSize = store.get('size', 'medium');
+    store.set('sizePx', SIZE_PRESETS[oldSize] || 220);
+    store.delete('size');
+  }
 }
 
 let win = null;
@@ -48,14 +57,8 @@ let settingsWin = null; // Bambu 连接设置窗（Cloud 登录 / LAN 配置）
 let lastState = null; // 最近一次 resolveState 结果，用于托盘展示
 let lastReport = null; // 最近一次 MQTT 原始报文，供托盘菜单读取实时指标
 
-// 尺寸预设（窗口为正方形，熊猫随窗口缩放）。可在右键菜单「大小」切换。
-const SIZE_PRESETS = { small: 160, medium: 220, large: 280 };
-const SIZE_LABELS = { small: '小', medium: '中', large: '大' };
-const DEFAULT_SIZE = 'medium';
-
 function currentSizePx() {
-  const key = store.get('size', DEFAULT_SIZE);
-  return SIZE_PRESETS[key] || SIZE_PRESETS[DEFAULT_SIZE];
+  return store.get('sizePx', 220);
 }
 
 // ---- 单实例锁（§5.1）----
@@ -110,16 +113,17 @@ function createWindow() {
   // 渲染层加载完成后，补发最近一次状态（数据源可能在窗口 ready 前已 emit）
   win.webContents.on('did-finish-load', () => {
     if (lastState) win.webContents.send('pet:state', lastState);
+    pushLocale();
+    pushPetPrefs();
   });
   // 位置记忆在 pet:dragEnd 时保存（§5.3），避免拖拽过程中频繁写盘。
 }
 
-// 切换尺寸：调整窗口大小，保持中心不动（熊猫不跳位），持久化。
-function setPetSize(key) {
-  if (!SIZE_PRESETS[key]) return;
-  store.set('size', key);
+// 无极调整宠物窗口大小（80–400px），保持中心不动，持久化。
+function setPetSizePx(px) {
+  px = Math.max(80, Math.min(400, Math.round(px)));
+  store.set('sizePx', px);
   if (!win || win.isDestroyed()) return;
-  const px = SIZE_PRESETS[key];
   const [x, y] = win.getPosition();
   const [w, h] = win.getSize();
   const cx = x + w / 2, cy = y + h / 2;
@@ -351,17 +355,7 @@ function buildMenuTemplate() {
     },
     {
       label: 'Bambu 设置…',
-      enabled: mode === 'cloud' || mode === 'lan',
       click: () => createSettingsWindow(),
-    },
-    {
-      label: '大小',
-      submenu: Object.keys(SIZE_PRESETS).map((key) => ({
-        label: SIZE_LABELS[key],
-        type: 'radio',
-        checked: store.get('size', DEFAULT_SIZE) === key,
-        click: () => setPetSize(key),
-      })),
     },
     { type: 'separator' },
     { label: '退出', click: () => app.quit() },
@@ -370,11 +364,30 @@ function buildMenuTemplate() {
   return template;
 }
 
+// 推送当前 locale 字符串包给宠物窗口
+function pushLocale() {
+  const locale = store.get('locale', 'zh-CN');
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('pet:locale', locale, STRINGS[locale]);
+  }
+}
+
+// 推送偏好设置给宠物窗口
+function pushPetPrefs() {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('pet:prefs', {
+      labelFontSize: store.get('labelFontSize', 12),
+      showLabel: store.get('showLabel', true),
+    });
+  }
+}
+
 function rebuildTray() {
   if (!tray) return;
-  const statusLabel = lastState ? lastState.label : '启动中…';
   tray.setContextMenu(Menu.buildFromTemplate(buildMenuTemplate()));
-  tray.setToolTip(`Bambu 桌面宠物 · ${statusLabel}`);
+  const locale = store.get('locale', 'zh-CN');
+  const statusLabel = lastState ? t(locale, lastState.labelKey, lastState.labelParams) : t(locale, 'tray.starting');
+  tray.setToolTip(`${t(locale, 'tray.tooltip')} · ${statusLabel}`);
 }
 
 function createTray() {
@@ -391,12 +404,12 @@ function createSettingsWindow() {
   }
   settingsWin = new BrowserWindow({
     width: 440,
-    height: 580,
+    height: 600,
     resizable: true,
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
-    title: 'Bambu 连接设置',
+    title: 'Bambu 设置',
     webPreferences: {
       preload: path.join(__dirname, 'preload-settings.js'),
       contextIsolation: true,
@@ -597,6 +610,32 @@ ipcMain.on('pet:dragEnd', () => {
     const [px, py] = win.getPosition();
     store.set('window.position', { x: px, y: py });
   }
+});
+
+// ---- 偏好设置 IPC ----
+ipcMain.handle('pref:getAll', () => ({
+  sizePx: store.get('sizePx', 220),
+  labelFontSize: store.get('labelFontSize', 12),
+  showLabel: store.get('showLabel', true),
+  locale: store.get('locale', 'zh-CN'),
+}));
+
+ipcMain.handle('pref:set', (_e, key, value) => {
+  store.set(key, value);
+  if (key === 'sizePx') setPetSizePx(value);
+  if (key === 'labelFontSize' || key === 'showLabel') pushPetPrefs();
+  if (key === 'locale') pushLocale();
+  if (key === 'labelFontSize' || key === 'locale' || key === 'showLabel') rebuildTray();
+  return { ok: true };
+});
+
+ipcMain.handle('app:info', () => {
+  const pkg = require('../package.json');
+  return {
+    name: 'BambuPet',
+    version: pkg.version,
+    description: 'Bambu 打印机桌面宠物',
+  };
 });
 
 // ---- 生命周期 ----

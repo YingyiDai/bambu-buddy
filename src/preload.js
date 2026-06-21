@@ -3,9 +3,17 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('pet', {
-  // 主进程推送的状态：{ stateKey, videoFile, label }
+  // 主进程推送的状态：{ stateKey, videoFile, labelKey, labelParams }
   onState: (cb) => {
     ipcRenderer.on('pet:state', (_e, state) => cb(state));
+  },
+  // 主进程推送的 locale 字符串包：{ locale, strings }
+  onLocale: (cb) => {
+    ipcRenderer.on('pet:locale', (_e, locale, strings) => cb(locale, strings));
+  },
+  // 主进程推送的偏好变更：{ labelFontSize, showLabel }
+  onPrefs: (cb) => {
+    ipcRenderer.on('pet:prefs', (_e, prefs) => cb(prefs));
   },
   // 鼠标进入/离开熊猫实体像素 → 切换点击穿透
   setInteractive: (interactive) => {

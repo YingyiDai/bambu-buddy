@@ -23,6 +23,13 @@ contextBridge.exposeInMainWorld('bambu', {
   logout: () => ipcRenderer.invoke('bambu:logout'),
   close: () => ipcRenderer.send('bambu:close'),
 
+  // 偏好设置
+  getPreferences: () => ipcRenderer.invoke('pref:getAll'),
+  setPreference: (key, value) => ipcRenderer.invoke('pref:set', key, value),
+
+  // 关于信息
+  getAppInfo: () => ipcRenderer.invoke('app:info'),
+
   // 主进程推送的后台错误（如 token 过期）
   onError: (cb) => ipcRenderer.on('bambu:error', (_e, msg) => cb(msg)),
 });
