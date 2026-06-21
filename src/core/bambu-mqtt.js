@@ -143,7 +143,8 @@ class BambuCloudDataSource extends BambuMQTTBase {
       return;
     }
 
-    const username = `u_${uid}`;
+    // JWT username 格式为 u_<uid>，API 返回的 uid 可能不带前缀；pybambu 直接用 JWT username
+    const username = uid && uid.startsWith('u_') ? uid : `u_${uid}`;
     this._connectMqtt(this.region.mqtt, username, token, serial, {
       tls: true,
       rejectUnauthorized: true,
