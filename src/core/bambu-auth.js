@@ -120,7 +120,8 @@ async function listDevices(region, token) {
     const devices = list.map((d) => ({
       serial: d.dev_id,
       name: d.name || d.dev_id,
-      model: d.dev_model_name || d.dev_product_name || '',
+      // 优先用对外产品名（X2D/P2S），而非内部型号代号（N6-V2/N7-V2）
+      model: d.dev_product_name || d.dev_model_name || '',
       online: !!d.online,
       printStatus: d.print_status || null,
     })).filter((d) => d.serial);
