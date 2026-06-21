@@ -335,6 +335,8 @@ main { padding: 18px 20px; }
 }
 .about-meta .k { color: #6e6e73; font-size: 12px; }
 .about-meta .v { color: #1d1d1f; font-size: 13px; font-weight: 500; }
+.about-author-link { text-decoration: none; cursor: pointer; }
+.about-author-link:hover { color: #007aff; text-decoration: underline; }
 
 /* ── 检查更新 ── */
 .btn-update {

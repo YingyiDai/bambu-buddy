@@ -250,6 +250,11 @@ async function loadAbout() {
   const info = await window.bambu.getAppInfo();
   el('aboutName').textContent = info.name;
   el('aboutVersion').textContent = 'v' + info.version;
+  el('aboutAuthor').textContent = 'YingyiDai';
+  el('aboutAuthor').addEventListener('click', (e) => {
+    e.preventDefault();
+    window.bambu.openExternal('https://makerworld.com.cn/zh/@yingyidai');
+  });
   el('updateStatus').classList.add('hidden');
   el('checkUpdateBtn').textContent = t('settings.checkUpdate');
   el('checkUpdateBtn').disabled = false;
