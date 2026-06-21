@@ -186,6 +186,8 @@ const STRINGS = {
     'settings.rename': '重命名',
     'settings.remove': '删除',
     'settings.renamePrompt': '输入新名称',
+    'settings.renameSave': '保存',
+    'settings.renameCancel': '取消',
     // 关于 Tab
     'settings.aboutName': 'BambuPet',
     'settings.aboutDesc': 'Bambu 打印机桌面宠物 — 一只熊猫常驻桌面，根据打印机状态播放对应动画。',
@@ -409,6 +411,8 @@ const STRINGS = {
     'settings.rename': 'Rename',
     'settings.remove': 'Remove',
     'settings.renamePrompt': 'Enter new name',
+    'settings.renameSave': 'Save',
+    'settings.renameCancel': 'Cancel',
     // About Tab
     'settings.aboutName': 'BambuPet',
     'settings.aboutDesc': 'A desktop pet panda that lives on your screen and reacts to your Bambu Lab 3D printer status.',
