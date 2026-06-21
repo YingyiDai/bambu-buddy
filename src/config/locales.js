@@ -123,7 +123,7 @@ const STRINGS = {
     'tray.sourceLive': '真机',
     'tray.sourceCloud': 'Bambu Cloud 真机',
     'tray.sourceLan': 'Bambu LAN 本地',
-    'tray.settings': 'Bambu 设置…',
+    'tray.settings': '宠物设置…',
     'tray.size': '大小',
     'tray.sizeSmall': '小',
     'tray.sizeMedium': '中',
@@ -135,7 +135,7 @@ const STRINGS = {
     'tray.tooltip': 'Bambu 桌面宠物',
 
     // ── 设置窗 ──
-    'settings.title': 'Bambu 设置',
+    'settings.title': '宠物设置',
     'settings.tabConnection': '连接',
     'settings.tabAppearance': '外观',
     'settings.tabAbout': '关于',
@@ -349,7 +349,7 @@ const STRINGS = {
     'tray.sourceLive': 'Live Printer',
     'tray.sourceCloud': 'Bambu Cloud',
     'tray.sourceLan': 'Bambu LAN',
-    'tray.settings': 'Bambu Settings…',
+    'tray.settings': 'Pet Settings…',
     'tray.size': 'Size',
     'tray.sizeSmall': 'Small',
     'tray.sizeMedium': 'Medium',
@@ -361,7 +361,7 @@ const STRINGS = {
     'tray.tooltip': 'Bambu Desktop Pet',
 
     // ── Settings window ──
-    'settings.title': 'Bambu Settings',
+    'settings.title': 'Pet Settings',
     'settings.tabConnection': 'Connection',
     'settings.tabAppearance': 'Appearance',
     'settings.tabAbout': 'About',

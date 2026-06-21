@@ -410,14 +410,6 @@ function buildMenuTemplate() {
     },
     { label: t(locale, 'tray.settings'), enabled: mode === 'live',
       click: () => createSettingsWindow() },
-    {
-      label: t(locale, 'tray.size'),
-      submenu: [
-        { label: t(locale, 'tray.sizeSmall'), click: () => setPetSizePx(160) },
-        { label: t(locale, 'tray.sizeMedium'), click: () => setPetSizePx(220) },
-        { label: t(locale, 'tray.sizeLarge'), click: () => setPetSizePx(280) },
-      ],
-    },
     { type: 'separator' },
     {
       label: t(locale, 'tray.showInMenuBar'),
