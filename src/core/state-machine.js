@@ -96,6 +96,12 @@ function resolveState(report = {}) {
   const totalLayer = r.total_layer_num;
   const hms = r.hms;
 
+  // 0. 登录/会话失效（token 过期等）：区别于「打印机离线」——打印机大概率正常，是我们的
+  //    会话失效了。复用 offline 动画，但文案提示「登录已失效，请重新登录」。优先级高于离线。
+  if (r.authExpired) {
+    return { stateKey: 'authExpired', videoFile: VIDEO.offline, labelKey: 'label.authExpired', labelParams: {} };
+  }
+
   // 1. 连接断开 / 离线
   if (r.connected === false || gcode === GCODE.OFFLINE) {
     return { stateKey: 'offline', videoFile: VIDEO.offline, labelKey: 'label.offline', labelParams: {} };

@@ -6,6 +6,7 @@ const STRINGS = {
   'zh-CN': {
     // ── 宠物状态标签（文案对齐 Bambu Studio 官方中文，见 bbl/i18n/zh_CN）──
     'label.offline': '离线',
+    'label.authExpired': '登录已失效，请重新登录',
     'label.idle': '空闲',
     'label.prepare': '准备中',
     'label.prepare.heatbed': '预加热热床',
@@ -234,6 +235,7 @@ const STRINGS = {
   'en': {
     // ── Pet status labels (aligned with Bambu Studio's source strings) ──
     'label.offline': 'Offline',
+    'label.authExpired': 'Session expired — please re-login',
     'label.idle': 'Idle',
     'label.prepare': 'Preparing',
     'label.prepare.heatbed': 'Heatbed preheating',

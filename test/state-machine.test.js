@@ -188,3 +188,17 @@ test('RUNNING 正常打印（stg=0）仍按进度选档', () => {
   assert.equal(r.videoFile, 'printing_50.webm');
   assert.equal(r.labelKey, 'label.printing');
 });
+
+// ── 登录/会话失效（token 过期）区别于打印机离线 ──
+test('authExpired → 登录已失效（优先于离线）', () => {
+  const r = resolveState({ connected: false, authExpired: true });
+  assert.equal(r.stateKey, 'authExpired');
+  assert.equal(r.labelKey, 'label.authExpired');
+  assert.equal(r.videoFile, 'offline.webm');
+});
+
+test('普通离线（无 authExpired）仍是 offline', () => {
+  const r = resolveState({ connected: false });
+  assert.equal(r.stateKey, 'offline');
+  assert.equal(r.labelKey, 'label.offline');
+});

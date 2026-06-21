@@ -98,6 +98,14 @@ class BambuMQTTBase {
     if (this._authFailCb) this._authFailCb();
   }
 
+  // 登录/会话失效（token 过期、登录异常等）：既触发重登提示（onAuthFailure），
+  // 又给宠物一个区别于「打印机离线」的状态（authExpired）—— 因为此时打印机大概率好好的，
+  // 是我们这端的会话失效了，应提示「登录已失效，请重新登录」而非「离线」。
+  _emitAuthExpired() {
+    this._emitAuthFailure();
+    if (this._cb) this._cb({ connected: false, authExpired: true });
+  }
+
   stop() {
     if (this._pushTimer) { clearInterval(this._pushTimer); this._pushTimer = null; }
     if (this._client) { this._client.end(true); this._client = null; }
@@ -143,17 +151,15 @@ class BambuCloudDataSource extends BambuMQTTBase {
         const r = await this.login();
         if (r.needsVerify) {
           // 需要验证码：token 缺失，交给设置窗处理
-          this._emitAuthFailure();
-          this._emitOffline();
+          this._emitAuthExpired();
           return;
         }
         token = r.accessToken;
         uid = r.uid;
       }
     } catch (e) {
-      // 登录失败 → 提示重登 + 回退离线
-      this._emitAuthFailure();
-      this._emitOffline();
+      // 登录失败（账号/密码/token 异常）→ 提示重登 + 登录已失效状态
+      this._emitAuthExpired();
       return;
     }
 
@@ -176,9 +182,8 @@ class BambuCloudDataSource extends BambuMQTTBase {
     }
 
     if (!uid) {
-      // 仍拿不到 uid → MQTT 用户名无法构造，连接必然失败，提示重登
-      this._emitAuthFailure();
-      this._emitOffline();
+      // 仍拿不到 uid（多为 token 过期 / 会话失效）→ 提示重登 + 登录已失效状态
+      this._emitAuthExpired();
       return;
     }
 
