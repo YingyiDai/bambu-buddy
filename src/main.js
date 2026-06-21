@@ -152,15 +152,19 @@ function pushState() {
   }
 }
 
+// 应用一份 report：保存原始报文/解析状态、推送、刷新托盘。
+// 供 mock 路径（经 wireDataSource）与真机 live 路径（经 connect 内的 onState）共用。
+function applyReport(report) {
+  lastReport = report; // 保留原始报文供托盘菜单
+  lastState = resolveState(report);
+  pushState();
+  rebuildTray();
+}
+
 // 给数据源接上统一的 onState 回调：保存原始报文/解析状态、推送、刷新托盘。
 // （提取自原 buildDataSource 内联逻辑，行为不变）
 function wireDataSource(ds) {
-  ds.onState((report) => {
-    lastReport = report; // 保留原始报文供托盘菜单
-    lastState = resolveState(report);
-    pushState();
-    rebuildTray();
-  });
+  ds.onState((report) => applyReport(report));
 }
 
 // 合并云端 + 本地 打印机为统一列表
@@ -205,21 +209,32 @@ function buildDataSource() {
   let triedCloudFallback = false;
   const connect = (tp) => {
     dataSource = makeSourceFor(entry, tp);
-    // LAN 失败且该机也在云端 → 回退云一次
+    let everConnected = false;
+    // LAN 从未连接成功且该机也在云端 → 回退云一次（仅一次）
+    const maybeFallback = () => {
+      if (tp === 'lan' && entry.hasCloud && !triedCloudFallback && !everConnected) {
+        triedCloudFallback = true;
+        if (dataSource) dataSource.stop();
+        connect('cloud');
+        return true;
+      }
+      return false;
+    };
+    // 启动期鉴权/配置失败（如云端 token 失效、登录异常）：仍走原逻辑提示重登。
     if (typeof dataSource.onAuthFailure === 'function') {
       dataSource.onAuthFailure(() => {
-        if (tp === 'lan' && entry.hasCloud && !triedCloudFallback) {
-          triedCloudFallback = true;
-          if (dataSource) dataSource.stop();
-          connect('cloud');
-          return;
-        }
+        if (maybeFallback()) return;
         // 非回退场景（如云端鉴权失效）：重新打开设置窗提示
         if (!settingsWin) createSettingsWindow();
         if (settingsWin) settingsWin.webContents.send('bambu:error', '连接已失效，请重新登录');
       });
     }
-    wireDataSource(dataSource);
+    // 运行期 onState：成功连接过一次后，瞬时 error/offline 只表现为离线，不再触发回退或弹窗。
+    dataSource.onState((report) => {
+      if (report && report.connected) everConnected = true;
+      if (!(report && report.connected) && !everConnected && maybeFallback()) return;
+      applyReport(report);
+    });
     dataSource.start();
   };
   connect(transport);
