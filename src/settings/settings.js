@@ -191,8 +191,76 @@ el('checkUpdateBtn').addEventListener('click', async () => {
   btn.disabled = false; btn.textContent = t('settings.checkUpdate');
 });
 
-// ── 把玩页（Task 7 填充）──
-function initPlay() { /* Task 7 */ }
+// ── 把玩探索 ──
+// 场景表（key/icon 与 src/config/play-scenarios.js 一致；文案走 locale play.<key>.name/.desc）
+const PLAY_SCENARIOS = [
+  { key: 'printing', icon: '🖨️', hasProgress: true },
+  { key: 'idle', icon: '😴' }, { key: 'prepare_preheat', icon: '🔥' },
+  { key: 'prepare_leveling', icon: '📐' }, { key: 'changing_filament', icon: '🔄' },
+  { key: 'paused', icon: '⏸️' }, { key: 'paused_runout', icon: '🪹' },
+  { key: 'door_open', icon: '🚪' }, { key: 'finished', icon: '🎉' },
+  { key: 'failed', icon: '😢' }, { key: 'offline', icon: '🔌' },
+];
+let playGalleryBuilt = false;
+let autoTouring = false;
+
+function buildGallery() {
+  const box = el('playGallery'); box.innerHTML = '';
+  for (const s of PLAY_SCENARIOS) {
+    const card = document.createElement('button');
+    card.className = 'play-card'; card.dataset.key = s.key;
+    card.innerHTML = '<div class="pname">' + s.icon + ' ' + escapeHtml(t('play.' + s.key + '.name')) + '</div>' +
+      '<div class="pdesc">' + escapeHtml(t('play.' + s.key + '.desc')) + '</div>';
+    card.addEventListener('click', async () => { await window.bambu.playSetScenario(s.key); });
+    box.appendChild(card);
+  }
+  playGalleryBuilt = true;
+}
+
+function renderPlayState(st) {
+  // st: { isPlaying, currentScenario, percent }
+  const sc = PLAY_SCENARIOS.find((x) => x.key === st.currentScenario);
+  if (st.isPlaying && sc) {
+    el('playStateLabel').textContent = sc.icon + ' ' + t('play.' + sc.key + '.name');
+    document.querySelector('.play-now-cap').textContent = t('play.nowPlaying');
+  } else {
+    el('playStateLabel').textContent = t('play.inLiveMode');
+    document.querySelector('.play-now-cap').textContent = '';
+  }
+  // 进度滑杆仅在演示 printing 时显示
+  const showProg = st.isPlaying && st.currentScenario === 'printing';
+  el('progressRow').classList.toggle('hidden', !showProg);
+  if (showProg) { el('playProgress').value = st.percent; el('playProgressVal').textContent = st.percent + '%'; }
+  // 画廊高亮当前
+  document.querySelectorAll('.play-card').forEach((c) => c.classList.toggle('active', st.isPlaying && c.dataset.key === st.currentScenario));
+}
+
+async function initPlay() {
+  if (!localeStrings) await loadLocales();
+  if (!playGalleryBuilt) buildGallery();
+  const st = await window.bambu.playGetState();
+  renderPlayState(st);
+}
+
+// 滑杆拖动 → 实时设进度
+el('playProgress').addEventListener('input', () => {
+  const v = Number(el('playProgress').value);
+  el('playProgressVal').textContent = v + '%';
+  window.bambu.playSetProgress(v);
+});
+// 自动巡演开关
+el('autoTourBtn').addEventListener('click', async () => {
+  autoTouring = !autoTouring;
+  await window.bambu.playAutoTour(autoTouring);
+  el('autoTourBtn').textContent = t(autoTouring ? 'play.autoTourStop' : 'play.autoTour');
+});
+// 回到真机
+el('playReturnBtn').addEventListener('click', async () => {
+  autoTouring = false; el('autoTourBtn').textContent = t('play.autoTour');
+  await window.bambu.playReturnToLive();
+});
+// 主进程推送把玩状态变化
+window.bambu.onPlayStateChanged((st) => { autoTouring = false; el('autoTourBtn').textContent = t('play.autoTour'); renderPlayState(st); });
 
 // ── 启动：默认进入打印机区域 ──
 (async function start() { await loadLocales(); switchSection('printers'); })();
