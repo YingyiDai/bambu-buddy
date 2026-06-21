@@ -107,6 +107,24 @@ class MockDataSource {
   }
 
   /**
+   * 静态设定打印进度（把玩页滑杆用）：清除自动推进计时器，
+   * 按给定百分比发一帧打印报文。percent 夹取到 0–100。
+   */
+  setPrintingProgress(percent) {
+    this._clearTimers();
+    this._current = 'printing';
+    const p = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+    const total = 200;
+    const layer = Math.max(1, Math.round((p / 100) * total));
+    this._emit(SCENARIOS.printing(p, layer, total));
+  }
+
+  /** 当前场景 key（供主进程读取，避免访问私有字段）。 */
+  getCurrent() {
+    return this._current;
+  }
+
+  /**
    * 自动轮播一遍所有状态，便于录屏 demo。
    */
   startAutoCycle() {
