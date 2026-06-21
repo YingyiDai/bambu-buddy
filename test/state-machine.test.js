@@ -157,3 +157,34 @@ test('formatRemainingTime 边界值返回 null', () => {
   assert.equal(formatRemainingTime(-1), null);
   assert.equal(formatRemainingTime(undefined), null);
 });
+
+// ── Bambu Studio 全阶段富集（stg_cur → 最贴近动画 + 精确文案）──
+test('PREPARE 长尾阶段 → prepare 动画 + 精确 stage 文案', () => {
+  const r = resolveState({ connected: true, gcode_state: 'PREPARE', stg_cur: 11 }); // 识别打印板类型
+  assert.equal(r.videoFile, 'prepare.webm');
+  assert.equal(r.labelKey, 'label.stage.11');
+});
+
+test('RUNNING 中途校准 → prepare 动画', () => {
+  const r = resolveState({ connected: true, gcode_state: 'RUNNING', stg_cur: 8 }); // 动态流量校准
+  assert.equal(r.videoFile, 'prepare.webm');
+  assert.equal(r.labelKey, 'label.stage.8');
+});
+
+test('RUNNING 退料 → changing_filament 动画 + 精确文案', () => {
+  const r = resolveState({ connected: true, gcode_state: 'RUNNING', stg_cur: 22 }); // 退料中
+  assert.equal(r.videoFile, 'changing_filament.webm');
+  assert.equal(r.labelKey, 'label.stage.22');
+});
+
+test('PAUSE 长尾原因 → paused 动画 + 精确文案', () => {
+  const r = resolveState({ connected: true, gcode_state: 'PAUSE', stg_cur: 26 }); // AMS 离线
+  assert.equal(r.videoFile, 'paused.webm');
+  assert.equal(r.labelKey, 'label.stage.26');
+});
+
+test('RUNNING 正常打印（stg=0）仍按进度选档', () => {
+  const r = resolveState({ connected: true, gcode_state: 'RUNNING', stg_cur: 0, mc_percent: 60 });
+  assert.equal(r.videoFile, 'printing_50.webm');
+  assert.equal(r.labelKey, 'label.printing');
+});

@@ -41,12 +41,30 @@ class BambuMQTTBase {
     });
 
     this._client.on('connect', () => {
-      this._client.subscribe(`device/${serial}/report`);
+      this._client.subscribe(`device/${serial}/report`, (err) => {
+        if (err) { console.error('[bambu-mqtt] 订阅失败:', err.message); return; }
+        // Bambu 打印机只在「被请求」时推送完整状态，否则不会主动发首帧。
+        // 订阅后立即发 pushall 请求，触发打印机回传当前完整状态（pybambu 同此）。
+        this._requestPushAll(serial);
+      });
     });
     this._client.on('message', (_topic, payload) => this._onMessage(payload));
-    this._client.on('error', () => this._emitOffline());
+    this._client.on('error', (err) => { console.error('[bambu-mqtt] 连接错误:', err && (err.message || err.code)); this._emitOffline(); });
     this._client.on('offline', () => this._emitOffline());
     this._client.on('close', () => this._emitOffline());
+  }
+
+  /** 向打印机请求完整状态（pushall）。订阅后调用一次，并定时刷新。 */
+  _requestPushAll(serial) {
+    if (!this._client) return;
+    const topic = `device/${serial}/request`;
+    const payload = JSON.stringify({ pushing: { sequence_id: '0', command: 'pushall' } });
+    this._client.publish(topic, payload);
+    // 定时重发（每 5 分钟），防止长时间空闲漏掉状态或连接静默
+    if (this._pushTimer) clearInterval(this._pushTimer);
+    this._pushTimer = setInterval(() => {
+      if (this._client && this._client.connected) this._client.publish(topic, payload);
+    }, 5 * 60 * 1000);
   }
 
   _onMessage(payload) {
@@ -78,6 +96,7 @@ class BambuMQTTBase {
   }
 
   stop() {
+    if (this._pushTimer) { clearInterval(this._pushTimer); this._pushTimer = null; }
     if (this._client) { this._client.end(true); this._client = null; }
     this._cb = null;
   }
@@ -143,8 +162,25 @@ class BambuCloudDataSource extends BambuMQTTBase {
       return;
     }
 
+    // 取 uid（MQTT 用户名 u_<uid> 需要）：
+    //   1) 国际区 token 是 JWT，可本地解析；
+    //   2) 中国区 token 不透明，需调 API 取（design-user-service/my/preference）。
+    if (!uid && token) uid = auth.decodeUidFromToken(token);
+    if (!uid && token) {
+      const r = await auth.getUid(this.opts.region, token);
+      if (r.ok) uid = r.uid;
+      else console.error('[bambu-mqtt] 取 uid 失败:', r.error);
+    }
+
+    if (!uid) {
+      // 仍拿不到 uid → MQTT 用户名无法构造，连接必然失败，提示重登
+      this._emitAuthFailure();
+      this._emitOffline();
+      return;
+    }
+
     // JWT username 格式为 u_<uid>，API 返回的 uid 可能不带前缀；pybambu 直接用 JWT username
-    const username = uid && uid.startsWith('u_') ? uid : `u_${uid}`;
+    const username = String(uid).startsWith('u_') ? String(uid) : `u_${uid}`;
     this._connectMqtt(this.region.mqtt, username, token, serial, {
       tls: true,
       rejectUnauthorized: true,

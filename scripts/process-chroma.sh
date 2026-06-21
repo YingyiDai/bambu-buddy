@@ -17,7 +17,8 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC_DIR="$ROOT/assets/source/替换背景色"
+# 源文件夹：默认最新的「替换背景色+微调大小」，可用 CHROMA_SRC 覆盖。
+SRC_DIR="${CHROMA_SRC:-$ROOT/assets/source/替换背景色+微调大小}"
 OUT_DIR="$ROOT/assets/anim"
 TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
@@ -35,10 +36,10 @@ map_output() {
     未连接|离线) echo "offline.webm" ;;
     空闲|待机) echo "idle.webm" ;;
     准备中|准备) echo "prepare.webm" ;;
-    打印中-进度0%|打印中-0%|打印中0%) echo "printing_0.webm" ;;
-    打印中-进度25%|打印中-25%|打印中25%) echo "printing_25.webm" ;;
-    打印中-进度50%|打印中-50%|打印中50%) echo "printing_50.webm" ;;
-    打印中-进度75%|打印中-75%|打印中75%) echo "printing_75.webm" ;;
+    打印中-进度0%|打印中-进度0|打印中-0%|打印中0%) echo "printing_0.webm" ;;
+    打印中-进度25%|打印中-进度25|打印中-25%|打印中25%) echo "printing_25.webm" ;;
+    打印中-进度50%|打印中-进度50|打印中-50%|打印中50%) echo "printing_50.webm" ;;
+    打印中-进度75%|打印中-进度75|打印中-75%|打印中75%) echo "printing_75.webm" ;;
     打印中-换料|换料|换料中) echo "changing_filament.webm" ;;
     暂停|已暂停) echo "paused.webm" ;;
     成功|打印完成|完成) echo "finished.webm" ;;
@@ -64,10 +65,17 @@ process_one() {
   local work="$TMP_DIR/${out%.webm}"
   mkdir -p "$work/raw" "$work/cut"
 
+  # 个别状态主体本身含背景色元素，需保留封闭背景色：
+  #   换料动画 头上有蓝色汗珠 → --preserve-enclosed（只去边界连通的蓝，保留汗珠）
+  local extra=""
+  case "$out" in
+    changing_filament.webm) extra="--preserve-enclosed" ;;
+  esac
+
   # -nostdin：避免 ffmpeg 吞掉 while-read 循环的管道输入（否则下一轮 read 错乱）
   ffmpeg -nostdin -v error -y -i "$src_path" -vf "fps=$FPS" "$work/raw/%04d.png"
   "$PYTHON" "$ROOT/scripts/matte.py" "$work/raw" "$work/cut" \
-    --mode chroma --chroma-thr "$CHROMA_THR"
+    --mode chroma --chroma-thr "$CHROMA_THR" $extra
   ffmpeg -nostdin -v error -y -framerate "$FPS" -i "$work/cut/%04d.png" \
     -vf "scale=${CANVAS_W}:${CANVAS_H}:force_original_aspect_ratio=decrease,pad=${CANVAS_W}:${CANVAS_H}:(ow-iw)/2:(oh-ih)/2:color=#00000000,format=yuva420p" \
     -c:v libvpx-vp9 -pix_fmt yuva420p -b:v 0 -crf 28 -an \

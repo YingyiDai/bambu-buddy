@@ -48,4 +48,29 @@ const VIDEO = {
   failed: 'failed.webm',
 };
 
-module.exports = { STAGE, CHANGING_FILAMENT_STAGES, VIDEO };
+// 全部 Bambu Studio stg_cur（0–77）→ 最贴近的动画类别。
+// 来源：BambuStudio DeviceManager.cpp get_stage_string()。文案见 locales.js
+// 的 label.stage.<n>（中英文取自 Bambu Studio 官方）。没有专属动画的阶段
+// （加热/调平/校准/各种自检等）按含义归到 prepare；暂停类归 paused；
+// 进退料/换料/AMS 归 changing_filament；正常打印归 printing（按进度选档）。
+const STAGE_VIDEO = {
+  0: 'printing',
+  1: 'prepare', 2: 'prepare', 3: 'prepare', 4: 'changing_filament', 5: 'paused',
+  6: 'paused', 7: 'prepare', 8: 'prepare', 9: 'prepare', 10: 'prepare',
+  11: 'prepare', 12: 'prepare', 13: 'prepare', 14: 'prepare', 15: 'prepare',
+  16: 'paused', 17: 'paused', 18: 'prepare', 19: 'prepare', 20: 'paused',
+  21: 'paused', 22: 'changing_filament', 23: 'paused', 24: 'changing_filament', 25: 'prepare',
+  26: 'paused', 27: 'paused', 28: 'paused', 29: 'prepare', 30: 'paused',
+  31: 'prepare', 32: 'paused', 33: 'paused', 34: 'paused', 35: 'paused',
+  36: 'prepare', 37: 'prepare', 38: 'prepare', 39: 'prepare', 40: 'prepare',
+  41: 'prepare', 42: 'prepare', 43: 'prepare', 44: 'prepare', 45: 'prepare',
+  46: 'prepare', 47: 'prepare', 48: 'prepare', 49: 'prepare', 50: 'prepare',
+  51: 'prepare', 52: 'prepare', 53: 'prepare', 54: 'prepare', 55: 'prepare',
+  56: 'prepare', 57: 'prepare', 58: 'prepare', 59: 'prepare', 60: 'prepare',
+  61: 'prepare', 62: 'prepare', 63: 'prepare', 64: 'prepare', 65: 'prepare',
+  66: 'prepare', 67: 'prepare', 68: 'changing_filament', 69: 'prepare', 70: 'prepare',
+  71: 'prepare', 72: 'prepare', 73: 'prepare', 74: 'prepare', 75: 'prepare',
+  76: 'prepare', 77: 'changing_filament',
+};
+
+module.exports = { STAGE, CHANGING_FILAMENT_STAGES, VIDEO, STAGE_VIDEO };

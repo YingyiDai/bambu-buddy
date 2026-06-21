@@ -52,7 +52,8 @@ def _bg_candidate(rgb, bg, mode, chroma_thr, white_tol):
     return dist < white_tol
 
 
-def matte_frame(rgb, mode, chroma_thr, white_tol, erode, feather, min_speck, despill=True):
+def matte_frame(rgb, mode, chroma_thr, white_tol, erode, feather, min_speck,
+                despill=True, preserve_enclosed=False):
     rgb = rgb.astype(np.int32)
     bg = _border_bg(rgb)
     if mode == "auto":
@@ -61,7 +62,17 @@ def matte_frame(rgb, mode, chroma_thr, white_tol, erode, feather, min_speck, des
 
     cand = _bg_candidate(rgb, bg, mode, chroma_thr, white_tol)
 
-    if mode == "chroma":
+    protect = None  # 受保护、不做 despill 的像素（如换料里蓝色汗珠这种"主体本身就是蓝"的元素）
+    if mode == "chroma" and preserve_enclosed:
+        # 主体里本身含背景色元素（如换料动画头上的蓝色汗珠）时用此模式：
+        # 只去掉「与边界连通」的背景蓝；被主体包住、不连边界的蓝（汗珠）保留。
+        seed = np.zeros_like(cand)
+        seed[0, :] = cand[0, :]; seed[-1, :] = cand[-1, :]
+        seed[:, 0] = cand[:, 0]; seed[:, -1] = cand[:, -1]
+        bgmask = ndimage.binary_propagation(seed, mask=cand)
+        subj = ndimage.binary_fill_holes(~bgmask)
+        protect = cand & ~bgmask  # 封闭的蓝（汗珠）→ 保留其蓝色，despill 时跳过
+    elif mode == "chroma":
         # 色度抠像：背景色（蓝）在熊猫身上完全不存在，所以「所有」蓝像素都是背景，
         # 包括被主体包围的缝隙（如三角与身体间露出的蓝）。直接全部去掉，
         # 绝不能做 fill_holes —— 否则会把这些被包围的蓝缝重新填成主体 → 蓝色残留/闪烁。
@@ -99,7 +110,11 @@ def matte_frame(rgb, mode, chroma_thr, white_tol, erode, feather, min_speck, des
         ch = int(np.argmax(_border_bg(rgb)))
         others = [i for i in range(3) if i != ch]
         cap = np.minimum(out_rgb[:, :, others[0]], out_rgb[:, :, others[1]])
-        out_rgb[:, :, ch] = np.minimum(out_rgb[:, :, ch], cap)
+        capped = np.minimum(out_rgb[:, :, ch], cap)
+        if protect is not None:
+            # 保护封闭蓝（汗珠）：这些像素保持原色，不被 despill 中和掉
+            capped = np.where(protect, out_rgb[:, :, ch], capped)
+        out_rgb[:, :, ch] = capped
 
     return np.dstack([out_rgb.astype(np.uint8), np.clip(mask, 0, 255).astype(np.uint8)])
 
@@ -115,6 +130,8 @@ def main():
     ap.add_argument("--feather", type=float, default=0.8)
     ap.add_argument("--min-speck", type=int, default=150)
     ap.add_argument("--no-despill", action="store_true", help="关闭去溢色（默认开，chroma 模式生效）")
+    ap.add_argument("--preserve-enclosed", action="store_true",
+                    help="保留被主体包住的背景色元素（如换料里蓝色汗珠）；只去边界连通的背景")
     args = ap.parse_args()
 
     os.makedirs(args.out_dir, exist_ok=True)
@@ -127,7 +144,8 @@ def main():
         rgb = np.array(Image.open(f).convert("RGB"))
         out = matte_frame(rgb, args.mode, args.chroma_thr, args.white_tol,
                           args.erode, args.feather, args.min_speck,
-                          despill=not args.no_despill)
+                          despill=not args.no_despill,
+                          preserve_enclosed=args.preserve_enclosed)
         Image.fromarray(out, "RGBA").save(os.path.join(args.out_dir, os.path.basename(f)))
 
     print(f"matte: 处理 {len(files)} 帧（mode={args.mode}）→ {args.out_dir}")

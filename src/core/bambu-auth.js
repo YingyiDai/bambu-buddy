@@ -129,6 +129,27 @@ async function listDevices(region, token) {
   }
 }
 
+/**
+ * 取当前账号的数字 uid（MQTT 用户名 u_<uid> 需要它）。
+ * 国际区 token 是 JWT、可本地解析；中国区 token 不透明，必须走此接口。
+ * 端点 /v1/design-user-service/my/preference 两区都返回 { uid, handle, ... }。
+ * 返回 {ok:true, uid} | {ok:false, error}
+ */
+async function getUid(region, token) {
+  if (!token) return { ok: false, error: '未登录' };
+  try {
+    const res = await httpsJson(
+      regionOf(region).api,
+      '/v1/design-user-service/my/preference',
+      'GET', null, { Authorization: `Bearer ${token}` },
+    );
+    if (res && res.uid != null) return { ok: true, uid: res.uid };
+    return { ok: false, error: '响应缺少 uid' };
+  } catch (e) {
+    return { ok: false, error: humanizeError(e) };
+  }
+}
+
 // 把底层错误转成面向用户的中文提示
 function humanizeError(e) {
   const msg = e && e.message ? e.message : String(e);
@@ -142,6 +163,7 @@ module.exports = {
   REGIONS,
   httpsJson,
   decodeUidFromToken,
+  getUid,
   login,
   sendVerifyCode,
   listDevices,

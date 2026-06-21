@@ -1,7 +1,13 @@
 // 状态机核心：数据报文 → { stateKey, videoFile, labelKey, labelParams }（纯函数，便于单测）
 // 解析优先级见技术文档 §6.2，labelKey 映射见 §6.4。
 
-const { STAGE, CHANGING_FILAMENT_STAGES, VIDEO } = require('../config/state-map');
+const { STAGE, CHANGING_FILAMENT_STAGES, VIDEO, STAGE_VIDEO } = require('../config/state-map');
+
+// 任一已知 stg_cur 的精确文案 key（取自 Bambu Studio，见 locales.js label.stage.<n>）。
+// 未知 stage 返回 null，由调用方走大状态兜底。
+function stageLabelKey(stg) {
+  return STAGE_VIDEO[stg] != null ? `label.stage.${stg}` : null;
+}
 
 // 大状态字符串（gcode_state）。OFFLINE 为本应用内部约定（连接断开时注入）。
 const GCODE = {
@@ -22,7 +28,11 @@ function stageLabel(stg) {
     case STAGE.AUTO_BED_LEVELING: return { labelKey: 'label.prepare.leveling', labelParams: {} };
     case STAGE.SCANNING_BED_SURFACE: return { labelKey: 'label.prepare.scanning', labelParams: {} };
     case STAGE.INSPECTING_FIRST_LAYER: return { labelKey: 'label.prepare.firstLayer', labelParams: {} };
-    default: return { labelKey: 'label.prepare', labelParams: {} };
+    default: {
+      // 其余所有 Bambu Studio 准备/校准/自检阶段：用精确文案，未知则兜底「准备中」
+      const k = stageLabelKey(stg);
+      return { labelKey: k || 'label.prepare', labelParams: {} };
+    }
   }
 }
 
@@ -35,7 +45,11 @@ function pauseLabel(stg) {
     case STAGE.FIRST_LAYER_ERROR: return { labelKey: 'label.paused.firstLayerErr', labelParams: {} };
     case STAGE.HEATBED_TEMP_ABNORMAL:
     case STAGE.HOTEND_TEMP_ABNORMAL: return { labelKey: 'label.paused.tempAbnormal', labelParams: {} };
-    default: return { labelKey: 'label.paused', labelParams: {} };
+    default: {
+      // 其余所有 Bambu Studio 暂停原因：用精确文案，未知则兜底「用户暂停」
+      const k = stageLabelKey(stg);
+      return { labelKey: k || 'label.paused', labelParams: {} };
+    }
   }
 }
 
@@ -121,11 +135,24 @@ function resolveState(report = {}) {
     return { stateKey: 'prepare', videoFile: VIDEO.prepare, labelKey: sl.labelKey, labelParams: sl.labelParams };
   }
 
-  // 6. 打印中
+  // 6. 打印中（RUNNING）。打印过程中 stg_cur 可能是换料 / 中途校准 / 各种自检，
+  //    按 STAGE_VIDEO 归到最贴近的动画；正常打印（stg=0 或未知）按进度选档。
   if (gcode === GCODE.RUNNING) {
     if (CHANGING_FILAMENT_STAGES.has(stg)) {
-      return { stateKey: 'changing_filament', videoFile: VIDEO.changing_filament, labelKey: 'label.changingFilament', labelParams: {} };
+      // stg=4 用通用「换料」文案（兼容旧行为）；22/24/68/77 用精确文案（退料/进料/…）
+      const labelKey = stg === STAGE.CHANGING_FILAMENT ? 'label.changingFilament' : (stageLabelKey(stg) || 'label.changingFilament');
+      return { stateKey: 'changing_filament', videoFile: VIDEO.changing_filament, labelKey, labelParams: {} };
     }
+    const cat = STAGE_VIDEO[stg];
+    if (cat === 'prepare') {
+      // 打印中途的校准 / 自检等：归到准备动画 + 精确文案
+      return { stateKey: 'prepare', videoFile: VIDEO.prepare, labelKey: stageLabelKey(stg), labelParams: {} };
+    }
+    if (cat === 'paused') {
+      // 异常少见：RUNNING 却报暂停类 stage，按暂停处理
+      return { stateKey: 'paused', videoFile: VIDEO.paused, labelKey: stageLabelKey(stg), labelParams: {} };
+    }
+    // cat === 'printing'（stg=0）或未知 → 正常打印，按进度选档
     const videoFile = printingVideoByPercent(percent);
     const p = Number(percent) || 0;
     const stateKey = videoFile.replace('.webm', '');
