@@ -54,7 +54,7 @@ html, body {
   box-sizing: border-box;
   padding: 4px 12px;
   font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
-  font-size: 12px;
+  font-size: var(--label-font-size, 12px);
   line-height: 1.4;
   color: #f5f5f7;
   background: rgba(20, 20, 22, 0.62);
@@ -67,4 +67,9 @@ html, body {
   backdrop-filter: blur(4px);
   pointer-events: none;     /* 非交互、点击穿透 */
   transition: opacity 300ms ease;
+}
+
+/* Add hidden utility */
+.status-pill.hidden {
+  display: none;
 }
