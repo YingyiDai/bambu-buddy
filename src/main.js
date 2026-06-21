@@ -580,8 +580,12 @@ async function refreshCloudPrinters() {
   if (!account || !account.token) return;
   const r = await bambuAuth.listDevices(account.region, decryptSecret(account.token));
   if (r.ok) {
+    // 保留用户重命名过的名称：轮询刷新只更新 model/online/printStatus，不覆盖已存的 name。
+    const prevBySerial = new Map(store.get('bambuPrinters', []).map((p) => [p.serial, p]));
     store.set('bambuPrinters', r.devices.map((d) => ({
-      serial: d.serial, name: d.name, model: d.model, online: d.online, printStatus: d.printStatus || null,
+      serial: d.serial,
+      name: prevBySerial.get(d.serial)?.name || d.name,
+      model: d.model, online: d.online, printStatus: d.printStatus || null,
     })));
     rebuildTray();
     if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('printers:changed');
@@ -619,7 +623,8 @@ ipcMain.handle('bambu:saveDevice', async (_e, serial, name, model) => {
 });
 
 // LAN 测试连接：临时建一个数据源探活，5 秒内收到报文即视为成功。
-ipcMain.handle('bambu:testLan', async (_e, host, accessCode, serial) => {
+// 抽出为独立函数，供 `bambu:testLan` 与 `printer:addLan` 复用（DRY）。
+async function testLanConnection(host, accessCode, serial) {
   return new Promise((resolve) => {
     const probe = new BambuLanDataSource({ host, accessCode, serial });
     let done = false;
@@ -628,7 +633,9 @@ ipcMain.handle('bambu:testLan', async (_e, host, accessCode, serial) => {
     probe.start();
     const t = setTimeout(() => finish({ ok: false, error: '连接超时，请检查 IP / 访问码' }), 6000);
   });
-});
+}
+
+ipcMain.handle('bambu:testLan', async (_e, host, accessCode, serial) => testLanConnection(host, accessCode, serial));
 
 ipcMain.handle('bambu:saveLan', async (_e, host, accessCode, serial, name) => {
   store.set('bambuLan', {
@@ -638,6 +645,54 @@ ipcMain.handle('bambu:saveLan', async (_e, host, accessCode, serial, name) => {
     name: name || serial,
   });
   afterSave();
+  return { ok: true };
+});
+
+// ---- 统一打印机列表管理（§Task 6）----
+ipcMain.handle('printer:list', () => ({
+  printers: getUnified(),
+  activeSerial: store.get('activePrinterSerial') || null,
+  liveLabelKey: lastState ? lastState.labelKey : null,
+  liveLabelParams: lastState ? lastState.labelParams : null,
+}));
+
+ipcMain.handle('printer:setActive', (_e, serial) => {
+  store.set('activePrinterSerial', serial);
+  store.set('dataSource', 'live');
+  buildDataSource();
+  return { ok: true };
+});
+
+ipcMain.handle('printer:addLan', async (_e, host, accessCode, serial, name) => {
+  const test = await testLanConnection(host, accessCode, serial);
+  if (!test.ok) return test;
+  const list = registry.addLan(store.get('bambuLanPrinters', []),
+    { serial, name: name || serial, model: '', host, accessCode: encryptSecret(accessCode) });
+  store.set('bambuLanPrinters', list);
+  rebuildTray();
+  return { ok: true };
+});
+
+ipcMain.handle('printer:removeLan', (_e, serial) => {
+  store.set('bambuLanPrinters', registry.removeLan(store.get('bambuLanPrinters', []), serial));
+  if (store.get('activePrinterSerial') === serial) {
+    const next = getUnified()[0];
+    store.set('activePrinterSerial', next ? next.serial : null);
+    buildDataSource();
+  }
+  rebuildTray();
+  return { ok: true };
+});
+
+ipcMain.handle('printer:rename', (_e, serial, name) => {
+  store.set('bambuLanPrinters', registry.renameInList(store.get('bambuLanPrinters', []), serial, name));
+  store.set('bambuPrinters', registry.renameInList(store.get('bambuPrinters', []), serial, name));
+  rebuildTray();
+  return { ok: true };
+});
+
+ipcMain.handle('printer:refreshCloud', async () => {
+  await refreshCloudPrinters();
   return { ok: true };
 });
 
