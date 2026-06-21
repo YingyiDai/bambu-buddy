@@ -241,6 +241,42 @@ const STRINGS = {
     'mock.doorOpen': '舱门打开',
     'mock.finished': '打印完成',
     'mock.failed': '打印失败',
+
+    // ── 侧边栏导航 ──
+    'nav.printers': '打印机',
+    'nav.play': '把玩探索',
+    'nav.appearance': '外观',
+    'nav.about': '关于',
+    // ── 打印机区域（合并后）──
+    'printers.sectionAccount': '账号',
+    'printers.sectionList': '打印机列表',
+    'printers.loginIntro': '登录 Bambu 账号以同步云端打印机',
+    'printers.loggedOut': '未登录',
+    // ── 把玩探索页框架 ──
+    'play.title': '把玩探索',
+    'play.subtitle': '不用连打印机，点一下就能看熊猫的各种状态',
+    'play.nowPlaying': '当前正在演示',
+    'play.inLiveMode': '当前为真机模式',
+    'play.dragProgress': '拖动模拟打印进度',
+    'play.autoTour': '自动巡演（依次播放全部状态）',
+    'play.autoTourStop': '停止巡演',
+    'play.returnToLive': '回到真机',
+    'play.galleryHint': '点一下试试',
+    // ── 把玩场景：友好名 + 说明 ──
+    'play.printing.name': '认真打印',          'play.printing.desc': '熊猫专注盯着打印',
+    'play.idle.name': '空闲发呆',              'play.idle.desc': '没活干，打个盹',
+    'play.prepare_preheat.name': '预热准备',   'play.prepare_preheat.desc': '热床和喷嘴升温中',
+    'play.prepare_leveling.name': '自动调平',  'play.prepare_leveling.desc': '扫描并校平热床',
+    'play.changing_filament.name': '换料',     'play.changing_filament.desc': '正在更换耗材',
+    'play.paused.name': '暂停休息',            'play.paused.desc': '打印被手动暂停',
+    'play.paused_runout.name': '缺料了',       'play.paused_runout.desc': '耗材用尽，等待续料',
+    'play.door_open.name': '舱门打开',         'play.door_open.desc': '机箱门被打开',
+    'play.finished.name': '打印成功',          'play.finished.desc': '完工，开心庆祝',
+    'play.failed.name': '打印失败',            'play.failed.desc': '出错了，沮丧脸',
+    'play.offline.name': '离线',               'play.offline.desc': '拔了插头睡大觉',
+    // ── 托盘（把玩命名）──
+    'tray.sourcePlay': '把玩演示模式',
+    'tray.dataSourcePlay': '数据源：把玩演示',
   },
 
   'en': {
@@ -490,6 +526,42 @@ const STRINGS = {
     'mock.doorOpen': 'Door Open',
     'mock.finished': 'Print Finished',
     'mock.failed': 'Print Failed',
+
+    // ── Sidebar nav ──
+    'nav.printers': 'Printers',
+    'nav.play': 'Playground',
+    'nav.appearance': 'Appearance',
+    'nav.about': 'About',
+    // ── Printers section (merged) ──
+    'printers.sectionAccount': 'Account',
+    'printers.sectionList': 'Printers',
+    'printers.loginIntro': 'Sign in to your Bambu account to sync cloud printers',
+    'printers.loggedOut': 'Not signed in',
+    // ── Playground page frame ──
+    'play.title': 'Playground',
+    'play.subtitle': 'No printer needed — click to see the panda in every state',
+    'play.nowPlaying': 'Now playing',
+    'play.inLiveMode': 'Currently in live mode',
+    'play.dragProgress': 'Drag to simulate print progress',
+    'play.autoTour': 'Auto tour (play all states)',
+    'play.autoTourStop': 'Stop tour',
+    'play.returnToLive': 'Back to live',
+    'play.galleryHint': 'Give it a try',
+    // ── Play scenarios: friendly name + desc ──
+    'play.printing.name': 'Printing',         'play.printing.desc': 'Panda watching the print intently',
+    'play.idle.name': 'Idle',                 'play.idle.desc': 'Nothing to do, taking a nap',
+    'play.prepare_preheat.name': 'Preheating','play.prepare_preheat.desc': 'Heating bed and nozzle',
+    'play.prepare_leveling.name': 'Leveling', 'play.prepare_leveling.desc': 'Scanning and leveling the bed',
+    'play.changing_filament.name': 'Changing filament', 'play.changing_filament.desc': 'Swapping the filament',
+    'play.paused.name': 'Paused',             'play.paused.desc': 'Print paused by user',
+    'play.paused_runout.name': 'Out of filament', 'play.paused_runout.desc': 'Filament ran out, waiting for refill',
+    'play.door_open.name': 'Door open',       'play.door_open.desc': 'Enclosure door is open',
+    'play.finished.name': 'Print done',       'play.finished.desc': 'Finished — happy celebration',
+    'play.failed.name': 'Print failed',       'play.failed.desc': 'Something went wrong, sad face',
+    'play.offline.name': 'Offline',           'play.offline.desc': 'Unplugged and fast asleep',
+    // ── Tray (play naming) ──
+    'tray.sourcePlay': 'Playground mode',
+    'tray.dataSourcePlay': 'Source: Playground',
   },
 };
 
