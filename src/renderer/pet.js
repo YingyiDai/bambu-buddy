@@ -77,10 +77,6 @@ window.pet.onPrefs((prefs) => {
 // 初始状态
 window.pet.onState(applyState);
 
-// 交互
-petEl.addEventListener('mouseenter', () => window.pet.setInteractive(true));
-petEl.addEventListener('mouseleave', () => { if (!dragging) window.pet.setInteractive(false); });
-
 // —— 热区命中判断：居中圆角矩形 ——
 const hotzoneCS = getComputedStyle(document.documentElement);
 
@@ -99,26 +95,22 @@ function insideHotzone(px, py) {
   const top    = ht;
   const bottom = h - hb;
 
-  // 在矩形外 → 否
+  // 在矩形外
   if (px < left || px > right || py < top || py > bottom) return false;
 
   // 四个圆角区域检测
-  // 左上角
   if (px < left + r && py < top + r) {
     const dx = px - (left + r), dy = py - (top + r);
     if (dx * dx + dy * dy > r * r) return false;
   }
-  // 右上角
   if (px > right - r && py < top + r) {
     const dx = px - (right - r), dy = py - (top + r);
     if (dx * dx + dy * dy > r * r) return false;
   }
-  // 左下角
   if (px < left + r && py > bottom - r) {
     const dx = px - (left + r), dy = py - (bottom - r);
     if (dx * dx + dy * dy > r * r) return false;
   }
-  // 右下角
   if (px > right - r && py > bottom - r) {
     const dx = px - (right - r), dy = py - (bottom - r);
     if (dx * dx + dy * dy > r * r) return false;
@@ -127,17 +119,40 @@ function insideHotzone(px, py) {
   return true;
 }
 
+// 交互（点击穿透、光标、拖拽）
 let dragging = false;
+let cursorInHotzone = false;
+
+function updateCursor(e) {
+  const inZone = insideHotzone(e.offsetX, e.offsetY);
+  if (inZone === cursorInHotzone) return;
+  cursorInHotzone = inZone;
+  if (dragging) return; // 拖拽中不切换光标
+  petEl.style.cursor = inZone ? 'grab' : 'default';
+}
+
+petEl.addEventListener('mouseenter', (e) => {
+  window.pet.setInteractive(true);
+  updateCursor(e);
+});
+petEl.addEventListener('mousemove', updateCursor);
+petEl.addEventListener('mouseleave', () => {
+  cursorInHotzone = false;
+  if (!dragging) window.pet.setInteractive(false);
+});
+
 petEl.addEventListener('mousedown', (e) => {
   if (e.button !== 0) return;
   if (!insideHotzone(e.offsetX, e.offsetY)) return;
   dragging = true;
+  petEl.style.cursor = 'grabbing';
   window.pet.dragStart();
   e.preventDefault();
 });
 window.addEventListener('mouseup', () => {
   if (!dragging) return;
   dragging = false;
+  petEl.style.cursor = cursorInHotzone ? 'grab' : 'default';
   window.pet.dragEnd();
 });
 petEl.addEventListener('contextmenu', (e) => { e.preventDefault(); window.pet.showMenu(); });

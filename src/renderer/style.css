@@ -28,10 +28,7 @@ html, body {
   left: 0;
   right: 0;
   bottom: 26px;             /* 给下方 label 留空间 */
-  cursor: grab;             /* 手动拖拽（见 pet.js）*/
-}
-.pet:active {
-  cursor: grabbing;
+  /* cursor 由 pet.js 根据热区动态设置 */
 }
 
 /* 两个叠放视频层，绝对定位重合，靠 opacity 做交叉淡入 */
