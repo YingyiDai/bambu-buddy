@@ -29,7 +29,9 @@
     "files": [
       "src/**/*",
       "assets/anim/**/*",
-      "assets/icon/**"
+      "assets/icon/**",
+      "!node_modules/**",
+      "!assets/source/**"
     ],
     "mac": {
       "category": "public.app-category.utilities",
