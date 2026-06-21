@@ -310,20 +310,13 @@ function getMetricsLabel(locale, report) {
 }
 
 function makeTrayIcon() {
-  // 一个简单的 16x16 模板图标（圆点），避免依赖外部资源。
-  const size = 16;
-  const buf = Buffer.alloc(size * size * 4);
-  const cx = 7.5, cy = 7.5, rad = 6;
-  for (let yy = 0; yy < size; yy++) {
-    for (let xx = 0; xx < size; xx++) {
-      const i = (yy * size + xx) * 4;
-      const d = Math.hypot(xx - cx, yy - cy);
-      const a = d <= rad ? 255 : 0;
-      buf[i] = 0; buf[i + 1] = 0; buf[i + 2] = 0; buf[i + 3] = a;
-    }
-  }
-  const img = nativeImage.createFromBuffer(buf, { width: size, height: size });
+  // 使用 PNG 图标素材（1x / 2x），支持明暗模式。
+  // Template 模式下 macOS 自动根据菜单栏明暗反色。
+  const iconPath = path.join(__dirname, '..', 'assets', 'icon', 'TrayIcon.png');
+  const iconPath2x = path.join(__dirname, '..', 'assets', 'icon', 'TrayIcon@2x.png');
+  const img = nativeImage.createFromPath(iconPath2x);
   img.setTemplateImage(true);
+  // 返回 2x 图片，macOS 自动适配 1x 场景
   return img;
 }
 
@@ -838,7 +831,15 @@ ipcMain.handle('app:openExternal', (_e, url) => {
 });
 
 // ---- 生命周期 ----
+app.setName('Bambu Buddy');
+
 app.whenReady().then(() => {
+  // 设置 Dock 图标（开发模式下 Electron 默认图标会被替换）
+  if (process.platform === 'darwin' && app.dock) {
+    const appIconPath = path.join(__dirname, '..', 'assets', 'icon', 'AppIcon.png');
+    try { app.dock.setIcon(appIconPath); } catch (e) { /* 开发模式下可能失败，忽略 */ }
+  }
+
   // 根据用户偏好决定是否在程序坞/菜单栏显示
   if (process.platform === 'darwin' && app.dock) {
     if (store.get('showInDock', true)) {

@@ -25,9 +25,11 @@
   "build": {
     "appId": "com.bambubuddy.desktop",
     "productName": "Bambu Buddy",
+    "icon": "assets/icon/AppIcon.png",
     "files": [
       "src/**/*",
-      "assets/anim/**/*"
+      "assets/anim/**/*",
+      "assets/icon/**"
     ],
     "mac": {
       "category": "public.app-category.utilities",
