@@ -675,11 +675,6 @@ ipcMain.handle('printer:refreshCloud', async () => {
 
 // 返回脱敏状态给设置窗预填（永不回 token / accessCode 明文）
 ipcMain.handle('bambu:getState', async () => {
-  const mode = store.get('dataSource', 'mock');
-  if (mode === 'lan') {
-    const lan = store.get('bambuLan', {});
-    return { mode: 'lan', host: lan.host, serial: lan.serial, name: lan.name };
-  }
   const account = store.get('bambuAccount', {});
   const printers = store.get('bambuPrinters', []);
   const activePrinter = store.get('activePrinterSerial');

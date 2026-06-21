@@ -87,13 +87,7 @@ async function init() {
   await loadLocales();
   try {
     const st = await window.bambu.getStoredState();
-    if (st.mode === 'lan' && st.host) {
-      setMode('lan');
-      el('lanHost').value = st.host || '';
-      el('lanSerial').value = st.serial || '';
-      return;
-    }
-    if (st.mode === 'cloud' && st.hasToken && st.activePrinter) {
+    if (st.hasToken && st.activePrinter) {
       pending.region = st.region || 'global';
       const activePrinter = (st.printers || []).find(p => p.serial === st.activePrinter);
       el('sumName').textContent = activePrinter ? activePrinter.name : (st.name || st.activePrinter);
