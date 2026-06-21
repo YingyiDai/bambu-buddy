@@ -384,6 +384,33 @@ function buildMenuTemplate() {
       ],
     },
     { type: 'separator' },
+    {
+      label: t(locale, 'tray.showInMenuBar'),
+      type: 'checkbox',
+      checked: store.get('showInMenuBar', true),
+      click: (mi) => {
+        store.set('showInMenuBar', mi.checked);
+        if (mi.checked) {
+          if (!tray) createTray();
+        } else {
+          if (tray) { tray.destroy(); tray = null; }
+        }
+      },
+    },
+    {
+      label: t(locale, 'tray.showInDock'),
+      type: 'checkbox',
+      checked: store.get('showInDock', true),
+      click: (mi) => {
+        store.set('showInDock', mi.checked);
+        if (mi.checked && process.platform === 'darwin' && app.dock) {
+          app.dock.show();
+        } else if (!mi.checked && process.platform === 'darwin' && app.dock) {
+          app.dock.hide();
+        }
+      },
+    },
+    { type: 'separator' },
     { label: t(locale, 'tray.exit'), click: () => app.quit() },
   );
 
@@ -649,6 +676,8 @@ ipcMain.handle('pref:getAll', () => ({
   sizePx: store.get('sizePx', 220),
   labelFontSize: store.get('labelFontSize', 12),
   showLabel: store.get('showLabel', true),
+  showInMenuBar: store.get('showInMenuBar', true),
+  showInDock: store.get('showInDock', true),
   locale: store.get('locale', 'zh-CN'),
 }));
 
@@ -657,6 +686,13 @@ ipcMain.handle('pref:set', (_e, key, value) => {
   if (key === 'sizePx') setPetSizePx(value);
   if (key === 'labelFontSize' || key === 'showLabel') pushPetPrefs();
   if (key === 'locale') { pushLocale(); resendState(); }
+  if (key === 'showInMenuBar') {
+    if (value) { if (!tray) createTray(); }
+    else { if (tray) { tray.destroy(); tray = null; } }
+  }
+  if (key === 'showInDock' && process.platform === 'darwin' && app.dock) {
+    if (value) app.dock.show(); else app.dock.hide();
+  }
   if (key === 'labelFontSize' || key === 'locale' || key === 'showLabel') rebuildTray();
   return { ok: true };
 });
@@ -676,10 +712,17 @@ ipcMain.handle('app:info', () => {
 
 // ---- 生命周期 ----
 app.whenReady().then(() => {
-  if (process.platform === 'darwin' && app.dock) app.dock.hide();
+  // 根据用户偏好决定是否在程序坞/菜单栏显示
+  if (process.platform === 'darwin' && app.dock) {
+    if (store.get('showInDock', true)) {
+      app.dock.show();
+    } else {
+      app.dock.hide();
+    }
+  }
   migrateStorage();
   createWindow();
-  createTray();
+  if (store.get('showInMenuBar', true)) createTray();
   buildDataSource();
 
   app.on('activate', () => {
