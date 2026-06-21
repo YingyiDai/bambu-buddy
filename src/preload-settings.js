@@ -50,4 +50,12 @@ contextBridge.exposeInMainWorld('bambu', {
   renamePrinter: (serial, name) => ipcRenderer.invoke('printer:rename', serial, name),
   refreshCloud: () => ipcRenderer.invoke('printer:refreshCloud'),
   onPrintersChanged: (cb) => ipcRenderer.on('printers:changed', () => cb()),
+
+  // 把玩探索
+  playGetState: () => ipcRenderer.invoke('play:getState'),
+  playSetScenario: (key) => ipcRenderer.invoke('play:setScenario', key),
+  playSetProgress: (percent) => ipcRenderer.invoke('play:setProgress', percent),
+  playAutoTour: (start) => ipcRenderer.invoke('play:autoTour', start),
+  playReturnToLive: () => ipcRenderer.invoke('play:returnToLive'),
+  onPlayStateChanged: (cb) => ipcRenderer.on('play:stateChanged', (_e, st) => cb(st)),
 });

@@ -64,6 +64,7 @@ let settingsWin = null; // Bambu 连接设置窗（Cloud 登录 / LAN 配置）
 let lastState = null; // 最近一次 resolveState 结果，用于托盘展示
 let lastReport = null; // 最近一次 MQTT 原始报文，供托盘菜单读取实时指标
 let cloudPollTimer = null; // 云端粗粒度状态轮询定时器
+let playPercent = 0; // 把玩页打印进度（滑杆位置，0–100）
 
 function currentSizePx() {
   return store.get('sizePx', 220);
@@ -151,6 +152,22 @@ function setPetSizePx(px) {
 function pushState() {
   if (win && !win.isDestroyed()) {
     win.webContents.send('pet:state', lastState);
+  }
+}
+
+// 当前把玩场景 key（仅 mock 数据源时有值）。
+function currentPlayScenario() {
+  return (dataSource instanceof MockDataSource) ? (dataSource.getCurrent() || null) : null;
+}
+
+// 把玩状态推送给设置窗（驱动"当前正在演示"卡片刷新）。
+function pushPlayState() {
+  if (settingsWin && !settingsWin.isDestroyed()) {
+    settingsWin.webContents.send('play:stateChanged', {
+      isPlaying: store.get('dataSource', 'mock') === 'mock',
+      currentScenario: currentPlayScenario(),
+      percent: playPercent,
+    });
   }
 }
 
@@ -337,7 +354,7 @@ function buildMenuTemplate() {
 
   // Mock 模式：数据源标识
   if (mode === 'mock') {
-    template.push({ label: t(locale, 'tray.dataSourceMock'), enabled: false });
+    template.push({ label: t(locale, 'tray.dataSourcePlay'), enabled: false });
   }
 
   template.push({ type: 'separator' });
@@ -357,31 +374,13 @@ function buildMenuTemplate() {
     }
   }
 
-  // ── Mock 模式：手动切状态子菜单 ──
-  if (mode === 'mock' && dataSource instanceof MockDataSource) {
-    const MOCK_LABEL_KEYS = {
-      offline: 'mock.offline', idle: 'mock.idle',
-      prepare_preheat: 'mock.preparePreheat', prepare_leveling: 'mock.prepareLeveling',
-      printing: 'mock.printing', changing_filament: 'mock.changingFilament',
-      paused: 'mock.paused', paused_runout: 'mock.pausedRunout',
-      door_open: 'mock.doorOpen', finished: 'mock.finished', failed: 'mock.failed',
-    };
-    const scenarioItems = Object.keys(SCENARIO_LABELS).map((key) => ({
-      label: t(locale, MOCK_LABEL_KEYS[key] || `mock.${key}`),
-      click: () => dataSource.setScenario(key),
-    }));
-    template.push({ label: t(locale, 'tray.mockSwitch'), submenu: scenarioItems });
-    template.push({ label: t(locale, 'tray.mockAuto'), click: () => dataSource.startAutoCycle() });
-    template.push({ type: 'separator' });
-  }
-
   // ── 数据源 / 大小 / 设置 / 退出 ──
   template.push(
     {
       label: t(locale, 'tray.source'),
       submenu: [
         {
-          label: t(locale, 'tray.sourceMock'), type: 'radio', checked: mode === 'mock',
+          label: t(locale, 'tray.sourcePlay'), type: 'radio', checked: mode === 'mock',
           click: () => { store.set('dataSource', 'mock'); buildDataSource(); },
         },
         {
@@ -503,8 +502,9 @@ function createSettingsWindow() {
     return;
   }
   settingsWin = new BrowserWindow({
-    width: 440,
-    height: 600,
+    width: 640,
+    height: 620,
+    minWidth: 640,
     resizable: true,
     minimizable: false,
     maximizable: false,
@@ -687,6 +687,52 @@ ipcMain.handle('printer:rename', (_e, serial, name) => {
 
 ipcMain.handle('printer:refreshCloud', async () => {
   await refreshCloudPrinters();
+  return { ok: true };
+});
+
+// ---- 把玩探索（设置窗）----
+function ensurePlayMode() {
+  if (store.get('dataSource', 'mock') !== 'mock') {
+    store.set('dataSource', 'mock');
+    buildDataSource();
+  }
+}
+
+ipcMain.handle('play:getState', () => ({
+  isPlaying: store.get('dataSource', 'mock') === 'mock',
+  currentScenario: currentPlayScenario(),
+  percent: playPercent,
+}));
+
+ipcMain.handle('play:setScenario', (_e, key) => {
+  ensurePlayMode();
+  if (key !== 'printing') playPercent = 0;
+  if (dataSource instanceof MockDataSource) dataSource.setScenario(key);
+  pushPlayState();
+  return { ok: true };
+});
+
+ipcMain.handle('play:setProgress', (_e, percent) => {
+  ensurePlayMode();
+  playPercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  if (dataSource instanceof MockDataSource) dataSource.setPrintingProgress(playPercent);
+  pushPlayState();
+  return { ok: true };
+});
+
+ipcMain.handle('play:autoTour', (_e, start) => {
+  ensurePlayMode();
+  if (dataSource instanceof MockDataSource) {
+    if (start) dataSource.startAutoCycle(); else dataSource.stopAutoCycle();
+  }
+  pushPlayState();
+  return { ok: true };
+});
+
+ipcMain.handle('play:returnToLive', () => {
+  store.set('dataSource', 'live');
+  buildDataSource();
+  pushPlayState();
   return { ok: true };
 });
 
