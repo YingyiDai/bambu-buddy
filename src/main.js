@@ -593,7 +593,8 @@ ipcMain.handle('bambu:saveDevice', async (_e, serial, name, model) => {
   if (idx >= 0) printers[idx] = entry;
   else printers.push(entry);
   store.set('bambuPrinters', printers);
-  store.set('bambuActivePrinter', serial);
+  store.set('activePrinterSerial', serial);
+  store.set('dataSource', 'live');
 
   afterSave();
   return { ok: true };
@@ -615,12 +616,11 @@ async function testLanConnection(host, accessCode, serial) {
 ipcMain.handle('bambu:testLan', async (_e, host, accessCode, serial) => testLanConnection(host, accessCode, serial));
 
 ipcMain.handle('bambu:saveLan', async (_e, host, accessCode, serial, name) => {
-  store.set('bambuLan', {
-    host,
-    accessCode: encryptSecret(accessCode),
-    serial,
-    name: name || serial,
-  });
+  const list = registry.addLan(store.get('bambuLanPrinters', []),
+    { serial, name: name || serial, model: '', host, accessCode: encryptSecret(accessCode) });
+  store.set('bambuLanPrinters', list);
+  store.set('activePrinterSerial', serial);
+  store.set('dataSource', 'live');
   afterSave();
   return { ok: true };
 });
@@ -682,7 +682,7 @@ ipcMain.handle('bambu:getState', async () => {
   }
   const account = store.get('bambuAccount', {});
   const printers = store.get('bambuPrinters', []);
-  const activePrinter = store.get('bambuActivePrinter');
+  const activePrinter = store.get('activePrinterSerial');
   return {
     mode: 'cloud',
     region: account.region,
@@ -698,13 +698,10 @@ ipcMain.handle('bambu:getState', async () => {
 ipcMain.handle('bambu:logout', async () => {
   store.delete('bambuAccount');
   store.delete('bambuPrinters');
-  store.delete('bambuActivePrinter');
   pendingAuth = null;
-  if (dataSource) { dataSource.stop(); dataSource = null; }
-  lastState = null;
-  lastReport = null;
-  if (win && !win.isDestroyed()) win.webContents.send('pet:state', { stateKey: 'offline', videoFile: 'offline.webm', labelKey: 'label.offline', labelParams: {} });
-  rebuildTray();
+  const stillActive = getUnified().some((p) => p.serial === store.get('activePrinterSerial'));
+  if (!stillActive) store.set('activePrinterSerial', getUnified()[0]?.serial || null);
+  buildDataSource();
   return { ok: true };
 });
 
