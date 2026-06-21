@@ -5,7 +5,7 @@ const path = require('path');
 const Store = require('electron-store');
 
 const { resolveState, extractTemps, formatRemainingTime } = require('./core/state-machine');
-const { MockDataSource, SCENARIO_LABELS } = require('./core/mock');
+const { MockDataSource } = require('./core/mock');
 const { BambuCloudDataSource, BambuLanDataSource } = require('./core/bambu-mqtt');
 const bambuAuth = require('./core/bambu-auth');
 const { t, STRINGS } = require('./config/locales');
@@ -64,6 +64,7 @@ let settingsWin = null; // Bambu 连接设置窗（Cloud 登录 / LAN 配置）
 let lastState = null; // 最近一次 resolveState 结果，用于托盘展示
 let lastReport = null; // 最近一次 MQTT 原始报文，供托盘菜单读取实时指标
 let cloudPollTimer = null; // 云端粗粒度状态轮询定时器
+let playPercent = 0; // 把玩页打印进度（滑杆位置，0–100）
 
 function currentSizePx() {
   return store.get('sizePx', 220);
@@ -151,6 +152,22 @@ function setPetSizePx(px) {
 function pushState() {
   if (win && !win.isDestroyed()) {
     win.webContents.send('pet:state', lastState);
+  }
+}
+
+// 当前把玩场景 key（仅 mock 数据源时有值）。
+function currentPlayScenario() {
+  return (dataSource instanceof MockDataSource) ? (dataSource.getCurrent() || null) : null;
+}
+
+// 把玩状态推送给设置窗（驱动"当前正在演示"卡片刷新）。
+function pushPlayState() {
+  if (settingsWin && !settingsWin.isDestroyed()) {
+    settingsWin.webContents.send('play:stateChanged', {
+      isPlaying: store.get('dataSource', 'mock') === 'mock',
+      currentScenario: currentPlayScenario(),
+      percent: playPercent,
+    });
   }
 }
 
@@ -337,7 +354,7 @@ function buildMenuTemplate() {
 
   // Mock 模式：数据源标识
   if (mode === 'mock') {
-    template.push({ label: t(locale, 'tray.dataSourceMock'), enabled: false });
+    template.push({ label: t(locale, 'tray.dataSourcePlay'), enabled: false });
   }
 
   template.push({ type: 'separator' });
@@ -357,31 +374,13 @@ function buildMenuTemplate() {
     }
   }
 
-  // ── Mock 模式：手动切状态子菜单 ──
-  if (mode === 'mock' && dataSource instanceof MockDataSource) {
-    const MOCK_LABEL_KEYS = {
-      offline: 'mock.offline', idle: 'mock.idle',
-      prepare_preheat: 'mock.preparePreheat', prepare_leveling: 'mock.prepareLeveling',
-      printing: 'mock.printing', changing_filament: 'mock.changingFilament',
-      paused: 'mock.paused', paused_runout: 'mock.pausedRunout',
-      door_open: 'mock.doorOpen', finished: 'mock.finished', failed: 'mock.failed',
-    };
-    const scenarioItems = Object.keys(SCENARIO_LABELS).map((key) => ({
-      label: t(locale, MOCK_LABEL_KEYS[key] || `mock.${key}`),
-      click: () => dataSource.setScenario(key),
-    }));
-    template.push({ label: t(locale, 'tray.mockSwitch'), submenu: scenarioItems });
-    template.push({ label: t(locale, 'tray.mockAuto'), click: () => dataSource.startAutoCycle() });
-    template.push({ type: 'separator' });
-  }
-
   // ── 数据源 / 大小 / 设置 / 退出 ──
   template.push(
     {
       label: t(locale, 'tray.source'),
       submenu: [
         {
-          label: t(locale, 'tray.sourceMock'), type: 'radio', checked: mode === 'mock',
+          label: t(locale, 'tray.sourcePlay'), type: 'radio', checked: mode === 'mock',
           click: () => { store.set('dataSource', 'mock'); buildDataSource(); },
         },
         {
@@ -503,8 +502,9 @@ function createSettingsWindow() {
     return;
   }
   settingsWin = new BrowserWindow({
-    width: 440,
-    height: 600,
+    width: 640,
+    height: 620,
+    minWidth: 640,
     resizable: true,
     minimizable: false,
     maximizable: false,
@@ -617,6 +617,38 @@ ipcMain.handle('bambu:saveDevice', async (_e, serial, name, model) => {
   return { ok: true };
 });
 
+// 合并登录流程：登录成功后一次性持久化账号 + 拉取全部云端打印机进统一列表，
+// 设一台为当前并切到 live —— 不关闭设置窗（用户停留在「打印机」区域看到已同步的列表）。
+ipcMain.handle('bambu:completeCloudLogin', async () => {
+  const { region, token, uid } = resolveActiveToken();
+  if (!token) return { ok: false, error: '登录已失效，请重新登录' };
+  const existingAccount = store.get('bambuAccount', {});
+  store.set('bambuAccount', {
+    region,
+    account: (pendingAuth && pendingAuth.account) || existingAccount.account || '',
+    uid,
+    token: encryptSecret(token),
+  });
+  const r = await bambuAuth.listDevices(region, token);
+  if (r.ok) {
+    const prevBySerial = new Map(store.get('bambuPrinters', []).map((p) => [p.serial, p]));
+    store.set('bambuPrinters', r.devices.map((d) => ({
+      serial: d.serial,
+      name: prevBySerial.get(d.serial)?.name || d.name,
+      model: d.model, online: d.online, printStatus: d.printStatus || null,
+    })));
+    const active = store.get('activePrinterSerial');
+    const stillThere = r.devices.some((d) => d.serial === active);
+    if (!stillThere && r.devices.length > 0) store.set('activePrinterSerial', r.devices[0].serial);
+  }
+  store.set('dataSource', 'live');
+  pendingAuth = null;
+  buildDataSource();
+  rebuildTray();
+  if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('printers:changed');
+  return { ok: true };
+});
+
 // LAN 测试连接：临时建一个数据源探活，5 秒内收到报文即视为成功。
 // 抽出为独立函数，供 `bambu:testLan` 与 `printer:addLan` 复用（DRY）。
 async function testLanConnection(host, accessCode, serial) {
@@ -687,6 +719,52 @@ ipcMain.handle('printer:rename', (_e, serial, name) => {
 
 ipcMain.handle('printer:refreshCloud', async () => {
   await refreshCloudPrinters();
+  return { ok: true };
+});
+
+// ---- 把玩探索（设置窗）----
+function ensurePlayMode() {
+  if (store.get('dataSource', 'mock') !== 'mock') {
+    store.set('dataSource', 'mock');
+    buildDataSource();
+  }
+}
+
+ipcMain.handle('play:getState', () => ({
+  isPlaying: store.get('dataSource', 'mock') === 'mock',
+  currentScenario: currentPlayScenario(),
+  percent: playPercent,
+}));
+
+ipcMain.handle('play:setScenario', (_e, key) => {
+  ensurePlayMode();
+  if (key !== 'printing') playPercent = 0;
+  if (dataSource instanceof MockDataSource) dataSource.setScenario(key);
+  pushPlayState();
+  return { ok: true };
+});
+
+ipcMain.handle('play:setProgress', (_e, percent) => {
+  ensurePlayMode();
+  playPercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
+  if (dataSource instanceof MockDataSource) dataSource.setPrintingProgress(playPercent);
+  pushPlayState();
+  return { ok: true };
+});
+
+ipcMain.handle('play:autoTour', (_e, start) => {
+  ensurePlayMode();
+  if (dataSource instanceof MockDataSource) {
+    if (start) dataSource.startAutoCycle(); else dataSource.stopAutoCycle();
+  }
+  pushPlayState();
+  return { ok: true };
+});
+
+ipcMain.handle('play:returnToLive', () => {
+  store.set('dataSource', 'live');
+  buildDataSource();
+  pushPlayState();
   return { ok: true };
 });
 

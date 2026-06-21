@@ -11,6 +11,7 @@ contextBridge.exposeInMainWorld('bambu', {
     ipcRenderer.invoke('bambu:verify', region, account, password, tfaKey, code),
   listDevices: () => ipcRenderer.invoke('bambu:listDevices'),
   saveDevice: (serial, name, model) => ipcRenderer.invoke('bambu:saveDevice', serial, name, model),
+  completeCloudLogin: () => ipcRenderer.invoke('bambu:completeCloudLogin'),
 
   // LAN 测试 / 保存
   testLan: (host, accessCode, serial) =>
@@ -50,4 +51,12 @@ contextBridge.exposeInMainWorld('bambu', {
   renamePrinter: (serial, name) => ipcRenderer.invoke('printer:rename', serial, name),
   refreshCloud: () => ipcRenderer.invoke('printer:refreshCloud'),
   onPrintersChanged: (cb) => ipcRenderer.on('printers:changed', () => cb()),
+
+  // 把玩探索
+  playGetState: () => ipcRenderer.invoke('play:getState'),
+  playSetScenario: (key) => ipcRenderer.invoke('play:setScenario', key),
+  playSetProgress: (percent) => ipcRenderer.invoke('play:setProgress', percent),
+  playAutoTour: (start) => ipcRenderer.invoke('play:autoTour', start),
+  playReturnToLive: () => ipcRenderer.invoke('play:returnToLive'),
+  onPlayStateChanged: (cb) => ipcRenderer.on('play:stateChanged', (_e, st) => cb(st)),
 });

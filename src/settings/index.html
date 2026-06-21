@@ -3,137 +3,124 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy"
-        content="default-src 'self'; style-src 'self' 'unsafe-inline';" />
+        content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
   <title data-i18n="settings.title">设置</title>
+  <link rel="stylesheet" href="vendor/pico.min.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <nav class="tab-bar" role="tablist">
-    <button id="tabConnection" class="tab-btn active" data-i18n="settings.tabConnection">连接</button>
-    <button id="tabAppearance" class="tab-btn" data-i18n="settings.tabAppearance">外观</button>
-    <button id="tabAbout" class="tab-btn" data-i18n="settings.tabAbout">关于</button>
-    <button id="tabPrinters" class="tab-btn" data-i18n="settings.tabPrinters">打印机</button>
-  </nav>
+  <div class="app">
+    <aside class="sidebar">
+      <button class="nav-item active" data-section="printers"><span class="ico">🖨️</span><span data-i18n="nav.printers">打印机</span></button>
+      <button class="nav-item" data-section="play"><span class="ico">🎮</span><span data-i18n="nav.play">把玩探索</span></button>
+      <button class="nav-item" data-section="appearance"><span class="ico">🎨</span><span data-i18n="nav.appearance">外观</span></button>
+      <button class="nav-item" data-section="about"><span class="ico">ℹ️</span><span data-i18n="nav.about">关于</span></button>
+    </aside>
+    <main class="content">
 
-  <main id="content">
-    <!-- ════ 连接 Tab ════ -->
-    <section id="paneConnection" class="pane">
-      <div class="mode-switch" role="tablist">
-        <button id="modeCloud" class="mode-btn active" data-i18n="settings.modeCloud">Bambu Cloud 账号</button>
-        <button id="modeLan" class="mode-btn" data-i18n="settings.modeLan">Bambu LAN 本地</button>
-      </div>
-
-      <div id="cloudPane" class="subpane">
-        <div id="cloudLogin" class="step">
-          <label><span data-i18n="settings.region">区域</span><select id="cloudRegion"><option value="global" data-i18n="settings.regionGlobalFull">全球 / Overseas</option><option value="china" data-i18n="settings.regionChinaFull">中国大陆</option></select></label>
-          <label><span data-i18n="settings.account">账号（邮箱或手机号）</span><input id="cloudAccount" type="text" autocomplete="username" /></label>
-          <label><span data-i18n="settings.password">密码</span><input id="cloudPassword" type="password" autocomplete="current-password" /></label>
-          <button id="cloudLoginBtn" class="primary" data-i18n="settings.login">登录</button>
-        </div>
-        <div id="cloudVerify" class="step hidden">
-          <p class="hint" data-i18n="settings.verifyHint">已向你的邮箱发送验证码，请输入：</p>
-          <label><span data-i18n="settings.verifyCode">验证码</span><input id="cloudCode" type="text" inputmode="numeric" placeholder="6 位验证码" /></label>
-          <button id="cloudVerifyBtn" class="primary" data-i18n="settings.submit">提交</button>
-          <button id="cloudVerifyBack" class="link" data-i18n="settings.backLogin">← 返回登录</button>
-        </div>
-        <div id="cloudDevices" class="step hidden">
-          <p class="hint" data-i18n="settings.deviceHint">选择要连接的打印机：</p>
-          <ul id="deviceList" class="device-list"></ul>
-          <p id="noDevices" class="hint hidden" data-i18n="settings.noDevices">未发现绑定的打印机</p>
-          <button id="cloudDevicesBack" class="link" data-i18n="settings.backLogin">← 返回登录</button>
-        </div>
-        <div id="cloudSummary" class="step hidden">
-          <div class="summary">
-            <div><span class="k" data-i18n="settings.sumName">名称</span><span id="sumName" class="v">—</span></div>
-            <div><span class="k" data-i18n="settings.sumSerial">序列号</span><span id="sumSerial" class="v">—</span></div>
-            <div><span class="k" data-i18n="settings.sumRegion">区域</span><span id="sumRegion" class="v">—</span></div>
+      <!-- ════ 打印机 ════ -->
+      <section class="section" data-section="printers">
+        <h1 class="section-title" data-i18n="nav.printers">打印机</h1>
+        <!-- 账号块 -->
+        <div class="group-label" data-i18n="printers.sectionAccount">账号</div>
+        <div class="card" id="accountBlock">
+          <!-- 登录态：未登录 -->
+          <div id="cloudLogin" class="acc-step">
+            <p class="section-sub" data-i18n="printers.loginIntro">登录 Bambu 账号以同步云端打印机</p>
+            <label><span data-i18n="settings.region">区域</span>
+              <select id="cloudRegion"><option value="global" data-i18n="settings.regionGlobalFull">全球 / Overseas</option><option value="china" data-i18n="settings.regionChinaFull">中国大陆</option></select></label>
+            <label><span data-i18n="settings.account">账号（邮箱或手机号）</span><input id="cloudAccount" type="text" autocomplete="username" /></label>
+            <label><span data-i18n="settings.password">密码</span><input id="cloudPassword" type="password" autocomplete="current-password" /></label>
+            <button id="cloudLoginBtn" class="btn btn-primary" data-i18n="settings.login">登录</button>
           </div>
-          <button id="sumLogout" class="danger" data-i18n="settings.logout">退出登录</button>
-          <button id="sumClose" class="link" data-i18n="settings.close">关闭</button>
-        </div>
-      </div>
-
-      <div id="lanPane" class="subpane hidden">
-        <div class="step">
-          <label><span data-i18n="settings.lanIp">打印机 IP 地址</span><input id="lanHost" type="text" placeholder="192.168.1.x" /></label>
-          <label><span data-i18n="settings.lanCode">访问码（Access Code）</span><input id="lanAccessCode" type="text" placeholder="机身屏幕可查" /></label>
-          <label><span data-i18n="settings.lanSerial">序列号</span><input id="lanSerial" type="text" placeholder="01S00C..." /></label>
-          <div class="row">
-            <button id="lanTestBtn" data-i18n="settings.testConn">测试连接</button>
-            <button id="lanSaveBtn" class="primary" data-i18n="settings.savedAndClose">保存并连接</button>
+          <!-- 登录态：验证码 -->
+          <div id="cloudVerify" class="acc-step hidden">
+            <p class="section-sub" data-i18n="settings.verifyHint">已向你的账号发送验证码，请输入：</p>
+            <label><span data-i18n="settings.verifyCode">验证码</span><input id="cloudCode" type="text" inputmode="numeric" /></label>
+            <button id="cloudVerifyBtn" class="btn btn-primary" data-i18n="settings.submit">提交</button>
+            <button id="cloudVerifyBack" class="btn-link" data-i18n="settings.backLogin">← 返回登录</button>
           </div>
+          <!-- 登录态：已登录摘要 -->
+          <div id="accountSummary" class="acc-step hidden">
+            <div class="account-summary">
+              <span class="who"><span id="sumAccount">—</span> · <span id="sumRegion">—</span></span>
+              <button id="sumLogout" class="btn btn-danger" data-i18n="settings.logout">退出登录</button>
+            </div>
+          </div>
+          <p id="err" class="err hidden"></p>
         </div>
-      </div>
-
-      <p id="err" class="err hidden"></p>
-    </section>
-
-    <!-- ════ 外观 Tab ════ -->
-    <section id="paneAppearance" class="pane hidden">
-      <div class="pref-group">
-        <label class="pref-label">
-          <span class="pref-title" data-i18n="settings.petSize">宠物大小</span>
-          <span class="pref-val" id="sizeVal">220px</span>
-        </label>
-        <input type="range" id="sizeSlider" min="80" max="400" value="220" class="slider" />
-      </div>
-      <div class="pref-group">
-        <label class="pref-label">
-          <span class="pref-title" data-i18n="settings.textSize">文字大小</span>
-          <span class="pref-val" id="fontSizeVal">12px</span>
-        </label>
-        <input type="range" id="fontSizeSlider" min="8" max="20" value="12" class="slider" />
-      </div>
-      <div class="pref-group">
-        <label class="pref-label toggle-row">
-          <span class="pref-title" data-i18n="settings.showLabel">显示文字</span>
-          <input type="checkbox" id="showLabelToggle" class="toggle" checked />
-        </label>
-      </div>
-      <div class="pref-group">
-        <label class="pref-label">
-          <span class="pref-title" data-i18n="settings.language">语言</span>
-        </label>
-        <select id="localeSelect" class="select-full">
-          <option value="zh-CN" data-i18n="settings.langZh">中文</option>
-          <option value="en" data-i18n="settings.langEn">English</option>
-        </select>
-      </div>
-    </section>
-
-    <!-- ════ 关于 Tab ════ -->
-    <section id="paneAbout" class="pane hidden">
-      <div class="about-section">
-        <img class="about-icon" src="../../assets/icon/AppIcon.png" alt="Bambu Buddy" />
-        <h2 id="aboutName">Bambu Buddy</h2>
-        <p class="about-version" id="aboutVersion">v0.1.0</p>
-        <p class="about-desc" data-i18n="settings.aboutDesc">Bambu Buddy — 一只熊猫常驻桌面，根据打印机状态播放对应动画。</p>
-        <button id="checkUpdateBtn" class="btn-update" data-i18n="settings.checkUpdate">检查更新</button>
-        <p id="updateStatus" class="update-status hidden"></p>
-        <div class="about-meta">
-          <div><span class="k" data-i18n="settings.aboutAuthor">作者</span><a id="aboutAuthor" class="v about-author-link" href="#">—</a></div>
+        <!-- 打印机列表 -->
+        <div class="group-label" data-i18n="printers.sectionList">打印机列表</div>
+        <div id="printerList" class="printer-list"></div>
+        <!-- 添加本地打印机 -->
+        <div class="group-label" data-i18n="settings.addLan">添加本地打印机</div>
+        <div class="card">
+          <label><span data-i18n="settings.lanIp">IP 地址</span><input id="pAddHost" type="text" placeholder="192.168.1.x" /></label>
+          <label><span data-i18n="settings.lanCode">访问码</span><input id="pAddCode" type="text" /></label>
+          <label><span data-i18n="settings.lanSerial">序列号</span><input id="pAddSerial" type="text" /></label>
+          <label><span data-i18n="settings.nameOptional">名称（可选）</span><input id="pAddName" type="text" /></label>
+          <button id="pAddBtn" class="btn btn-primary" data-i18n="settings.addAndConnect">添加</button>
+          <span id="pAddMsg" class="section-sub"></span>
         </div>
-      </div>
-    </section>
+      </section>
 
-    <!-- ════ 打印机 Tab ════ -->
-    <section id="panePrinters" class="pane hidden">
-      <div id="printerList" class="printer-list"></div>
-      <fieldset class="lan-add">
-        <legend data-i18n="settings.addLan">添加本地打印机</legend>
-        <label><span data-i18n="settings.lanIp">IP 地址</span><input id="pAddHost" type="text" placeholder="192.168.1.x" /></label>
-        <label><span data-i18n="settings.lanCode">访问码</span><input id="pAddCode" type="text" /></label>
-        <label><span data-i18n="settings.lanSerial">序列号</span><input id="pAddSerial" type="text" /></label>
-        <label><span data-i18n="settings.nameOptional">名称（可选）</span><input id="pAddName" type="text" /></label>
-        <button id="pAddBtn" class="primary" data-i18n="settings.addAndConnect">添加</button>
-        <span id="pAddMsg" class="hint"></span>
-      </fieldset>
-      <div class="account-actions">
-        <button id="pRefreshCloud" data-i18n="settings.refreshDevices">刷新云端设备</button>
-      </div>
-    </section>
-  </main>
+      <!-- ════ 把玩探索 ════ -->
+      <section class="section hidden" data-section="play">
+        <h1 class="section-title" data-i18n="play.title">把玩探索</h1>
+        <p class="section-sub" data-i18n="play.subtitle">不用连打印机，点一下就能看熊猫的各种状态</p>
+        <div class="play-now" id="playNowCard">
+          <div class="play-now-head">
+            <div>
+              <div class="play-now-cap" data-i18n="play.nowPlaying">当前正在演示</div>
+              <div class="play-now-label" id="playStateLabel">—</div>
+            </div>
+            <button id="playReturnBtn" class="btn" data-i18n="play.returnToLive">回到真机</button>
+          </div>
+          <div class="progress-row hidden" id="progressRow">
+            <div class="progress-head"><span data-i18n="play.dragProgress">拖动模拟打印进度</span><span class="val" id="playProgressVal">0%</span></div>
+            <input type="range" id="playProgress" class="slider" min="0" max="100" value="0" />
+          </div>
+          <button id="autoTourBtn" class="btn" style="width:100%;margin-top:12px;" data-i18n="play.autoTour">自动巡演（依次播放全部状态）</button>
+        </div>
+        <div class="group-label" data-i18n="play.galleryHint">点一下试试</div>
+        <div id="playGallery" class="gallery"></div>
+      </section>
 
+      <!-- ════ 外观 ════ -->
+      <section class="section hidden" data-section="appearance">
+        <h1 class="section-title" data-i18n="nav.appearance">外观</h1>
+        <div class="pref-group">
+          <label class="pref-label"><span data-i18n="settings.petSize">宠物大小</span><span class="pref-val" id="sizeVal">220px</span></label>
+          <input type="range" id="sizeSlider" min="80" max="400" value="220" class="slider" />
+        </div>
+        <div class="pref-group">
+          <label class="pref-label"><span data-i18n="settings.textSize">文字大小</span><span class="pref-val" id="fontSizeVal">12px</span></label>
+          <input type="range" id="fontSizeSlider" min="8" max="20" value="12" class="slider" />
+        </div>
+        <div class="pref-group">
+          <label class="pref-label"><span data-i18n="settings.showLabel">显示文字</span><input type="checkbox" id="showLabelToggle" class="toggle" checked /></label>
+        </div>
+        <div class="pref-group">
+          <label class="pref-label"><span data-i18n="settings.language">语言</span></label>
+          <select id="localeSelect"><option value="zh-CN" data-i18n="settings.langZh">中文</option><option value="en" data-i18n="settings.langEn">English</option></select>
+        </div>
+      </section>
+
+      <!-- ════ 关于 ════ -->
+      <section class="section hidden" data-section="about">
+        <div class="about-section">
+          <img class="about-icon" src="../../assets/icon/AppIcon.png" alt="Bambu Buddy" />
+          <h2 id="aboutName">Bambu Buddy</h2>
+          <p class="about-version" id="aboutVersion">v0.1.0</p>
+          <p class="about-desc" data-i18n="settings.aboutDesc">Bambu Buddy — 一只熊猫常驻桌面，根据打印机状态播放对应动画。</p>
+          <button id="checkUpdateBtn" class="btn-update" data-i18n="settings.checkUpdate">检查更新</button>
+          <p id="updateStatus" class="update-status hidden"></p>
+          <div class="about-meta"><div><span class="k" data-i18n="settings.aboutAuthor">作者</span><a id="aboutAuthor" class="about-author-link" href="#">—</a></div></div>
+        </div>
+      </section>
+
+    </main>
+  </div>
   <script src="settings.js"></script>
 </body>
 </html>
