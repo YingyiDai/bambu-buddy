@@ -333,14 +333,6 @@ function buildMenuTemplate() {
   const statusLabel = lastState ? t(locale, lastState.labelKey, lastState.labelParams) : t(locale, 'tray.starting');
   const template = [];
 
-  // ── 设备 / 账号 / 实时信息（Mock 模式不展示）──
-  if (mode !== 'mock') {
-    const printerLabel = getPrinterLabel(locale);
-    if (printerLabel) template.push({ label: printerLabel, enabled: false });
-
-    const accountLabel = getAccountLabel(locale);
-    if (accountLabel) template.push({ label: accountLabel, enabled: false });
-  }
 
   // 状态行（总是展示）
   template.push({ label: `${t(locale, 'tray.status')}：${statusLabel}`, enabled: false });
