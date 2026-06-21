@@ -38,3 +38,30 @@ test('pickTransport: both/lan → lan, cloud → cloud', () => {
   assert.equal(pickTransport({ hasLan: true, hasCloud: false }), 'lan');
   assert.equal(pickTransport({ hasLan: false, hasCloud: true }), 'cloud');
 });
+
+const { addLan, removeLan, renameInList } = require('../src/core/printer-registry');
+
+test('addLan 新增', () => {
+  const r = addLan([], { serial: 'A', name: 'a', model: '', host: 'h', accessCode: 'c' });
+  assert.equal(r.length, 1);
+  assert.equal(r[0].serial, 'A');
+});
+
+test('addLan 同序列号替换而非重复', () => {
+  const r = addLan([{ serial: 'A', name: 'old', host: 'h1', accessCode: 'c1' }],
+                   { serial: 'A', name: 'new', host: 'h2', accessCode: 'c2' });
+  assert.equal(r.length, 1);
+  assert.equal(r[0].name, 'new');
+  assert.equal(r[0].host, 'h2');
+});
+
+test('removeLan 删除', () => {
+  const r = removeLan([{ serial: 'A' }, { serial: 'B' }], 'A');
+  assert.deepEqual(r.map((x) => x.serial), ['B']);
+});
+
+test('renameInList 改名', () => {
+  const r = renameInList([{ serial: 'A', name: 'a' }, { serial: 'B', name: 'b' }], 'B', 'BB');
+  assert.equal(r.find((x) => x.serial === 'B').name, 'BB');
+  assert.equal(r.find((x) => x.serial === 'A').name, 'a');
+});

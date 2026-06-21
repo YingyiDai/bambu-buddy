@@ -35,4 +35,17 @@ function pickTransport(entry) {
   return entry && entry.hasLan ? 'lan' : 'cloud';
 }
 
-module.exports = { mergePrinters, pickTransport };
+function addLan(lanList, printer) {
+  const rest = (lanList || []).filter((p) => p.serial !== printer.serial);
+  return [...rest, { ...printer }];
+}
+
+function removeLan(lanList, serial) {
+  return (lanList || []).filter((p) => p.serial !== serial);
+}
+
+function renameInList(list, serial, name) {
+  return (list || []).map((p) => (p.serial === serial ? { ...p, name } : p));
+}
+
+module.exports = { mergePrinters, pickTransport, addLan, removeLan, renameInList };
