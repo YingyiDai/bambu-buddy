@@ -37,7 +37,7 @@ fi
 
 # 抠像方法：rembg（默认，主体安全）| floodfill（仅非白色主体素材，见头部说明）。
 MATTE_METHOD="${MATTE_METHOD:-rembg}"
-MODEL="${REMBG_MODEL:-u2net}"  # 仅 rembg 方法用
+MODEL="${REMBG_MODEL:-isnet-general-use}"  # 仅 rembg 方法用
 
 # rembg 可执行文件（仅 rembg 方法需要）：优先项目 venv
 REMBG=""

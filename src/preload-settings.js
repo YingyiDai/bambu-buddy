@@ -27,6 +27,10 @@ contextBridge.exposeInMainWorld('bambu', {
   getPreferences: () => ipcRenderer.invoke('pref:getAll'),
   setPreference: (key, value) => ipcRenderer.invoke('pref:set', key, value),
 
+  // 国际化
+  getLocaleStrings: () => ipcRenderer.invoke('locale:getStrings'),
+  getCurrentLocale: () => ipcRenderer.invoke('locale:getCurrent'),
+
   // 关于信息
   getAppInfo: () => ipcRenderer.invoke('app:info'),
 

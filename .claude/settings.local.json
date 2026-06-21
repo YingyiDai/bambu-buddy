@@ -60,7 +60,8 @@
       "WebFetch(domain:deepwiki.com)",
       "Bash(git init *)",
       "Bash(git add *)",
-      "Bash(git commit -m 'Initial commit: BambuPets desktop pet *)"
+      "Bash(git commit -m 'Initial commit: BambuPets desktop pet *)",
+      "Bash(/Users/dai/.claude/plugins/cache/claude-plugins-official/superpowers/6.0.3/skills/subagent-driven-development/scripts/task-brief *)"
     ]
   }
 }

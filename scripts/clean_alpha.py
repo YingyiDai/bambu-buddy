@@ -33,7 +33,7 @@ def main():
     ap.add_argument("in_dir")
     ap.add_argument("out_dir")
     ap.add_argument("--thr", type=int, default=140, help="alpha 二值化阈值（越高越能去掉软阴影）")
-    ap.add_argument("--tmedian", type=int, default=5, help="时间中值滤波窗口（奇数，1=关闭）")
+    ap.add_argument("--tmedian", type=int, default=1, help="时间中值滤波窗口（奇数，1=关闭）")
     ap.add_argument("--min-speck", type=int, default=200, help="小于该像素数的孤立块当噪点删除")
     ap.add_argument("--feather", type=float, default=1.0, help="边缘羽化高斯半径(px)")
     args = ap.parse_args()

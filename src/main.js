@@ -220,7 +220,9 @@ function getAccountLabel(locale) {
   if (mode !== 'cloud') return null;
   const account = store.get('bambuAccount', {});
   if (!account.account) return null;
-  const regionLabel = account.region === 'china' ? (locale === 'zh-CN' ? '中国大陆' : 'China') : (locale === 'zh-CN' ? '全球' : 'Global');
+  const regionLabel = account.region === 'china'
+    ? t(locale, 'settings.regionChina')
+    : t(locale, 'settings.regionGlobal');
   return `${t(locale, 'tray.account')}：${account.account} [${regionLabel}]`;
 }
 
@@ -326,8 +328,15 @@ function buildMenuTemplate() {
 
   // ── Mock 模式：手动切状态子菜单 ──
   if (mode === 'mock' && dataSource instanceof MockDataSource) {
+    const MOCK_LABEL_KEYS = {
+      offline: 'mock.offline', idle: 'mock.idle',
+      prepare_preheat: 'mock.preparePreheat', prepare_leveling: 'mock.prepareLeveling',
+      printing: 'mock.printing', changing_filament: 'mock.changingFilament',
+      paused: 'mock.paused', paused_runout: 'mock.pausedRunout',
+      door_open: 'mock.doorOpen', finished: 'mock.finished', failed: 'mock.failed',
+    };
     const scenarioItems = Object.keys(SCENARIO_LABELS).map((key) => ({
-      label: SCENARIO_LABELS[key],
+      label: t(locale, MOCK_LABEL_KEYS[key] || `mock.${key}`),
       click: () => dataSource.setScenario(key),
     }));
     template.push({ label: t(locale, 'tray.mockSwitch'), submenu: scenarioItems });
@@ -432,7 +441,7 @@ function createSettingsWindow() {
     minimizable: false,
     maximizable: false,
     fullscreenable: false,
-    title: 'Bambu 设置',
+    title: t(store.get('locale', 'zh-CN'), 'settings.title'),
     webPreferences: {
       preload: path.join(__dirname, 'preload-settings.js'),
       contextIsolation: true,
@@ -565,7 +574,7 @@ ipcMain.handle('bambu:logout', async () => {
   if (dataSource) { dataSource.stop(); dataSource = null; }
   lastState = null;
   lastReport = null;
-  if (win && !win.isDestroyed()) win.webContents.send('pet:state', { stateKey: 'offline', videoFile: 'offline.webm', label: '未连接打印机' });
+  if (win && !win.isDestroyed()) win.webContents.send('pet:state', { stateKey: 'offline', videoFile: 'offline.webm', labelKey: 'label.offline', labelParams: {} });
   rebuildTray();
   return { ok: true };
 });
@@ -651,6 +660,10 @@ ipcMain.handle('pref:set', (_e, key, value) => {
   if (key === 'labelFontSize' || key === 'locale' || key === 'showLabel') rebuildTray();
   return { ok: true };
 });
+
+// ---- 国际化 IPC ----
+ipcMain.handle('locale:getStrings', () => STRINGS);
+ipcMain.handle('locale:getCurrent', () => store.get('locale', 'zh-CN'));
 
 ipcMain.handle('app:info', () => {
   const pkg = require('../package.json');
