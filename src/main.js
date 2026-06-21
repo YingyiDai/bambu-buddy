@@ -62,6 +62,7 @@ let dataSource = null;
 let settingsWin = null; // Bambu 连接设置窗（Cloud 登录 / LAN 配置）
 let lastState = null; // 最近一次 resolveState 结果，用于托盘展示
 let lastReport = null; // 最近一次 MQTT 原始报文，供托盘菜单读取实时指标
+let cloudPollTimer = null; // 云端粗粒度状态轮询定时器
 
 function currentSizePx() {
   return store.get('sizePx', 220);
@@ -145,85 +146,119 @@ function setPetSizePx(px) {
 }
 
 // ---- 数据源装配 ----
+// 推送最新状态给宠物窗口（提取自原 buildDataSource 内联逻辑）。
+function pushState() {
+  if (win && !win.isDestroyed()) {
+    win.webContents.send('pet:state', lastState);
+  }
+}
+
+// 应用一份 report：保存原始报文/解析状态、推送、刷新托盘。
+// 供 mock 路径（经 wireDataSource）与真机 live 路径（经 connect 内的 onState）共用。
+function applyReport(report) {
+  lastReport = report; // 保留原始报文供托盘菜单
+  lastState = resolveState(report);
+  pushState();
+  rebuildTray();
+}
+
+// 给数据源接上统一的 onState 回调：保存原始报文/解析状态、推送、刷新托盘。
+// （提取自原 buildDataSource 内联逻辑，行为不变）
+function wireDataSource(ds) {
+  ds.onState((report) => applyReport(report));
+}
+
+// 合并云端 + 本地 打印机为统一列表
+function getUnified() {
+  return registry.mergePrinters(store.get('bambuPrinters', []), store.get('bambuLanPrinters', []));
+}
+// 取当前选中的统一条目
+function resolveActiveEntry() {
+  const serial = store.get('activePrinterSerial');
+  return getUnified().find((p) => p.serial === serial) || null;
+}
+// 用某条目建数据源；transport 指定 'lan'|'cloud'
+function makeSourceFor(entry, transport) {
+  if (transport === 'lan') {
+    const lan = store.get('bambuLanPrinters', []).find((p) => p.serial === entry.serial);
+    return new BambuLanDataSource({ host: lan.host, accessCode: decryptSecret(lan.accessCode), serial: entry.serial });
+  }
+  const account = store.get('bambuAccount');
+  return new BambuCloudDataSource({
+    region: account.region, token: decryptSecret(account.token), uid: account.uid, serial: entry.serial,
+  });
+}
+
 function buildDataSource() {
   if (dataSource) { dataSource.stop(); dataSource = null; }
   const mode = store.get('dataSource', 'mock');
-  if (mode === 'cloud') {
-    const account = store.get('bambuAccount');
-    const activePrinter = store.get('bambuActivePrinter');
-    if (!account || !account.token || !activePrinter) {
-      createSettingsWindow();
-      return;
-    }
-    const token = decryptSecret(account.token);
-    dataSource = new BambuCloudDataSource({
-      region: account.region,
-      token,
-      uid: account.uid,
-      serial: activePrinter,
-    });
-  } else if (mode === 'lan') {
-    const lan = store.get('bambuLan', {});
-    if (!lan.host || !lan.accessCode || !lan.serial) {
-      createSettingsWindow();
-      return;
-    }
-    const accessCode = decryptSecret(lan.accessCode);
-    dataSource = new BambuLanDataSource({
-      host: lan.host,
-      accessCode,
-      serial: lan.serial,
-    });
-  } else {
+  if (mode === 'mock') {
     dataSource = new MockDataSource();
+    wireDataSource(dataSource);
+    dataSource.start();
+    return;
   }
-  // 鉴权/连接失效 → 重新打开设置窗
-  if (typeof dataSource.onAuthFailure === 'function') {
-    dataSource.onAuthFailure(() => {
-      if (!settingsWin) createSettingsWindow();
-      if (settingsWin) settingsWin.webContents.send('bambu:error', '连接已失效，请重新登录');
-    });
-  }
-  dataSource.onState((report) => {
-    lastReport = report; // 保留原始报文供托盘菜单
-    const resolved = resolveState(report);
-    lastState = resolved;
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('pet:state', resolved);
-    }
+  // live：解析当前打印机
+  const entry = resolveActiveEntry();
+  if (!entry) {
+    lastState = resolveState({ connected: false });
+    pushState();
     rebuildTray();
-  });
-  dataSource.start();
+    return;
+  }
+  const transport = registry.pickTransport(entry);
+  let triedCloudFallback = false;
+  const connect = (tp) => {
+    dataSource = makeSourceFor(entry, tp);
+    let everConnected = false;
+    // LAN 从未连接成功且该机也在云端 → 回退云一次（仅一次）
+    const maybeFallback = () => {
+      if (tp === 'lan' && entry.hasCloud && !triedCloudFallback && !everConnected) {
+        triedCloudFallback = true;
+        if (dataSource) dataSource.stop();
+        connect('cloud');
+        return true;
+      }
+      return false;
+    };
+    // 启动期鉴权/配置失败（如云端 token 失效、登录异常）：仍走原逻辑提示重登。
+    if (typeof dataSource.onAuthFailure === 'function') {
+      dataSource.onAuthFailure(() => {
+        if (maybeFallback()) return;
+        // 非回退场景（如云端鉴权失效）：重新打开设置窗提示
+        if (!settingsWin) createSettingsWindow();
+        if (settingsWin) settingsWin.webContents.send('bambu:error', '连接已失效，请重新登录');
+      });
+    }
+    // 运行期 onState：成功连接过一次后，瞬时 error/offline 只表现为离线，不再触发回退或弹窗。
+    dataSource.onState((report) => {
+      if (report && report.connected) everConnected = true;
+      if (!(report && report.connected) && !everConnected && maybeFallback()) return;
+      applyReport(report);
+    });
+    dataSource.start();
+  };
+  connect(transport);
 }
 
 // ---- 托盘（§5.2）----
 // 构建托盘菜单中的打印机身份行。
 function getPrinterLabel(locale) {
   const mode = store.get('dataSource', 'mock');
-  if (mode === 'cloud') {
-    const printers = store.get('bambuPrinters', []);
-    const active = store.get('bambuActivePrinter');
-    const printer = printers.find(p => p.serial === active);
-    if (printer) {
-      const label = printer.model
-        ? `${printer.model} · ${printer.serial}`
-        : `${printer.name} · ${printer.serial}`;
-      return `${t(locale, 'tray.printer')}：${label}`;
-    }
-    return active ? `${t(locale, 'tray.printer')}：${active}` : null;
-  }
-  if (mode === 'lan') {
-    const lan = store.get('bambuLan', {});
-    const label = lan.name ? `${lan.name} · ${lan.host}` : (lan.host || lan.serial);
-    return label ? `${t(locale, 'tray.printer')}：${label}` : null;
-  }
-  return null;
+  if (mode === 'mock') return null;
+  const active = store.get('activePrinterSerial');
+  const printer = getUnified().find((p) => p.serial === active);
+  if (!printer) return active ? `${t(locale, 'tray.printer')}：${active}` : null;
+  const label = printer.model
+    ? `${printer.model} · ${printer.serial}`
+    : `${printer.name} · ${printer.serial}`;
+  return `${t(locale, 'tray.printer')}：${label}`;
 }
 
-// 构建托盘菜单中的账号行（仅 Cloud 模式）。
+// 构建托盘菜单中的账号行（已登录时展示，Mock 模式不展示）。
 function getAccountLabel(locale) {
   const mode = store.get('dataSource', 'mock');
-  if (mode !== 'cloud') return null;
+  if (mode === 'mock') return null;
   const account = store.get('bambuAccount', {});
   if (!account.account) return null;
   const regionLabel = account.region === 'china'
@@ -303,7 +338,7 @@ function buildMenuTemplate() {
   // 状态行（总是展示）
   template.push({ label: `${t(locale, 'tray.status')}：${statusLabel}`, enabled: false });
 
-  // 实时指标（仅 Cloud / LAN 且已连接时）
+  // 实时指标（仅 Live 模式且已连接时）
   const metricsLabel = getMetricsLabel(locale, lastReport);
   if (metricsLabel) template.push({ label: metricsLabel, enabled: false });
 
@@ -314,21 +349,18 @@ function buildMenuTemplate() {
 
   template.push({ type: 'separator' });
 
-  // ── 切换打印机（仅 Cloud 模式，多台打印机时显示）──
-  if (mode === 'cloud') {
-    const printers = store.get('bambuPrinters', []);
-    const activePrinter = store.get('bambuActivePrinter');
-    if (printers.length > 1) {
-      const printerItems = printers.map((p) => ({
-        label: `${p.name} · ${p.serial}`,
+  // ── 切换打印机（Live 模式，统一列表：云端 + 本地）──
+  if (mode === 'live') {
+    const unified = getUnified();
+    const active = store.get('activePrinterSerial');
+    if (unified.length > 0) {
+      const items = unified.map((p) => ({
+        label: `${p.name} · ${p.model || p.serial}`,
         type: 'radio',
-        checked: p.serial === activePrinter,
-        click: () => {
-          store.set('bambuActivePrinter', p.serial);
-          buildDataSource();
-        },
+        checked: p.serial === active,
+        click: () => { store.set('activePrinterSerial', p.serial); buildDataSource(); },
       }));
-      template.push({ label: t(locale, 'tray.switchPrinter'), submenu: printerItems });
+      template.push({ label: t(locale, 'tray.switchPrinter'), submenu: items });
     }
   }
 
@@ -360,26 +392,16 @@ function buildMenuTemplate() {
           click: () => { store.set('dataSource', 'mock'); buildDataSource(); },
         },
         {
-          label: t(locale, 'tray.sourceCloud'), type: 'radio', checked: mode === 'cloud',
+          label: t(locale, 'tray.sourceLive'), type: 'radio', checked: mode === 'live',
           click: () => {
-            store.set('dataSource', 'cloud');
-            const account = store.get('bambuAccount');
-            if (account && account.token && store.get('bambuActivePrinter')) buildDataSource();
-            else createSettingsWindow();
-          },
-        },
-        {
-          label: t(locale, 'tray.sourceLan'), type: 'radio', checked: mode === 'lan',
-          click: () => {
-            store.set('dataSource', 'lan');
-            const lan = store.get('bambuLan', {});
-            if (lan.host && lan.accessCode && lan.serial) buildDataSource();
+            store.set('dataSource', 'live');
+            if (store.get('activePrinterSerial')) buildDataSource();
             else createSettingsWindow();
           },
         },
       ],
     },
-    { label: t(locale, 'tray.settings'), enabled: mode === 'cloud' || mode === 'lan',
+    { label: t(locale, 'tray.settings'), enabled: mode === 'live',
       click: () => createSettingsWindow() },
     {
       label: t(locale, 'tray.size'),
@@ -528,6 +550,29 @@ ipcMain.handle('bambu:listDevices', async () => {
   return bambuAuth.listDevices(region, token);
 });
 
+// ---- 云端粗粒度状态轮询（§Task 5）----
+// 定期刷新 bambuPrinters 的 online/printStatus，驱动托盘与设置窗展示。
+async function refreshCloudPrinters() {
+  const account = store.get('bambuAccount');
+  if (!account || !account.token) return;
+  const r = await bambuAuth.listDevices(account.region, decryptSecret(account.token));
+  if (r.ok) {
+    // 保留用户重命名过的名称：轮询刷新只更新 model/online/printStatus，不覆盖已存的 name。
+    const prevBySerial = new Map(store.get('bambuPrinters', []).map((p) => [p.serial, p]));
+    store.set('bambuPrinters', r.devices.map((d) => ({
+      serial: d.serial,
+      name: prevBySerial.get(d.serial)?.name || d.name,
+      model: d.model, online: d.online, printStatus: d.printStatus || null,
+    })));
+    rebuildTray();
+    if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('printers:changed');
+  }
+}
+function startCloudPoll() {
+  if (cloudPollTimer) clearInterval(cloudPollTimer);
+  cloudPollTimer = setInterval(refreshCloudPrinters, 45000);
+}
+
 ipcMain.handle('bambu:saveDevice', async (_e, serial, name, model) => {
   const { region, token, uid } = resolveActiveToken();
   if (!token) return { ok: false, error: '登录已失效，请重新登录' };
@@ -548,14 +593,16 @@ ipcMain.handle('bambu:saveDevice', async (_e, serial, name, model) => {
   if (idx >= 0) printers[idx] = entry;
   else printers.push(entry);
   store.set('bambuPrinters', printers);
-  store.set('bambuActivePrinter', serial);
+  store.set('activePrinterSerial', serial);
+  store.set('dataSource', 'live');
 
   afterSave();
   return { ok: true };
 });
 
 // LAN 测试连接：临时建一个数据源探活，5 秒内收到报文即视为成功。
-ipcMain.handle('bambu:testLan', async (_e, host, accessCode, serial) => {
+// 抽出为独立函数，供 `bambu:testLan` 与 `printer:addLan` 复用（DRY）。
+async function testLanConnection(host, accessCode, serial) {
   return new Promise((resolve) => {
     const probe = new BambuLanDataSource({ host, accessCode, serial });
     let done = false;
@@ -564,29 +611,73 @@ ipcMain.handle('bambu:testLan', async (_e, host, accessCode, serial) => {
     probe.start();
     const t = setTimeout(() => finish({ ok: false, error: '连接超时，请检查 IP / 访问码' }), 6000);
   });
-});
+}
+
+ipcMain.handle('bambu:testLan', async (_e, host, accessCode, serial) => testLanConnection(host, accessCode, serial));
 
 ipcMain.handle('bambu:saveLan', async (_e, host, accessCode, serial, name) => {
-  store.set('bambuLan', {
-    host,
-    accessCode: encryptSecret(accessCode),
-    serial,
-    name: name || serial,
-  });
+  const list = registry.addLan(store.get('bambuLanPrinters', []),
+    { serial, name: name || serial, model: '', host, accessCode: encryptSecret(accessCode) });
+  store.set('bambuLanPrinters', list);
+  store.set('activePrinterSerial', serial);
+  store.set('dataSource', 'live');
   afterSave();
+  return { ok: true };
+});
+
+// ---- 统一打印机列表管理（§Task 6）----
+ipcMain.handle('printer:list', () => ({
+  printers: getUnified(),
+  activeSerial: store.get('activePrinterSerial') || null,
+  liveLabelKey: lastState ? lastState.labelKey : null,
+  liveLabelParams: lastState ? lastState.labelParams : null,
+}));
+
+ipcMain.handle('printer:setActive', (_e, serial) => {
+  store.set('activePrinterSerial', serial);
+  store.set('dataSource', 'live');
+  buildDataSource();
+  return { ok: true };
+});
+
+ipcMain.handle('printer:addLan', async (_e, host, accessCode, serial, name) => {
+  const test = await testLanConnection(host, accessCode, serial);
+  if (!test.ok) return test;
+  const list = registry.addLan(store.get('bambuLanPrinters', []),
+    { serial, name: name || serial, model: '', host, accessCode: encryptSecret(accessCode) });
+  store.set('bambuLanPrinters', list);
+  rebuildTray();
+  return { ok: true };
+});
+
+ipcMain.handle('printer:removeLan', (_e, serial) => {
+  store.set('bambuLanPrinters', registry.removeLan(store.get('bambuLanPrinters', []), serial));
+  if (store.get('activePrinterSerial') === serial) {
+    const next = getUnified()[0];
+    store.set('activePrinterSerial', next ? next.serial : null);
+    buildDataSource();
+  }
+  rebuildTray();
+  return { ok: true };
+});
+
+ipcMain.handle('printer:rename', (_e, serial, name) => {
+  store.set('bambuLanPrinters', registry.renameInList(store.get('bambuLanPrinters', []), serial, name));
+  store.set('bambuPrinters', registry.renameInList(store.get('bambuPrinters', []), serial, name));
+  rebuildTray();
+  return { ok: true };
+});
+
+ipcMain.handle('printer:refreshCloud', async () => {
+  await refreshCloudPrinters();
   return { ok: true };
 });
 
 // 返回脱敏状态给设置窗预填（永不回 token / accessCode 明文）
 ipcMain.handle('bambu:getState', async () => {
-  const mode = store.get('dataSource', 'mock');
-  if (mode === 'lan') {
-    const lan = store.get('bambuLan', {});
-    return { mode: 'lan', host: lan.host, serial: lan.serial, name: lan.name };
-  }
   const account = store.get('bambuAccount', {});
   const printers = store.get('bambuPrinters', []);
-  const activePrinter = store.get('bambuActivePrinter');
+  const activePrinter = store.get('activePrinterSerial');
   return {
     mode: 'cloud',
     region: account.region,
@@ -602,13 +693,10 @@ ipcMain.handle('bambu:getState', async () => {
 ipcMain.handle('bambu:logout', async () => {
   store.delete('bambuAccount');
   store.delete('bambuPrinters');
-  store.delete('bambuActivePrinter');
   pendingAuth = null;
-  if (dataSource) { dataSource.stop(); dataSource = null; }
-  lastState = null;
-  lastReport = null;
-  if (win && !win.isDestroyed()) win.webContents.send('pet:state', { stateKey: 'offline', videoFile: 'offline.webm', labelKey: 'label.offline', labelParams: {} });
-  rebuildTray();
+  const stillActive = getUnified().some((p) => p.serial === store.get('activePrinterSerial'));
+  if (!stillActive) store.set('activePrinterSerial', getUnified()[0]?.serial || null);
+  buildDataSource();
   return { ok: true };
 });
 
@@ -730,6 +818,8 @@ app.whenReady().then(() => {
   createWindow();
   if (store.get('showInMenuBar', true)) createTray();
   buildDataSource();
+  refreshCloudPrinters();
+  startCloudPoll();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

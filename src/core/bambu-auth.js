@@ -108,7 +108,7 @@ async function sendVerifyCode(region, account, password, tfaKey, code) {
 
 /**
  * 拉取账号绑定的设备列表。
- * 返回 {ok:true, devices:[{serial,name,model,online}]} | {ok:false, error}
+ * 返回 {ok:true, devices:[{serial,name,model,online,printStatus}]} | {ok:false, error}
  */
 async function listDevices(region, token) {
   if (!token) return { ok: false, error: '未登录' };
@@ -122,6 +122,7 @@ async function listDevices(region, token) {
       name: d.name || d.dev_id,
       model: d.dev_model_name || d.dev_product_name || '',
       online: !!d.online,
+      printStatus: d.print_status || null,
     })).filter((d) => d.serial);
     return { ok: true, devices };
   } catch (e) {

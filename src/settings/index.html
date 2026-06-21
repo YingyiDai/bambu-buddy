@@ -12,6 +12,7 @@
     <button id="tabConnection" class="tab-btn active" data-i18n="settings.tabConnection">连接</button>
     <button id="tabAppearance" class="tab-btn" data-i18n="settings.tabAppearance">外观</button>
     <button id="tabAbout" class="tab-btn" data-i18n="settings.tabAbout">关于</button>
+    <button id="tabPrinters" class="tab-btn" data-i18n="settings.tabPrinters">打印机</button>
   </nav>
 
   <main id="content">
@@ -110,6 +111,23 @@
         <div class="about-meta">
           <div><span class="k" data-i18n="settings.aboutAuthor">作者</span><span id="aboutAuthor" class="v">—</span></div>
         </div>
+      </div>
+    </section>
+
+    <!-- ════ 打印机 Tab ════ -->
+    <section id="panePrinters" class="pane hidden">
+      <div id="printerList" class="printer-list"></div>
+      <fieldset class="lan-add">
+        <legend data-i18n="settings.addLan">添加本地打印机</legend>
+        <label><span data-i18n="settings.lanIp">IP 地址</span><input id="pAddHost" type="text" placeholder="192.168.1.x" /></label>
+        <label><span data-i18n="settings.lanCode">访问码</span><input id="pAddCode" type="text" /></label>
+        <label><span data-i18n="settings.lanSerial">序列号</span><input id="pAddSerial" type="text" /></label>
+        <label><span data-i18n="settings.nameOptional">名称（可选）</span><input id="pAddName" type="text" /></label>
+        <button id="pAddBtn" class="primary" data-i18n="settings.addAndConnect">添加</button>
+        <span id="pAddMsg" class="hint"></span>
+      </fieldset>
+      <div class="account-actions">
+        <button id="pRefreshCloud" data-i18n="settings.refreshDevices">刷新云端设备</button>
       </div>
     </section>
   </main>

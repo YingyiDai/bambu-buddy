@@ -51,7 +51,7 @@ function setRegionLabels() {
 
 // ---- Tab 切换 ----
 function switchTab(tab) {
-  for (const t of ['connection', 'appearance', 'about']) {
+  for (const t of ['connection', 'appearance', 'about', 'printers']) {
     el('tab' + t[0].toUpperCase() + t.slice(1)).classList.toggle('active', t === tab);
     el('pane' + t[0].toUpperCase() + t.slice(1)).classList.toggle('hidden', t !== tab);
   }
@@ -59,6 +59,7 @@ function switchTab(tab) {
 el('tabConnection').addEventListener('click', () => switchTab('connection'));
 el('tabAppearance').addEventListener('click', () => { switchTab('appearance'); loadPreferences(); });
 el('tabAbout').addEventListener('click', () => { switchTab('about'); loadAbout(); });
+el('tabPrinters').addEventListener('click', () => { switchTab('printers'); renderPrinters(); });
 
 // ---- 连接模式切换 ----
 function setMode(mode) {
@@ -86,13 +87,7 @@ async function init() {
   await loadLocales();
   try {
     const st = await window.bambu.getStoredState();
-    if (st.mode === 'lan' && st.host) {
-      setMode('lan');
-      el('lanHost').value = st.host || '';
-      el('lanSerial').value = st.serial || '';
-      return;
-    }
-    if (st.mode === 'cloud' && st.hasToken && st.activePrinter) {
+    if (st.hasToken && st.activePrinter) {
       pending.region = st.region || 'global';
       const activePrinter = (st.printers || []).find(p => p.serial === st.activePrinter);
       el('sumName').textContent = activePrinter ? activePrinter.name : (st.name || st.activePrinter);
@@ -253,6 +248,93 @@ async function loadAbout() {
   el('aboutName').textContent = info.name;
   el('aboutVersion').textContent = 'v' + info.version;
 }
+
+// ---- 打印机 Tab ----
+async function renderPrinters() {
+  if (!localeStrings) await loadLocales();
+  const { printers, activeSerial } = await window.bambu.listPrinters();
+  const box = el('printerList');
+  box.innerHTML = '';
+  const srcText = { cloud: t('settings.srcCloud'), lan: t('settings.srcLan'), both: t('settings.srcBoth') };
+  for (const p of printers) {
+    const isActive = p.serial === activeSerial;
+    const status = isActive ? t('settings.statusActive')
+      : (p.hasCloud ? (p.online ? (p.printStatus === 'RUNNING' ? t('settings.statusPrinting') : t('settings.statusOnline')) : t('settings.statusOffline'))
+                    : t('settings.statusNotConnected'));
+    const card = document.createElement('div');
+    card.className = 'printer-card' + (isActive ? ' active' : '');
+    card.dataset.serial = p.serial;
+    card.innerHTML =
+      '<div class="pc-main">' +
+        '<div class="pc-name-row"><span class="pc-name">' + escapeHtml(p.name) + '</span></div>' +
+        '<div class="pc-meta">' + escapeHtml(p.model || p.serial) + ' · <span class="badge">' + escapeHtml(srcText[p.source] || p.source) + '</span> · ' + escapeHtml(status) + '</div>' +
+      '</div>' +
+      '<div class="pc-actions">' +
+        (isActive ? '' : '<button class="pc-act-use" data-s="' + escapeHtml(p.serial) + '">' + escapeHtml(t('settings.setActive')) + '</button>') +
+        '<button class="pc-act-rename" data-s="' + escapeHtml(p.serial) + '">' + escapeHtml(t('settings.rename')) + '</button>' +
+        (p.hasLan ? '<button class="pc-act-remove" data-s="' + escapeHtml(p.serial) + '">' + escapeHtml(t('settings.remove')) + '</button>' : '') +
+      '</div>';
+    box.appendChild(card);
+  }
+  box.querySelectorAll('.pc-act-use').forEach((b) => b.addEventListener('click', async () => {
+    await window.bambu.setActivePrinter(b.dataset.s);
+    renderPrinters();
+  }));
+  box.querySelectorAll('.pc-act-remove').forEach((b) => b.addEventListener('click', async () => {
+    await window.bambu.removeLanPrinter(b.dataset.s);
+    renderPrinters();
+  }));
+  box.querySelectorAll('.pc-act-rename').forEach((b) => b.addEventListener('click', () => startRename(b.dataset.s)));
+}
+
+function startRename(serial) {
+  const card = el('printerList').querySelector('.printer-card[data-serial="' + serial + '"]');
+  if (!card) return;
+  const nameRow = card.querySelector('.pc-name-row');
+  const currentName = card.querySelector('.pc-name').textContent;
+  nameRow.innerHTML =
+    '<input type="text" class="pc-rename-input" value="' + escapeHtml(currentName) + '" />' +
+    '<button class="pc-rename-save">' + escapeHtml(t('settings.renameSave')) + '</button>' +
+    '<button class="pc-rename-cancel">' + escapeHtml(t('settings.renameCancel')) + '</button>';
+  const input = nameRow.querySelector('.pc-rename-input');
+  input.focus();
+  input.select();
+  nameRow.querySelector('.pc-rename-save').addEventListener('click', async () => {
+    const newName = input.value.trim();
+    if (newName) await window.bambu.renamePrinter(serial, newName);
+    renderPrinters();
+  });
+  nameRow.querySelector('.pc-rename-cancel').addEventListener('click', () => renderPrinters());
+}
+
+el('pAddBtn').addEventListener('click', async () => {
+  const host = el('pAddHost').value.trim();
+  const code = el('pAddCode').value.trim();
+  const serial = el('pAddSerial').value.trim();
+  const name = el('pAddName').value.trim();
+  const msg = el('pAddMsg');
+  msg.textContent = '…';
+  const r = await window.bambu.addLanPrinter(host, code, serial, name);
+  if (r.ok) {
+    msg.textContent = t('settings.connSuccess');
+    el('pAddHost').value = '';
+    el('pAddCode').value = '';
+    el('pAddSerial').value = '';
+    el('pAddName').value = '';
+    renderPrinters();
+  } else {
+    msg.textContent = r.error || t('settings.errLanFailed');
+  }
+});
+
+el('pRefreshCloud').addEventListener('click', async () => {
+  await window.bambu.refreshCloud();
+  renderPrinters();
+});
+
+window.bambu.onPrintersChanged(() => {
+  if (!el('panePrinters').classList.contains('hidden')) renderPrinters();
+});
 
 // ---- 工具 ----
 function setBusy(busy) { for (const b of document.querySelectorAll('button')) b.disabled = busy; }

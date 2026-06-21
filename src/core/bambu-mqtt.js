@@ -49,7 +49,10 @@ class BambuMQTTBase {
       });
     });
     this._client.on('message', (_topic, payload) => this._onMessage(payload));
-    this._client.on('error', (err) => { console.error('[bambu-mqtt] 连接错误:', err && (err.message || err.code)); this._emitOffline(); });
+    this._client.on('error', (err) => {
+      console.error('[bambu-mqtt] 连接错误:', err && (err.message || err.code));
+      this._emitOffline();
+    });
     this._client.on('offline', () => this._emitOffline());
     this._client.on('close', () => this._emitOffline());
   }
