@@ -1,13 +1,20 @@
-// Bambu 连接设置窗：Cloud/LAN 双模式状态机。
-// 依赖 preload-settings.js 暴露的 window.bambu（contextBridge）。
-
+// Bambu 设置窗：三 Tab（连接 / 外观 / 关于）。
 const REGION_LABELS = { global: '全球 / Overseas', china: '中国大陆' };
-
 const el = (id) => document.getElementById(id);
-
-// Cloud 登录中间态：验证码 / 已换到的 token（不持久化，仅本次会话）
 const pending = { region: 'global', account: '', password: '', tfaKey: null };
 
+// ---- Tab 切换 ----
+function switchTab(tab) {
+  for (const t of ['connection', 'appearance', 'about']) {
+    el(`tab${t[0].toUpperCase()}${t.slice(1)}`).classList.toggle('active', t === tab);
+    el(`pane${t[0].toUpperCase()}${t.slice(1)}`).classList.toggle('hidden', t !== tab);
+  }
+}
+el('tabConnection').addEventListener('click', () => switchTab('connection'));
+el('tabAppearance').addEventListener('click', () => { switchTab('appearance'); loadPreferences(); });
+el('tabAbout').addEventListener('click', () => { switchTab('about'); loadAbout(); });
+
+// ---- 连接模式切换 ----
 function setMode(mode) {
   document.body.dataset.mode = mode;
   el('modeCloud').classList.toggle('active', mode === 'cloud');
@@ -25,18 +32,10 @@ function setCloudStep(step) {
   clearError();
 }
 
-function showError(msg) {
-  const e = el('err');
-  e.textContent = msg || '';
-  e.classList.toggle('hidden', !msg);
-}
-function clearError() {
-  const e = el('err');
-  e.textContent = '';
-  e.classList.add('hidden');
-}
+function showError(msg) { const e = el('err'); e.textContent = msg || ''; e.classList.toggle('hidden', !msg); }
+function clearError() { const e = el('err'); e.textContent = ''; e.classList.add('hidden'); }
 
-// ---- 初始化：回读已存配置 ----
+// ---- 连接 Tab 初始化 ----
 async function init() {
   try {
     const st = await window.bambu.getStoredState();
@@ -47,7 +46,6 @@ async function init() {
       return;
     }
     if (st.mode === 'cloud' && st.hasToken && st.activePrinter) {
-      // 已登录 → 摘要
       pending.region = st.region || 'global';
       const activePrinter = (st.printers || []).find(p => p.serial === st.activePrinter);
       el('sumName').textContent = activePrinter ? activePrinter.name : (st.name || st.activePrinter);
@@ -56,13 +54,11 @@ async function init() {
       setCloudStep('summary');
       return;
     }
-  } catch (e) {
-    /* 忽略，停留在默认登录步 */
-  }
+  } catch (e) { /* ignore */ }
   setCloudStep('login');
 }
 
-// ---- Cloud: 登录 ----
+// ---- Cloud 登录流程 (unchanged from current) ----
 el('cloudLoginBtn').addEventListener('click', async () => {
   clearError();
   pending.region = el('cloudRegion').value;
@@ -71,20 +67,11 @@ el('cloudLoginBtn').addEventListener('click', async () => {
   setBusy(true);
   const r = await window.bambu.submitCredentials(pending.region, pending.account, pending.password);
   setBusy(false);
-  if (r.needsVerify) {
-    pending.tfaKey = r.tfaKey;
-    setCloudStep('verify');
-    el('cloudCode').focus();
-    return;
-  }
-  if (r.ok) {
-    await showDevices();
-    return;
-  }
+  if (r.needsVerify) { pending.tfaKey = r.tfaKey; setCloudStep('verify'); el('cloudCode').focus(); return; }
+  if (r.ok) { await showDevices(); return; }
   showError(r.error || '登录失败');
 });
 
-// ---- Cloud: 提交验证码 ----
 el('cloudVerifyBtn').addEventListener('click', async () => {
   clearError();
   const code = el('cloudCode').value.trim();
@@ -92,24 +79,13 @@ el('cloudVerifyBtn').addEventListener('click', async () => {
   setBusy(true);
   const r = await window.bambu.submitVerifyCode(pending.region, pending.account, pending.password, pending.tfaKey, code);
   setBusy(false);
-  if (r.ok) {
-    await showDevices();
-    return;
-  }
+  if (r.ok) { await showDevices(); return; }
   showError(r.error || '验证码无效');
 });
 
-el('cloudVerifyBack').addEventListener('click', () => {
-  pending.tfaKey = null;
-  el('cloudCode').value = '';
-  setCloudStep('login');
-});
+el('cloudVerifyBack').addEventListener('click', () => { pending.tfaKey = null; el('cloudCode').value = ''; setCloudStep('login'); });
+el('cloudDevicesBack').addEventListener('click', () => setCloudStep('login'));
 
-el('cloudDevicesBack').addEventListener('click', () => {
-  setCloudStep('login');
-});
-
-// ---- Cloud: 设备列表 ----
 async function showDevices() {
   setBusy(true);
   const r = await window.bambu.listDevices();
@@ -118,11 +94,7 @@ async function showDevices() {
   if (!r.ok) { showError(r.error || '获取设备列表失败'); return; }
   const list = el('deviceList');
   list.innerHTML = '';
-  if (!r.devices.length) {
-    el('noDevices').classList.remove('hidden');
-    setCloudStep('devices');
-    return;
-  }
+  if (!r.devices.length) { el('noDevices').classList.remove('hidden'); setCloudStep('devices'); return; }
   el('noDevices').classList.add('hidden');
   const knownSerials = new Set((st.printers || []).map(p => p.serial));
   for (const d of r.devices) {
@@ -141,14 +113,10 @@ async function saveDevice(serial, name, model) {
   setBusy(true);
   const r = await window.bambu.saveDevice(serial, name, model || '');
   setBusy(false);
-  if (r.ok) {
-    window.bambu.close();
-    return;
-  }
+  if (r.ok) { window.bambu.close(); return; }
   showError(r.error || '保存失败');
 }
 
-// ---- Cloud: 摘要 —— 登出 / 关闭 ----
 el('sumLogout').addEventListener('click', async () => {
   await window.bambu.logout();
   el('cloudAccount').value = '';
@@ -157,12 +125,10 @@ el('sumLogout').addEventListener('click', async () => {
 });
 el('sumClose').addEventListener('click', () => window.bambu.close());
 
-// ---- LAN: 测试 / 保存 ----
+// ---- LAN ----
 el('lanTestBtn').addEventListener('click', async () => {
   clearError();
-  const host = el('lanHost').value.trim();
-  const accessCode = el('lanAccessCode').value.trim();
-  const serial = el('lanSerial').value.trim();
+  const host = el('lanHost').value.trim(), accessCode = el('lanAccessCode').value.trim(), serial = el('lanSerial').value.trim();
   if (!host || !accessCode || !serial) { showError('请填写 IP、访问码和序列号'); return; }
   setBusy(true);
   const r = await window.bambu.testLan(host, accessCode, serial);
@@ -173,9 +139,7 @@ el('lanTestBtn').addEventListener('click', async () => {
 
 el('lanSaveBtn').addEventListener('click', async () => {
   clearError();
-  const host = el('lanHost').value.trim();
-  const accessCode = el('lanAccessCode').value.trim();
-  const serial = el('lanSerial').value.trim();
+  const host = el('lanHost').value.trim(), accessCode = el('lanAccessCode').value.trim(), serial = el('lanSerial').value.trim();
   if (!host || !accessCode || !serial) { showError('请填写 IP、访问码和序列号'); return; }
   setBusy(true);
   const r = await window.bambu.saveLan(host, accessCode, serial, serial);
@@ -184,24 +148,56 @@ el('lanSaveBtn').addEventListener('click', async () => {
   showError(r.error || '保存失败');
 });
 
-// ---- 模式切换 ----
 el('modeCloud').addEventListener('click', () => setMode('cloud'));
 el('modeLan').addEventListener('click', () => setMode('lan'));
 
-// 后台鉴权失效（如 token 过期）→ 主进程推送，回到登录步
 window.bambu.onError((msg) => {
   showError(msg || '连接已失效，请重新登录');
   setCloudStep('login');
 });
 
+// ---- 外观 Tab ----
+async function loadPreferences() {
+  const prefs = await window.bambu.getPreferences();
+  el('sizeSlider').value = prefs.sizePx;
+  el('sizeVal').textContent = prefs.sizePx + 'px';
+  el('fontSizeSlider').value = prefs.labelFontSize;
+  el('fontSizeVal').textContent = prefs.labelFontSize + 'px';
+  el('showLabelToggle').checked = prefs.showLabel;
+  el('localeSelect').value = prefs.locale;
+}
+
+el('sizeSlider').addEventListener('input', () => {
+  const v = el('sizeSlider').value;
+  el('sizeVal').textContent = v + 'px';
+  window.bambu.setPreference('sizePx', Number(v));
+});
+
+el('fontSizeSlider').addEventListener('input', () => {
+  const v = el('fontSizeSlider').value;
+  el('fontSizeVal').textContent = v + 'px';
+});
+el('fontSizeSlider').addEventListener('change', () => {
+  window.bambu.setPreference('labelFontSize', Number(el('fontSizeSlider').value));
+});
+
+el('showLabelToggle').addEventListener('change', () => {
+  window.bambu.setPreference('showLabel', el('showLabelToggle').checked);
+});
+
+el('localeSelect').addEventListener('change', () => {
+  window.bambu.setPreference('locale', el('localeSelect').value);
+});
+
+// ---- 关于 Tab ----
+async function loadAbout() {
+  const info = await window.bambu.getAppInfo();
+  el('aboutName').textContent = info.name;
+  el('aboutVersion').textContent = 'v' + info.version;
+}
+
 // ---- 工具 ----
-function setBusy(busy) {
-  for (const b of document.querySelectorAll('button')) b.disabled = busy;
-}
-function escapeHtml(s) {
-  return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
-    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
-  }[c]));
-}
+function setBusy(busy) { for (const b of document.querySelectorAll('button')) b.disabled = busy; }
+function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
 init();
