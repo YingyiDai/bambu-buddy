@@ -1,107 +1,65 @@
-// 设置窗：多 Tab + i18n。
+// 设置窗控制器：侧边栏导航 + i18n + 打印机/把玩/外观/关于。
 const el = (id) => document.getElementById(id);
 const pending = { region: 'global', account: '', password: '', tfaKey: null };
-
 let localeStrings = null;
 let currentLocale = 'zh-CN';
 
 function t(key, params) {
   const map = (localeStrings && localeStrings[currentLocale]) || {};
-  let template = map[key];
-  if (template == null) return key;
-  if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      template = template.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
-    }
+  let s = map[key];
+  if (s == null) return key;
+  if (params) for (const [k, v] of Object.entries(params)) s = s.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
+  return s;
+}
+function applyLocaleText(node, text) {
+  if (node.children.length > 0) {
+    for (const c of node.childNodes) if (c.nodeType === Node.TEXT_NODE && c.textContent.trim()) { c.textContent = text; return; }
   }
-  return template;
+  node.textContent = text;
 }
-
-// 遍历所有 [data-i18n] 元素，替换文本
-function applyLocaleText(el, text) {
-  if (el.children.length > 0) {
-    for (const node of el.childNodes) {
-      if (node.nodeType === Node.TEXT_NODE && node.textContent.trim()) {
-        node.textContent = text; return;
-      }
-    }
-  }
-  el.textContent = text;
-}
-
-function renderLocale() {
-  document.querySelectorAll('[data-i18n]').forEach(el => {
-    applyLocaleText(el, t(el.dataset.i18n));
-  });
-}
-
+function renderLocale() { document.querySelectorAll('[data-i18n]').forEach((n) => applyLocaleText(n, t(n.dataset.i18n))); }
 async function loadLocales() {
   localeStrings = await window.bambu.getLocaleStrings();
   currentLocale = await window.bambu.getCurrentLocale();
   renderLocale();
 }
+function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+function setBusy(b) { for (const x of document.querySelectorAll('button')) x.disabled = b; }
+function showError(m) { const e = el('err'); e.textContent = m || ''; e.classList.toggle('hidden', !m); }
+function clearError() { showError(''); }
 
-function setRegionLabels() {
-  // REGION_LABELS are now locale-aware — used in summary display
-  return {
-    global: t('settings.regionGlobalFull'),
-    china: t('settings.regionChinaFull'),
-  };
+// ── 侧边栏导航 ──
+function switchSection(name) {
+  document.querySelectorAll('.nav-item').forEach((b) => b.classList.toggle('active', b.dataset.section === name));
+  document.querySelectorAll('.section').forEach((s) => s.classList.toggle('hidden', s.dataset.section !== name));
+  if (name === 'printers') renderPrinters();
+  if (name === 'play') initPlay();
+  if (name === 'appearance') loadPreferences();
+  if (name === 'about') loadAbout();
 }
+document.querySelectorAll('.nav-item').forEach((b) => b.addEventListener('click', () => switchSection(b.dataset.section)));
 
-// ---- Tab 切换 ----
-function switchTab(tab) {
-  for (const t of ['connection', 'appearance', 'about', 'printers']) {
-    el('tab' + t[0].toUpperCase() + t.slice(1)).classList.toggle('active', t === tab);
-    el('pane' + t[0].toUpperCase() + t.slice(1)).classList.toggle('hidden', t !== tab);
-  }
-}
-el('tabConnection').addEventListener('click', () => switchTab('connection'));
-el('tabAppearance').addEventListener('click', () => { switchTab('appearance'); loadPreferences(); });
-el('tabAbout').addEventListener('click', () => { switchTab('about'); loadAbout(); });
-el('tabPrinters').addEventListener('click', () => { switchTab('printers'); renderPrinters(); });
-
-// ---- 连接模式切换 ----
-function setMode(mode) {
-  document.body.dataset.mode = mode;
-  el('modeCloud').classList.toggle('active', mode === 'cloud');
-  el('modeLan').classList.toggle('active', mode === 'lan');
-  el('cloudPane').classList.toggle('hidden', mode !== 'cloud');
-  el('lanPane').classList.toggle('hidden', mode !== 'lan');
-  clearError();
-}
-
-function setCloudStep(step) {
-  document.body.dataset.step = step;
-  for (const s of ['Login', 'Verify', 'Devices', 'Summary']) {
-    el('cloud' + s).classList.toggle('hidden', s.toLowerCase() !== step);
+// ── 账号块：登录 / 验证码 / 已登录摘要 ──
+function setAccStep(step) { // 'login' | 'verify' | 'summary'
+  for (const s of ['Login', 'Verify', 'Summary']) {
+    const id = s === 'Summary' ? 'accountSummary' : 'cloud' + s;
+    el(id).classList.toggle('hidden', s.toLowerCase() !== step);
   }
   clearError();
 }
-
-function showError(msg) { const e = el('err'); e.textContent = msg || ''; e.classList.toggle('hidden', !msg); }
-function clearError() { const e = el('err'); e.textContent = ''; e.classList.add('hidden'); }
-
-// ---- 连接 Tab 初始化 ----
-async function init() {
-  await loadLocales();
+async function refreshAccountBlock() {
   try {
     const st = await window.bambu.getStoredState();
-    if (st.hasToken && st.activePrinter) {
-      pending.region = st.region || 'global';
-      const activePrinter = (st.printers || []).find(p => p.serial === st.activePrinter);
-      el('sumName').textContent = activePrinter ? activePrinter.name : (st.name || st.activePrinter);
-      el('sumSerial').textContent = st.activePrinter;
-      const labels = setRegionLabels();
-      el('sumRegion').textContent = labels[st.region] || st.region || '—';
-      setCloudStep('summary');
+    if (st.hasToken) {
+      el('sumAccount').textContent = st.account || st.activePrinter || '—';
+      const rl = { global: t('settings.regionGlobalFull'), china: t('settings.regionChinaFull') };
+      el('sumRegion').textContent = rl[st.region] || st.region || '—';
+      setAccStep('summary');
       return;
     }
   } catch (e) { /* ignore */ }
-  setCloudStep('login');
+  setAccStep('login');
 }
-
-// ---- Cloud 登录流程 ----
 el('cloudLoginBtn').addEventListener('click', async () => {
   clearError();
   pending.region = el('cloudRegion').value;
@@ -110,11 +68,10 @@ el('cloudLoginBtn').addEventListener('click', async () => {
   setBusy(true);
   const r = await window.bambu.submitCredentials(pending.region, pending.account, pending.password);
   setBusy(false);
-  if (r.needsVerify) { pending.tfaKey = r.tfaKey; setCloudStep('verify'); el('cloudCode').focus(); return; }
-  if (r.ok) { await showDevices(); return; }
+  if (r.needsVerify) { pending.tfaKey = r.tfaKey; setAccStep('verify'); el('cloudCode').focus(); return; }
+  if (r.ok) { await afterLogin(); return; }
   showError(r.error || t('settings.errLoginFailed'));
 });
-
 el('cloudVerifyBtn').addEventListener('click', async () => {
   clearError();
   const code = el('cloudCode').value.trim();
@@ -122,187 +79,32 @@ el('cloudVerifyBtn').addEventListener('click', async () => {
   setBusy(true);
   const r = await window.bambu.submitVerifyCode(pending.region, pending.account, pending.password, pending.tfaKey, code);
   setBusy(false);
-  if (r.ok) { await showDevices(); return; }
+  if (r.ok) { await afterLogin(); return; }
   showError(r.error || t('settings.errVerifyInvalid'));
 });
-
-el('cloudVerifyBack').addEventListener('click', () => { pending.tfaKey = null; el('cloudCode').value = ''; setCloudStep('login'); });
-el('cloudDevicesBack').addEventListener('click', () => setCloudStep('login'));
-
-async function showDevices() {
-  setBusy(true);
-  const r = await window.bambu.listDevices();
-  const st = await window.bambu.getStoredState();
-  setBusy(false);
-  if (!r.ok) { showError(r.error || t('settings.errDeviceListFailed')); return; }
-  const list = el('deviceList');
-  list.innerHTML = '';
-  if (!r.devices.length) { el('noDevices').classList.remove('hidden'); setCloudStep('devices'); return; }
-  el('noDevices').classList.add('hidden');
-  const knownSerials = new Set((st.printers || []).map(p => p.serial));
-  const onlineText = t('settings.deviceOnline');
-  const offlineText = t('settings.deviceOffline');
-  const unknownText = t('settings.deviceUnknown');
-  for (const d of r.devices) {
-    const isKnown = knownSerials.has(d.serial);
-    const li = document.createElement('li');
-    const statusCls = d.online === true ? 'online' : (d.online === false ? 'offline' : 'unknown');
-    const statusText = d.online === true ? onlineText : (d.online === false ? offlineText : unknownText);
-    li.className = isKnown ? 'known' : '';
-    li.innerHTML = '<div class="d-name">' + escapeHtml(d.name) + (isKnown ? ' ✓' : '') + '</div>' +
-      '<div class="d-meta ' + statusCls + '">' + escapeHtml(d.model || '') + ' · ' + d.serial + ' · ' + statusText + '</div>';
-    li.addEventListener('click', () => saveDevice(d.serial, d.name, d.model || ''));
-    list.appendChild(li);
-  }
-  setCloudStep('devices');
-}
-
-async function saveDevice(serial, name, model) {
-  setBusy(true);
-  const r = await window.bambu.saveDevice(serial, name, model || '');
-  setBusy(false);
-  if (r.ok) { window.bambu.close(); return; }
-  showError(r.error || t('settings.errSaveFailed'));
-}
-
+el('cloudVerifyBack').addEventListener('click', () => { pending.tfaKey = null; el('cloudCode').value = ''; setAccStep('login'); });
 el('sumLogout').addEventListener('click', async () => {
   await window.bambu.logout();
-  el('cloudAccount').value = '';
-  el('cloudPassword').value = '';
-  setCloudStep('login');
+  el('cloudAccount').value = ''; el('cloudPassword').value = '';
+  setAccStep('login'); renderPrinters();
 });
-el('sumClose').addEventListener('click', () => window.bambu.close());
-
-// ---- LAN ----
-el('lanTestBtn').addEventListener('click', async () => {
-  clearError();
-  const host = el('lanHost').value.trim(), accessCode = el('lanAccessCode').value.trim(), serial = el('lanSerial').value.trim();
-  if (!host || !accessCode || !serial) { showError(t('settings.errLanFields')); return; }
+// 登录成功：拉取设备并入统一列表（无需单独选设备步骤），刷新账号块 + 列表。
+async function afterLogin() {
   setBusy(true);
-  const r = await window.bambu.testLan(host, accessCode, serial);
+  const r = await window.bambu.listDevices();
+  if (r.ok) for (const d of r.devices) await window.bambu.saveDevice(d.serial, d.name, d.model || '');
   setBusy(false);
-  if (r.ok) { showError(t('settings.connSuccess')); return; }
-  showError(r.error || t('settings.errLanFailed'));
-});
-
-el('lanSaveBtn').addEventListener('click', async () => {
-  clearError();
-  const host = el('lanHost').value.trim(), accessCode = el('lanAccessCode').value.trim(), serial = el('lanSerial').value.trim();
-  if (!host || !accessCode || !serial) { showError(t('settings.errLanFields')); return; }
-  setBusy(true);
-  const r = await window.bambu.saveLan(host, accessCode, serial, serial);
-  setBusy(false);
-  if (r.ok) { window.bambu.close(); return; }
-  showError(r.error || t('settings.errSaveFailed'));
-});
-
-el('modeCloud').addEventListener('click', () => setMode('cloud'));
-el('modeLan').addEventListener('click', () => setMode('lan'));
-
-window.bambu.onError((msg) => {
-  showError(msg || t('settings.errAuthExpired'));
-  setCloudStep('login');
-});
-
-// ---- 外观 Tab ----
-async function loadPreferences() {
-  if (!localeStrings) await loadLocales();
-  const prefs = await window.bambu.getPreferences();
-  el('sizeSlider').value = prefs.sizePx;
-  el('sizeVal').textContent = prefs.sizePx + 'px';
-  el('fontSizeSlider').value = prefs.labelFontSize;
-  el('fontSizeVal').textContent = prefs.labelFontSize + 'px';
-  el('showLabelToggle').checked = prefs.showLabel;
-  el('localeSelect').value = prefs.locale;
-  if (prefs.locale !== currentLocale) {
-    currentLocale = prefs.locale;
-    renderLocale();
-  }
+  await refreshAccountBlock();
+  renderPrinters();
 }
+window.bambu.onError((msg) => { showError(msg || t('settings.errAuthExpired')); setAccStep('login'); });
 
-el('sizeSlider').addEventListener('input', () => {
-  const v = el('sizeSlider').value;
-  el('sizeVal').textContent = v + 'px';
-  window.bambu.setPreference('sizePx', Number(v));
-});
-
-el('fontSizeSlider').addEventListener('input', () => {
-  el('fontSizeVal').textContent = el('fontSizeSlider').value + 'px';
-});
-el('fontSizeSlider').addEventListener('change', () => {
-  window.bambu.setPreference('labelFontSize', Number(el('fontSizeSlider').value));
-});
-
-el('showLabelToggle').addEventListener('change', () => {
-  window.bambu.setPreference('showLabel', el('showLabelToggle').checked);
-});
-
-el('localeSelect').addEventListener('change', () => {
-  const newLocale = el('localeSelect').value;
-  currentLocale = newLocale;
-  renderLocale();
-  window.bambu.setPreference('locale', newLocale);
-});
-
-// ---- 关于 Tab ----
-async function loadAbout() {
-  if (!localeStrings) await loadLocales();
-  const info = await window.bambu.getAppInfo();
-  el('aboutName').textContent = info.name;
-  el('aboutVersion').textContent = 'v' + info.version;
-  el('aboutAuthor').textContent = 'YingyiDai';
-  el('aboutAuthor').addEventListener('click', (e) => {
-    e.preventDefault();
-    window.bambu.openExternal('https://makerworld.com.cn/zh/@yingyidai');
-  });
-  el('updateStatus').classList.add('hidden');
-  el('checkUpdateBtn').textContent = t('settings.checkUpdate');
-  el('checkUpdateBtn').disabled = false;
-}
-
-// ---- 检查更新 ----
-el('checkUpdateBtn').addEventListener('click', async () => {
-  const btn = el('checkUpdateBtn');
-  const status = el('updateStatus');
-  btn.disabled = true;
-  btn.textContent = t('settings.checkingUpdate');
-  status.classList.add('hidden');
-
-  let result;
-  try {
-    result = await window.bambu.checkForUpdates();
-  } catch (err) {
-    result = { error: t('settings.updateError') };
-  }
-
-  status.classList.remove('hidden');
-  if (result.error) {
-    status.className = 'update-status error';
-    status.textContent = result.error;
-  } else if (result.hasUpdate) {
-    status.className = 'update-status available';
-    status.innerHTML =
-      t('settings.updateAvailableHtml', { version: result.latestVersion }) +
-      ' · <a href="#" class="release-link">' + t('settings.viewRelease') + '</a>';
-    status.querySelector('.release-link').addEventListener('click', (e) => {
-      e.preventDefault();
-      window.bambu.openExternal(result.releaseUrl);
-    });
-  } else {
-    status.className = 'update-status uptodate';
-    status.textContent = t('settings.upToDate');
-  }
-
-  btn.disabled = false;
-  btn.textContent = t('settings.checkUpdate');
-});
-
-// ---- 打印机 Tab ----
+// ── 统一打印机列表 ──
 async function renderPrinters() {
   if (!localeStrings) await loadLocales();
+  await refreshAccountBlock();
   const { printers, activeSerial } = await window.bambu.listPrinters();
-  const box = el('printerList');
-  box.innerHTML = '';
+  const box = el('printerList'); box.innerHTML = '';
   const srcText = { cloud: t('settings.srcCloud'), lan: t('settings.srcLan'), both: t('settings.srcBoth') };
   for (const p of printers) {
     const isActive = p.serial === activeSerial;
@@ -313,79 +115,84 @@ async function renderPrinters() {
     card.className = 'printer-card' + (isActive ? ' active' : '');
     card.dataset.serial = p.serial;
     card.innerHTML =
-      '<div class="pc-main">' +
-        '<div class="pc-name-row"><span class="pc-name">' + escapeHtml(p.name) + '</span></div>' +
-        '<div class="pc-meta">' + escapeHtml(p.model || p.serial) + ' · <span class="badge">' + escapeHtml(srcText[p.source] || p.source) + '</span> · ' + escapeHtml(status) + '</div>' +
-      '</div>' +
+      '<div class="pc-main"><div class="pc-name-row"><span class="pc-name">' + escapeHtml(p.name) + '</span></div>' +
+      '<div class="pc-meta">' + escapeHtml(p.model || p.serial) + ' · <span class="badge">' + escapeHtml(srcText[p.source] || p.source) + '</span> · ' + escapeHtml(status) + '</div></div>' +
       '<div class="pc-actions">' +
-        (isActive ? '' : '<button class="pc-act-use" data-s="' + escapeHtml(p.serial) + '">' + escapeHtml(t('settings.setActive')) + '</button>') +
-        '<button class="pc-act-rename" data-s="' + escapeHtml(p.serial) + '">' + escapeHtml(t('settings.rename')) + '</button>' +
-        (p.hasLan ? '<button class="pc-act-remove" data-s="' + escapeHtml(p.serial) + '">' + escapeHtml(t('settings.remove')) + '</button>' : '') +
+        (isActive ? '' : '<button class="btn pc-act-use" data-s="' + escapeHtml(p.serial) + '">' + escapeHtml(t('settings.setActive')) + '</button>') +
+        '<button class="btn pc-act-rename" data-s="' + escapeHtml(p.serial) + '">' + escapeHtml(t('settings.rename')) + '</button>' +
+        (p.hasLan ? '<button class="btn pc-act-remove" data-s="' + escapeHtml(p.serial) + '">' + escapeHtml(t('settings.remove')) + '</button>' : '') +
       '</div>';
     box.appendChild(card);
   }
-  box.querySelectorAll('.pc-act-use').forEach((b) => b.addEventListener('click', async () => {
-    await window.bambu.setActivePrinter(b.dataset.s);
-    renderPrinters();
-  }));
-  box.querySelectorAll('.pc-act-remove').forEach((b) => b.addEventListener('click', async () => {
-    await window.bambu.removeLanPrinter(b.dataset.s);
-    renderPrinters();
-  }));
+  box.querySelectorAll('.pc-act-use').forEach((b) => b.addEventListener('click', async () => { await window.bambu.setActivePrinter(b.dataset.s); renderPrinters(); }));
+  box.querySelectorAll('.pc-act-remove').forEach((b) => b.addEventListener('click', async () => { await window.bambu.removeLanPrinter(b.dataset.s); renderPrinters(); }));
   box.querySelectorAll('.pc-act-rename').forEach((b) => b.addEventListener('click', () => startRename(b.dataset.s)));
 }
-
 function startRename(serial) {
   const card = el('printerList').querySelector('.printer-card[data-serial="' + serial + '"]');
   if (!card) return;
-  const nameRow = card.querySelector('.pc-name-row');
-  const currentName = card.querySelector('.pc-name').textContent;
-  nameRow.innerHTML =
-    '<input type="text" class="pc-rename-input" value="' + escapeHtml(currentName) + '" />' +
-    '<button class="pc-rename-save">' + escapeHtml(t('settings.renameSave')) + '</button>' +
-    '<button class="pc-rename-cancel">' + escapeHtml(t('settings.renameCancel')) + '</button>';
-  const input = nameRow.querySelector('.pc-rename-input');
-  input.focus();
-  input.select();
-  nameRow.querySelector('.pc-rename-save').addEventListener('click', async () => {
-    const newName = input.value.trim();
-    if (newName) await window.bambu.renamePrinter(serial, newName);
-    renderPrinters();
-  });
-  nameRow.querySelector('.pc-rename-cancel').addEventListener('click', () => renderPrinters());
+  const row = card.querySelector('.pc-name-row');
+  const cur = card.querySelector('.pc-name').textContent;
+  row.innerHTML = '<input type="text" class="pc-rename-input" value="' + escapeHtml(cur) + '" />' +
+    '<button class="btn pc-rename-save">' + escapeHtml(t('settings.renameSave')) + '</button>' +
+    '<button class="btn pc-rename-cancel">' + escapeHtml(t('settings.renameCancel')) + '</button>';
+  const input = row.querySelector('.pc-rename-input'); input.focus(); input.select();
+  row.querySelector('.pc-rename-save').addEventListener('click', async () => { const v = input.value.trim(); if (v) await window.bambu.renamePrinter(serial, v); renderPrinters(); });
+  row.querySelector('.pc-rename-cancel').addEventListener('click', () => renderPrinters());
 }
-
 el('pAddBtn').addEventListener('click', async () => {
-  const host = el('pAddHost').value.trim();
-  const code = el('pAddCode').value.trim();
-  const serial = el('pAddSerial').value.trim();
-  const name = el('pAddName').value.trim();
-  const msg = el('pAddMsg');
-  msg.textContent = '…';
+  const host = el('pAddHost').value.trim(), code = el('pAddCode').value.trim(), serial = el('pAddSerial').value.trim(), name = el('pAddName').value.trim();
+  const msg = el('pAddMsg'); msg.textContent = '…';
   const r = await window.bambu.addLanPrinter(host, code, serial, name);
-  if (r.ok) {
-    msg.textContent = t('settings.connSuccess');
-    el('pAddHost').value = '';
-    el('pAddCode').value = '';
-    el('pAddSerial').value = '';
-    el('pAddName').value = '';
-    renderPrinters();
-  } else {
-    msg.textContent = r.error || t('settings.errLanFailed');
-  }
+  if (r.ok) { msg.textContent = t('settings.connSuccess'); el('pAddHost').value = el('pAddCode').value = el('pAddSerial').value = el('pAddName').value = ''; renderPrinters(); }
+  else msg.textContent = r.error || t('settings.errLanFailed');
+});
+window.bambu.onPrintersChanged(() => { const sec = document.querySelector('.section[data-section="printers"]'); if (sec && !sec.classList.contains('hidden')) renderPrinters(); });
+
+// ── 外观 ──
+async function loadPreferences() {
+  if (!localeStrings) await loadLocales();
+  const p = await window.bambu.getPreferences();
+  el('sizeSlider').value = p.sizePx; el('sizeVal').textContent = p.sizePx + 'px';
+  el('fontSizeSlider').value = p.labelFontSize; el('fontSizeVal').textContent = p.labelFontSize + 'px';
+  el('showLabelToggle').checked = p.showLabel;
+  el('localeSelect').value = p.locale;
+  if (p.locale !== currentLocale) { currentLocale = p.locale; renderLocale(); }
+}
+el('sizeSlider').addEventListener('input', () => { const v = el('sizeSlider').value; el('sizeVal').textContent = v + 'px'; window.bambu.setPreference('sizePx', Number(v)); });
+el('fontSizeSlider').addEventListener('input', () => { el('fontSizeVal').textContent = el('fontSizeSlider').value + 'px'; });
+el('fontSizeSlider').addEventListener('change', () => window.bambu.setPreference('labelFontSize', Number(el('fontSizeSlider').value)));
+el('showLabelToggle').addEventListener('change', () => window.bambu.setPreference('showLabel', el('showLabelToggle').checked));
+el('localeSelect').addEventListener('change', () => { currentLocale = el('localeSelect').value; renderLocale(); window.bambu.setPreference('locale', currentLocale); });
+
+// ── 关于 ──
+async function loadAbout() {
+  if (!localeStrings) await loadLocales();
+  const info = await window.bambu.getAppInfo();
+  el('aboutName').textContent = info.name;
+  el('aboutVersion').textContent = 'v' + info.version;
+  const author = el('aboutAuthor');
+  author.textContent = 'YingyiDai';
+  author.onclick = (e) => { e.preventDefault(); window.bambu.openExternal('https://makerworld.com.cn/zh/@yingyidai'); };
+  el('updateStatus').classList.add('hidden');
+  el('checkUpdateBtn').textContent = t('settings.checkUpdate'); el('checkUpdateBtn').disabled = false;
+}
+el('checkUpdateBtn').addEventListener('click', async () => {
+  const btn = el('checkUpdateBtn'), status = el('updateStatus');
+  btn.disabled = true; btn.textContent = t('settings.checkingUpdate'); status.classList.add('hidden');
+  let result; try { result = await window.bambu.checkForUpdates(); } catch (e) { result = { error: t('settings.updateError') }; }
+  status.classList.remove('hidden');
+  if (result.error) { status.className = 'update-status error'; status.textContent = result.error; }
+  else if (result.hasUpdate) {
+    status.className = 'update-status available';
+    status.innerHTML = t('settings.updateAvailableHtml', { version: result.latestVersion }) + ' · <a href="#" class="release-link">' + t('settings.viewRelease') + '</a>';
+    status.querySelector('.release-link').addEventListener('click', (e) => { e.preventDefault(); window.bambu.openExternal(result.releaseUrl); });
+  } else { status.className = 'update-status uptodate'; status.textContent = t('settings.upToDate'); }
+  btn.disabled = false; btn.textContent = t('settings.checkUpdate');
 });
 
-el('pRefreshCloud').addEventListener('click', async () => {
-  await window.bambu.refreshCloud();
-  renderPrinters();
-});
+// ── 把玩页（Task 7 填充）──
+function initPlay() { /* Task 7 */ }
 
-window.bambu.onPrintersChanged(() => {
-  if (!el('panePrinters').classList.contains('hidden')) renderPrinters();
-});
-
-// ---- 工具 ----
-function setBusy(busy) { for (const b of document.querySelectorAll('button')) b.disabled = busy; }
-function escapeHtml(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-
-init();
+// ── 启动：默认进入打印机区域 ──
+(async function start() { await loadLocales(); switchSection('printers'); })();
