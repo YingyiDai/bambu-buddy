@@ -298,8 +298,11 @@ main { padding: 18px 20px; }
   padding: 24px 0;
 }
 .about-icon {
-  font-size: 64px;
+  width: 80px;
+  height: 80px;
   margin-bottom: 12px;
+  border-radius: 18px;  /* macOS 风格圆角 */
+  object-fit: cover;
 }
 .about-section h2 {
   margin: 0 0 4px;
