@@ -333,6 +333,32 @@ main { padding: 18px 20px; }
 .about-meta .k { color: #6e6e73; font-size: 12px; }
 .about-meta .v { color: #1d1d1f; font-size: 13px; font-weight: 500; }
 
+/* ── 检查更新 ── */
+.btn-update {
+  display: inline-block;
+  margin: 12px 0 0;
+  padding: 6px 20px;
+  font-size: 13px;
+  border: 1px solid #007aff;
+  border-radius: 6px;
+  background: transparent;
+  color: #007aff;
+  cursor: pointer;
+}
+.btn-update:hover { background: #007aff; color: #fff; }
+.btn-update:disabled { opacity: 0.5; cursor: default; }
+
+.update-status {
+  font-size: 12px;
+  margin: 10px 0 0;
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+.update-status.uptodate    { color: #34c759; background: rgba(52,199,89,0.08); }
+.update-status.available   { color: #007aff; background: rgba(0,122,255,0.08); }
+.update-status.error       { color: #ff3b30; background: rgba(255,59,48,0.08); }
+.update-status .release-link { color: #007aff; text-decoration: underline; cursor: pointer; }
+
 /* ── 打印机 Tab ── */
 .printer-list {
   display: flex;

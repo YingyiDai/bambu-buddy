@@ -1,6 +1,6 @@
 // Electron 主进程：透明置顶窗口、托盘、IPC、位置记忆、数据源驱动（§5）。
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, safeStorage } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, safeStorage, shell, dialog } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 
@@ -9,6 +9,7 @@ const { MockDataSource, SCENARIO_LABELS } = require('./core/mock');
 const { BambuCloudDataSource, BambuLanDataSource } = require('./core/bambu-mqtt');
 const bambuAuth = require('./core/bambu-auth');
 const { t, STRINGS } = require('./config/locales');
+const { checkForUpdates } = require('./core/updater');
 const registry = require('./core/printer-registry');
 
 const store = new Store();
@@ -402,6 +403,34 @@ function buildMenuTemplate() {
     },
     { label: t(locale, 'tray.settings'), enabled: mode === 'live',
       click: () => createSettingsWindow() },
+    {
+      label: t(locale, 'tray.checkUpdate'),
+      click: async () => {
+        const pkg = require('../package.json');
+        const result = await checkForUpdates(pkg.version);
+        if (result.error) {
+          dialog.showMessageBox({
+            type: 'warning',
+            message: result.error,
+          });
+        } else if (result.hasUpdate) {
+          const { response } = await dialog.showMessageBox({
+            type: 'info',
+            message: t(locale, 'settings.updateAvailable', { version: result.latestVersion }),
+            detail: t(locale, 'settings.updateDetail', { current: result.currentVersion, latest: result.latestVersion }),
+            buttons: [t(locale, 'settings.openRelease'), t(locale, 'settings.close')],
+            defaultId: 0,
+          });
+          if (response === 0) shell.openExternal(result.releaseUrl);
+        } else {
+          dialog.showMessageBox({
+            type: 'info',
+            message: t(locale, 'settings.upToDate'),
+            detail: t(locale, 'settings.upToDateDetail', { version: result.currentVersion }),
+          });
+        }
+      },
+    },
     { type: 'separator' },
     {
       label: t(locale, 'tray.showInMenuBar'),
@@ -797,6 +826,15 @@ ipcMain.handle('app:info', () => {
     version: pkg.version,
     description: 'Bambu Buddy',
   };
+});
+
+ipcMain.handle('app:checkUpdate', async () => {
+  const pkg = require('../package.json');
+  return checkForUpdates(pkg.version);
+});
+
+ipcMain.handle('app:openExternal', (_e, url) => {
+  return shell.openExternal(url);
 });
 
 // ---- 生命周期 ----

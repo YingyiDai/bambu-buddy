@@ -34,6 +34,10 @@ contextBridge.exposeInMainWorld('bambu', {
   // 关于信息
   getAppInfo: () => ipcRenderer.invoke('app:info'),
 
+  // 检查更新
+  checkForUpdates: () => ipcRenderer.invoke('app:checkUpdate'),
+  openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
+
   // 主进程推送的后台错误（如 token 过期）
   onError: (cb) => ipcRenderer.on('bambu:error', (_e, msg) => cb(msg)),
 

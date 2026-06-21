@@ -250,7 +250,47 @@ async function loadAbout() {
   const info = await window.bambu.getAppInfo();
   el('aboutName').textContent = info.name;
   el('aboutVersion').textContent = 'v' + info.version;
+  el('updateStatus').classList.add('hidden');
+  el('checkUpdateBtn').textContent = t('settings.checkUpdate');
+  el('checkUpdateBtn').disabled = false;
 }
+
+// ---- 检查更新 ----
+el('checkUpdateBtn').addEventListener('click', async () => {
+  const btn = el('checkUpdateBtn');
+  const status = el('updateStatus');
+  btn.disabled = true;
+  btn.textContent = t('settings.checkingUpdate');
+  status.classList.add('hidden');
+
+  let result;
+  try {
+    result = await window.bambu.checkForUpdates();
+  } catch (err) {
+    result = { error: t('settings.updateError') };
+  }
+
+  status.classList.remove('hidden');
+  if (result.error) {
+    status.className = 'update-status error';
+    status.textContent = result.error;
+  } else if (result.hasUpdate) {
+    status.className = 'update-status available';
+    status.innerHTML =
+      t('settings.updateAvailableHtml', { version: result.latestVersion }) +
+      ' · <a href="#" class="release-link">' + t('settings.viewRelease') + '</a>';
+    status.querySelector('.release-link').addEventListener('click', (e) => {
+      e.preventDefault();
+      window.bambu.openExternal(result.releaseUrl);
+    });
+  } else {
+    status.className = 'update-status uptodate';
+    status.textContent = t('settings.upToDate');
+  }
+
+  btn.disabled = false;
+  btn.textContent = t('settings.checkUpdate');
+});
 
 // ---- 打印机 Tab ----
 async function renderPrinters() {
