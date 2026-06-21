@@ -62,6 +62,7 @@ let dataSource = null;
 let settingsWin = null; // Bambu 连接设置窗（Cloud 登录 / LAN 配置）
 let lastState = null; // 最近一次 resolveState 结果，用于托盘展示
 let lastReport = null; // 最近一次 MQTT 原始报文，供托盘菜单读取实时指标
+let cloudPollTimer = null; // 云端粗粒度状态轮询定时器
 
 function currentSizePx() {
   return store.get('sizePx', 220);
@@ -572,6 +573,25 @@ ipcMain.handle('bambu:listDevices', async () => {
   return bambuAuth.listDevices(region, token);
 });
 
+// ---- 云端粗粒度状态轮询（§Task 5）----
+// 定期刷新 bambuPrinters 的 online/printStatus，驱动托盘与设置窗展示。
+async function refreshCloudPrinters() {
+  const account = store.get('bambuAccount');
+  if (!account || !account.token) return;
+  const r = await bambuAuth.listDevices(account.region, decryptSecret(account.token));
+  if (r.ok) {
+    store.set('bambuPrinters', r.devices.map((d) => ({
+      serial: d.serial, name: d.name, model: d.model, online: d.online, printStatus: d.printStatus || null,
+    })));
+    rebuildTray();
+    if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('printers:changed');
+  }
+}
+function startCloudPoll() {
+  if (cloudPollTimer) clearInterval(cloudPollTimer);
+  cloudPollTimer = setInterval(refreshCloudPrinters, 45000);
+}
+
 ipcMain.handle('bambu:saveDevice', async (_e, serial, name, model) => {
   const { region, token, uid } = resolveActiveToken();
   if (!token) return { ok: false, error: '登录已失效，请重新登录' };
@@ -774,6 +794,8 @@ app.whenReady().then(() => {
   createWindow();
   if (store.get('showInMenuBar', true)) createTray();
   buildDataSource();
+  refreshCloudPrinters();
+  startCloudPoll();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
