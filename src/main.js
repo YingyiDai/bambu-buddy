@@ -245,30 +245,20 @@ function buildDataSource() {
 // 构建托盘菜单中的打印机身份行。
 function getPrinterLabel(locale) {
   const mode = store.get('dataSource', 'mock');
-  if (mode === 'cloud') {
-    const printers = store.get('bambuPrinters', []);
-    const active = store.get('bambuActivePrinter');
-    const printer = printers.find(p => p.serial === active);
-    if (printer) {
-      const label = printer.model
-        ? `${printer.model} · ${printer.serial}`
-        : `${printer.name} · ${printer.serial}`;
-      return `${t(locale, 'tray.printer')}：${label}`;
-    }
-    return active ? `${t(locale, 'tray.printer')}：${active}` : null;
-  }
-  if (mode === 'lan') {
-    const lan = store.get('bambuLan', {});
-    const label = lan.name ? `${lan.name} · ${lan.host}` : (lan.host || lan.serial);
-    return label ? `${t(locale, 'tray.printer')}：${label}` : null;
-  }
-  return null;
+  if (mode === 'mock') return null;
+  const active = store.get('activePrinterSerial');
+  const printer = getUnified().find((p) => p.serial === active);
+  if (!printer) return active ? `${t(locale, 'tray.printer')}：${active}` : null;
+  const label = printer.model
+    ? `${printer.model} · ${printer.serial}`
+    : `${printer.name} · ${printer.serial}`;
+  return `${t(locale, 'tray.printer')}：${label}`;
 }
 
-// 构建托盘菜单中的账号行（仅 Cloud 模式）。
+// 构建托盘菜单中的账号行（已登录时展示，Mock 模式不展示）。
 function getAccountLabel(locale) {
   const mode = store.get('dataSource', 'mock');
-  if (mode !== 'cloud') return null;
+  if (mode === 'mock') return null;
   const account = store.get('bambuAccount', {});
   if (!account.account) return null;
   const regionLabel = account.region === 'china'
@@ -348,7 +338,7 @@ function buildMenuTemplate() {
   // 状态行（总是展示）
   template.push({ label: `${t(locale, 'tray.status')}：${statusLabel}`, enabled: false });
 
-  // 实时指标（仅 Cloud / LAN 且已连接时）
+  // 实时指标（仅 Live 模式且已连接时）
   const metricsLabel = getMetricsLabel(locale, lastReport);
   if (metricsLabel) template.push({ label: metricsLabel, enabled: false });
 
@@ -359,21 +349,18 @@ function buildMenuTemplate() {
 
   template.push({ type: 'separator' });
 
-  // ── 切换打印机（仅 Cloud 模式，多台打印机时显示）──
-  if (mode === 'cloud') {
-    const printers = store.get('bambuPrinters', []);
-    const activePrinter = store.get('bambuActivePrinter');
-    if (printers.length > 1) {
-      const printerItems = printers.map((p) => ({
-        label: `${p.name} · ${p.serial}`,
+  // ── 切换打印机（Live 模式，统一列表：云端 + 本地）──
+  if (mode === 'live') {
+    const unified = getUnified();
+    const active = store.get('activePrinterSerial');
+    if (unified.length > 0) {
+      const items = unified.map((p) => ({
+        label: `${p.name} · ${p.model || p.serial}`,
         type: 'radio',
-        checked: p.serial === activePrinter,
-        click: () => {
-          store.set('bambuActivePrinter', p.serial);
-          buildDataSource();
-        },
+        checked: p.serial === active,
+        click: () => { store.set('activePrinterSerial', p.serial); buildDataSource(); },
       }));
-      template.push({ label: t(locale, 'tray.switchPrinter'), submenu: printerItems });
+      template.push({ label: t(locale, 'tray.switchPrinter'), submenu: items });
     }
   }
 
@@ -405,26 +392,16 @@ function buildMenuTemplate() {
           click: () => { store.set('dataSource', 'mock'); buildDataSource(); },
         },
         {
-          label: t(locale, 'tray.sourceCloud'), type: 'radio', checked: mode === 'cloud',
+          label: t(locale, 'tray.sourceLive'), type: 'radio', checked: mode === 'live',
           click: () => {
-            store.set('dataSource', 'cloud');
-            const account = store.get('bambuAccount');
-            if (account && account.token && store.get('bambuActivePrinter')) buildDataSource();
-            else createSettingsWindow();
-          },
-        },
-        {
-          label: t(locale, 'tray.sourceLan'), type: 'radio', checked: mode === 'lan',
-          click: () => {
-            store.set('dataSource', 'lan');
-            const lan = store.get('bambuLan', {});
-            if (lan.host && lan.accessCode && lan.serial) buildDataSource();
+            store.set('dataSource', 'live');
+            if (store.get('activePrinterSerial')) buildDataSource();
             else createSettingsWindow();
           },
         },
       ],
     },
-    { label: t(locale, 'tray.settings'), enabled: mode === 'cloud' || mode === 'lan',
+    { label: t(locale, 'tray.settings'), enabled: mode === 'live',
       click: () => createSettingsWindow() },
     {
       label: t(locale, 'tray.size'),
