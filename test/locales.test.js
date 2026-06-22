@@ -15,7 +15,7 @@ test('侧边栏与把玩页框架键存在', () => {
     'play.title', 'play.subtitle', 'play.nowPlaying', 'play.inLiveMode',
     'play.dragProgress', 'play.autoTour', 'play.autoTourStop', 'play.returnToLive',
     'play.galleryHint', 'printers.sectionAccount', 'printers.sectionList',
-    'tray.sourcePlay']) {
+    'tray.playMode', 'tray.noPrinter', 'tray.addPrinter']) {
     assert.ok(STRINGS['zh-CN'][k], `zh-CN 缺 ${k}`);
     assert.ok(STRINGS['en'][k], `en 缺 ${k}`);
   }

@@ -38,6 +38,9 @@ function switchSection(name) {
   if (name === 'about') loadAbout();
 }
 document.querySelectorAll('.nav-item').forEach((b) => b.addEventListener('click', () => switchSection(b.dataset.section)));
+// 主进程请求跳转某子页面（设置窗已打开时）
+const KNOWN_SECTIONS = ['printers', 'play', 'appearance', 'about'];
+window.bambu.onNavigate((section) => { if (KNOWN_SECTIONS.includes(section)) switchSection(section); });
 
 // ── 账号块：登录 / 验证码 / 已登录摘要 ──
 function setAccStep(step) { // 'login' | 'verify' | 'summary'
@@ -262,4 +265,6 @@ el('playReturnBtn').addEventListener('click', async () => {
 window.bambu.onPlayStateChanged((st) => { autoTouring = false; el('autoTourBtn').textContent = t('play.autoTour'); renderPlayState(st); });
 
 // ── 启动：默认进入打印机区域 ──
-(async function start() { await loadLocales(); switchSection('printers'); })();
+// 初始子页面：由窗口创建时的 hash 决定（如 #play），默认打印机
+const INITIAL_SECTION = KNOWN_SECTIONS.includes((location.hash || '').slice(1)) ? location.hash.slice(1) : 'printers';
+(async function start() { await loadLocales(); switchSection(INITIAL_SECTION); })();

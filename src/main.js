@@ -359,42 +359,33 @@ function buildMenuTemplate() {
 
   template.push({ type: 'separator' });
 
-  // ── 切换打印机（Live 模式，统一列表：云端 + 本地）──
-  if (mode === 'live') {
+  // ── 打印机（始终展示）：有打印机则列出可切换；无打印机则提示并支持跳转设置 ──
+  {
     const unified = getUnified();
     const active = store.get('activePrinterSerial');
+    let printerSubmenu;
     if (unified.length > 0) {
-      const items = unified.map((p) => ({
+      printerSubmenu = unified.map((p) => ({
         label: `${p.name} · ${p.model || p.serial}`,
         type: 'radio',
-        checked: p.serial === active,
-        click: () => { store.set('activePrinterSerial', p.serial); buildDataSource(); },
+        checked: mode === 'live' && p.serial === active,
+        click: () => { store.set('activePrinterSerial', p.serial); store.set('dataSource', 'live'); buildDataSource(); },
       }));
-      template.push({ label: t(locale, 'tray.switchPrinter'), submenu: items });
+    } else {
+      printerSubmenu = [
+        { label: t(locale, 'tray.noPrinter'), enabled: false },
+        { label: t(locale, 'tray.addPrinter'), click: () => createSettingsWindow('printers') },
+      ];
     }
+    template.push({ label: t(locale, 'tray.printer'), submenu: printerSubmenu });
   }
 
-  // ── 数据源 / 大小 / 设置 / 退出 ──
+  // ── 把玩模式 / 设置 / 大小 / 退出 ──
   template.push(
-    {
-      label: t(locale, 'tray.source'),
-      submenu: [
-        {
-          label: t(locale, 'tray.sourcePlay'), type: 'radio', checked: mode === 'mock',
-          click: () => { store.set('dataSource', 'mock'); buildDataSource(); },
-        },
-        {
-          label: t(locale, 'tray.sourceLive'), type: 'radio', checked: mode === 'live',
-          click: () => {
-            store.set('dataSource', 'live');
-            if (store.get('activePrinterSerial')) buildDataSource();
-            else createSettingsWindow();
-          },
-        },
-      ],
-    },
+    { label: t(locale, 'tray.playMode'),
+      click: () => createSettingsWindow('play') },
     { label: t(locale, 'tray.settings'),
-      click: () => createSettingsWindow() },
+      click: () => createSettingsWindow('printers') },
     {
       label: t(locale, 'tray.checkUpdate'),
       click: async () => {
@@ -495,10 +486,11 @@ function createTray() {
 }
 
 // ---- Bambu 连接设置窗 ----
-function createSettingsWindow() {
+function createSettingsWindow(section = 'printers') {
   if (settingsWin && !settingsWin.isDestroyed()) {
     settingsWin.show();
     settingsWin.focus();
+    settingsWin.webContents.send('settings:navigate', section);
     return;
   }
   settingsWin = new BrowserWindow({
@@ -516,7 +508,7 @@ function createSettingsWindow() {
       nodeIntegration: false,
     },
   });
-  settingsWin.loadFile(path.join(__dirname, 'settings', 'index.html'));
+  settingsWin.loadFile(path.join(__dirname, 'settings', 'index.html'), { hash: section });
   settingsWin.on('closed', () => { settingsWin = null; });
 }
 

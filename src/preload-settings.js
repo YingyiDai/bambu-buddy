@@ -13,6 +13,9 @@ contextBridge.exposeInMainWorld('bambu', {
   saveDevice: (serial, name, model) => ipcRenderer.invoke('bambu:saveDevice', serial, name, model),
   completeCloudLogin: () => ipcRenderer.invoke('bambu:completeCloudLogin'),
 
+  // 主进程请求设置窗切到某个子页面（printers / play / appearance / about）
+  onNavigate: (cb) => ipcRenderer.on('settings:navigate', (_e, section) => cb(section)),
+
   // LAN 测试 / 保存
   testLan: (host, accessCode, serial) =>
     ipcRenderer.invoke('bambu:testLan', host, accessCode, serial),
