@@ -183,7 +183,7 @@ async function loadAbout() {
   if (!localeStrings) await loadLocales();
   const info = await window.bambu.getAppInfo();
   el('aboutName').textContent = info.name;
-  el('aboutVersion').textContent = 'v' + info.version;
+  el('aboutCurrentVersion').textContent = 'v' + info.version;
   const author = el('aboutAuthor');
   author.textContent = 'YingyiDai';
   author.onclick = (e) => { e.preventDefault(); window.bambu.openExternal('https://makerworld.com.cn/zh/@yingyidai'); };

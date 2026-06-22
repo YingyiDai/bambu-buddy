@@ -201,8 +201,9 @@ const STRINGS = {
     'settings.openRelease': '打开发布页',
     'settings.updateError': '检查更新失败',
     'settings.aboutName': 'Bambu Buddy',
-    'settings.aboutDesc': 'Bambu Buddy — 一只熊猫常驻桌面，根据打印机状态播放对应动画。',
+    'settings.aboutDesc': '一只住在桌面上的熊猫，会实时跟着你的拓竹打印机状态做出反应。',
     'settings.aboutAuthor': '作者',
+    'about.currentVersion': '当前版本',
 
     // 设置窗 — 连接模式/区域/错误
     'settings.modeCloud': 'Bambu Cloud 账号',
@@ -472,8 +473,9 @@ const STRINGS = {
     'settings.openRelease': 'Open Release Page',
     'settings.updateError': 'Could not check for updates',
     'settings.aboutName': 'Bambu Buddy',
-    'settings.aboutDesc': 'A desktop pet panda that lives on your screen and reacts to your Bambu Lab 3D printer status.',
+    'settings.aboutDesc': 'A desktop pet panda that lives on your screen and reacts to your Bambu 3D printer.',
     'settings.aboutAuthor': 'Author',
+    'about.currentVersion': 'Current version',
 
     // Settings — connection mode / region / errors
     'settings.modeCloud': 'Bambu Cloud',
