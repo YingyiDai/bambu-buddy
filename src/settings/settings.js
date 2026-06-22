@@ -197,10 +197,10 @@ el('checkUpdateBtn').addEventListener('click', async () => {
 // 场景表（key/icon 与 src/config/play-scenarios.js 一致；文案走 locale play.<key>.name/.desc）
 const PLAY_SCENARIOS = [
   { key: 'printing', icon: '🖨️', hasProgress: true },
-  { key: 'idle', icon: '😴' }, { key: 'prepare_preheat', icon: '🔥' },
+  { key: 'idle', icon: '😴' },
   { key: 'prepare_leveling', icon: '📐' }, { key: 'changing_filament', icon: '🔄' },
-  { key: 'paused', icon: '⏸️' }, { key: 'paused_runout', icon: '🪹' },
-  { key: 'door_open', icon: '🚪' }, { key: 'finished', icon: '🎉' },
+  { key: 'paused', icon: '⏸️' },
+  { key: 'finished', icon: '🎉' },
   { key: 'failed', icon: '😢' }, { key: 'offline', icon: '🔌' },
 ];
 let playGalleryBuilt = false;

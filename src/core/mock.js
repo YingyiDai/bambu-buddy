@@ -20,7 +20,7 @@ const SCENARIOS = {
   paused_runout: () => ({ connected: true, gcode_state: 'PAUSE', stg_cur: STAGE.FILAMENT_RUNOUT }),
   door_open: () => ({ connected: true, gcode_state: 'PAUSE', door_open: true }),
   finished: () => ({ connected: true, gcode_state: 'FINISH' }),
-  failed: () => ({ connected: true, gcode_state: 'FAILED', hms: [{ code: 'HMS_0300', severity: 'fatal' }] }),
+  failed: () => ({ connected: true, gcode_state: 'FAILED' }),
 };
 
 // 托盘菜单展示用：场景 key → 中文标签

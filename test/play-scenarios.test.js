@@ -23,7 +23,7 @@ test('每个场景都有 icon，且 key 唯一', () => {
     assert.ok(!keys.has(s.key), `重复 key ${s.key}`);
     keys.add(s.key);
   }
-  assert.equal(PLAY_SCENARIOS.length, 11);
+  assert.equal(PLAY_SCENARIOS.length, 8);
 });
 
 test('labelKey / descKey 命名规则', () => {

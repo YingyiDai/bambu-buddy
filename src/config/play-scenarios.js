@@ -5,12 +5,9 @@
 const PLAY_SCENARIOS = [
   { key: 'printing',          icon: '🖨️', hasProgress: true  },
   { key: 'idle',              icon: '😴', hasProgress: false },
-  { key: 'prepare_preheat',   icon: '🔥', hasProgress: false },
   { key: 'prepare_leveling',  icon: '📐', hasProgress: false },
   { key: 'changing_filament', icon: '🔄', hasProgress: false },
   { key: 'paused',            icon: '⏸️', hasProgress: false },
-  { key: 'paused_runout',     icon: '🪹', hasProgress: false },
-  { key: 'door_open',         icon: '🚪', hasProgress: false },
   { key: 'finished',          icon: '🎉', hasProgress: false },
   { key: 'failed',            icon: '😢', hasProgress: false },
   { key: 'offline',           icon: '🔌', hasProgress: false },
