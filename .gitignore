@@ -1,7 +1,19 @@
 node_modules/
 .venv/
-assets/anim/*.webm
 dist/
 .DS_Store
 *.log
 .superpowers/
+
+# Python 构建产物
+__pycache__/
+*.pyc
+
+# 本地机器配置（不公开）
+.claude/settings.local.json
+
+# 原始视频素材（体积大，不随仓库分发；处理产物 assets/anim/*.webm 已提交）
+assets/source/
+
+# 开发过程文档（AI 规划/设计稿、发版清单，统一收在 docs/superpowers/ 下），本地保留不公开
+docs/superpowers/
