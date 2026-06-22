@@ -27,7 +27,7 @@ html, body {
   top: 0;
   left: 0;
   right: 0;
-  bottom: 26px;             /* 给下方 label 留空间 */
+  bottom: 34px;             /* 给下方 label 留空间（含 +8px 间距） */
   /* cursor 由 pet.js 根据热区动态设置 */
 }
 
