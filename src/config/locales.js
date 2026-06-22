@@ -162,7 +162,10 @@ const STRINGS = {
     'settings.petSize': '宠物大小',
     'settings.textSize': '文字大小',
     'settings.showLabel': '显示文字',
+    'settings.showLabelDesc': '在熊猫下方显示状态文字',
     'settings.language': '语言',
+    'settings.languageDesc': '菜单与状态文字的界面语言',
+    'appearance.subtitle': '调整熊猫在桌面上的外观与界面语言',
     'settings.langZh': '中文',
     'settings.langEn': 'English',
     // 打印机 Tab
@@ -430,7 +433,10 @@ const STRINGS = {
     'settings.petSize': 'Pet Size',
     'settings.textSize': 'Text Size',
     'settings.showLabel': 'Show Label',
+    'settings.showLabelDesc': 'Show the status text below the panda',
     'settings.language': 'Language',
+    'settings.languageDesc': 'Interface language for menus and status text',
+    'appearance.subtitle': 'Adjust how the panda looks on your desktop and the UI language',
     'settings.langZh': '中文',
     'settings.langEn': 'English',
     // Printers Tab

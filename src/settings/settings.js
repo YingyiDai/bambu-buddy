@@ -160,7 +160,18 @@ async function loadPreferences() {
   el('showLabelToggle').checked = p.showLabel;
   el('localeSelect').value = p.locale;
   if (p.locale !== currentLocale) { currentLocale = p.locale; renderLocale(); }
+  syncAllSliderFills();
 }
+
+// ── 滑杆填充轨道：--fill 跟随当前值（拖动时由全局 input 监听更新，
+//    程序化赋值后调用 syncAllSliderFills 刷新）──
+function syncSliderFill(s) {
+  const min = Number(s.min) || 0, max = Number(s.max) || 100;
+  const pct = max > min ? ((Number(s.value) - min) / (max - min)) * 100 : 0;
+  s.style.setProperty('--fill', pct + '%');
+}
+function syncAllSliderFills() { document.querySelectorAll('.slider').forEach(syncSliderFill); }
+document.addEventListener('input', (e) => { if (e.target.classList && e.target.classList.contains('slider')) syncSliderFill(e.target); });
 el('sizeSlider').addEventListener('input', () => { const v = el('sizeSlider').value; el('sizeVal').textContent = v + 'px'; window.bambu.setPreference('sizePx', Number(v)); });
 el('fontSizeSlider').addEventListener('input', () => { el('fontSizeVal').textContent = el('fontSizeSlider').value + 'px'; });
 el('fontSizeSlider').addEventListener('change', () => window.bambu.setPreference('labelFontSize', Number(el('fontSizeSlider').value)));
@@ -232,7 +243,7 @@ function renderPlayState(st) {
   // 进度滑杆仅在场景声明 hasProgress 时显示（目前仅 printing）
   const showProg = st.isPlaying && !!(sc && sc.hasProgress);
   el('progressRow').classList.toggle('hidden', !showProg);
-  if (showProg) { el('playProgress').value = st.percent; el('playProgressVal').textContent = st.percent + '%'; }
+  if (showProg) { el('playProgress').value = st.percent; el('playProgressVal').textContent = st.percent + '%'; syncSliderFill(el('playProgress')); }
   // 画廊高亮当前
   document.querySelectorAll('.play-card').forEach((c) => c.classList.toggle('active', st.isPlaying && c.dataset.key === st.currentScenario));
 }

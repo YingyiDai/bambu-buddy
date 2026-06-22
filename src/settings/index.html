@@ -89,20 +89,38 @@
       <!-- ════ 外观 ════ -->
       <section class="section hidden" data-section="appearance">
         <h1 class="section-title" data-i18n="nav.appearance">外观</h1>
-        <div class="pref-group">
-          <label class="pref-label"><span data-i18n="settings.petSize">宠物大小</span><span class="pref-val" id="sizeVal">220px</span></label>
-          <input type="range" id="sizeSlider" min="80" max="400" value="220" class="slider" />
-        </div>
-        <div class="pref-group">
-          <label class="pref-label"><span data-i18n="settings.textSize">文字大小</span><span class="pref-val" id="fontSizeVal">12px</span></label>
-          <input type="range" id="fontSizeSlider" min="8" max="20" value="12" class="slider" />
-        </div>
-        <div class="pref-group">
-          <label class="pref-label"><span data-i18n="settings.showLabel">显示文字</span><input type="checkbox" id="showLabelToggle" class="toggle" checked /></label>
-        </div>
-        <div class="pref-group">
-          <label class="pref-label"><span data-i18n="settings.language">语言</span></label>
-          <select id="localeSelect"><option value="zh-CN" data-i18n="settings.langZh">中文</option><option value="en" data-i18n="settings.langEn">English</option></select>
+        <p class="section-sub" data-i18n="appearance.subtitle">调整熊猫在桌面上的外观与界面语言</p>
+        <div class="section-rows">
+          <div class="row row-stack">
+            <div class="row-head">
+              <span class="row-label" data-i18n="settings.petSize">宠物大小</span>
+              <span class="row-val" id="sizeVal">220px</span>
+            </div>
+            <input type="range" id="sizeSlider" min="80" max="400" value="220" class="slider" />
+          </div>
+          <div class="row row-stack">
+            <div class="row-head">
+              <span class="row-label" data-i18n="settings.textSize">文字大小</span>
+              <span class="row-val" id="fontSizeVal">12px</span>
+            </div>
+            <input type="range" id="fontSizeSlider" min="8" max="20" value="12" class="slider" />
+          </div>
+          <div class="row">
+            <div class="row-text">
+              <span class="row-label" data-i18n="settings.showLabel">显示文字</span>
+              <span class="row-desc" data-i18n="settings.showLabelDesc">在熊猫下方显示状态文字</span>
+            </div>
+            <div class="row-control"><input type="checkbox" id="showLabelToggle" class="toggle" checked /></div>
+          </div>
+          <div class="row">
+            <div class="row-text">
+              <span class="row-label" data-i18n="settings.language">语言</span>
+              <span class="row-desc" data-i18n="settings.languageDesc">菜单与状态文字的界面语言</span>
+            </div>
+            <div class="row-control">
+              <select id="localeSelect"><option value="zh-CN" data-i18n="settings.langZh">中文</option><option value="en" data-i18n="settings.langEn">English</option></select>
+            </div>
+          </div>
         </div>
       </section>
 
