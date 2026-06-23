@@ -30,6 +30,8 @@
       "src/**/*",
       "assets/anim/**/*",
       "assets/icon/**",
+      "assets/printer/**",
+      "assets/image/**",
       "!assets/source/**"
     ],
     "mac": {
