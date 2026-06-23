@@ -13,8 +13,9 @@ test('zh-CN 与 en 键集完全一致', () => {
 test('侧边栏与把玩页框架键存在', () => {
   for (const k of ['nav.printers', 'nav.play', 'nav.appearance', 'nav.about',
     'play.title', 'play.subtitle', 'play.nowPlaying', 'play.inLiveMode',
-    'play.dragProgress', 'play.autoTour', 'play.autoTourStop', 'play.returnToLive',
-    'play.galleryHint', 'printers.sectionAccount', 'printers.sectionList',
+    'play.returnToLive', 'play.draw', 'play.gachaTitle', 'play.gachaSub',
+    'play.drawHint', 'play.cardBack', 'play.allStates',
+    'printers.sectionAccount', 'printers.sectionList',
     'tray.playMode', 'tray.noPrinter', 'tray.addPrinter']) {
     assert.ok(STRINGS['zh-CN'][k], `zh-CN 缺 ${k}`);
     assert.ok(STRINGS['en'][k], `en 缺 ${k}`);
@@ -22,10 +23,10 @@ test('侧边栏与把玩页框架键存在', () => {
 });
 
 test('每个把玩场景都有 name 与 desc（中英）', () => {
-  for (const s of PLAY_SCENARIOS) {
+  for (const e of PLAY_SCENARIOS) {
     for (const loc of ['zh-CN', 'en']) {
-      assert.ok(STRINGS[loc][playLabelKey(s.key)], `${loc} 缺 ${playLabelKey(s.key)}`);
-      assert.ok(STRINGS[loc][playDescKey(s.key)], `${loc} 缺 ${playDescKey(s.key)}`);
+      assert.ok(STRINGS[loc][playLabelKey(e)], `${loc} 缺 ${playLabelKey(e)}`);
+      assert.ok(STRINGS[loc][playDescKey(e)], `${loc} 缺 ${playDescKey(e)}`);
     }
   }
 });

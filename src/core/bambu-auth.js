@@ -20,6 +20,13 @@ const LOGIN_PATH = '/v1/user-service/user/login';
 const TFA_PATH = '/v1/user-service/user/login'; // 2FA/验证码完成：带 code 复用登录端点（待核实）
 const DEVICE_LIST_PATH = '/v1/iot-service/api/user/bind';
 
+// 短信验证码登录（中国区）。host/path 与登录端点不同：
+//   host 是 bambulab.cn（无 api. 子域），path 带 /api/ 前缀。
+// 与 pybambu const.py 的 BambuUrl.SMS_CODE 逐字一致：
+//   'https://bambulab.cn/api/v1/user-service/user/sendsmscode'
+const SMS_CODE_HOST = 'bambulab.cn';
+const SMS_CODE_PATH = '/api/v1/user-service/user/sendsmscode';
+
 // HTTPS JSON 请求（共用）。失败 reject(Error)，由调用方捕获归一化。
 function httpsJson(host, path, method, body, headers = {}) {
   return new Promise((resolve, reject) => {
@@ -107,6 +114,52 @@ async function sendVerifyCode(region, account, password, tfaKey, code) {
 }
 
 /**
+ * 请求短信验证码（中国区无密码登录第一步）。
+ * 命中 bambulab.cn/api/v1/.../sendsmscode，body {phone, type:'codeLogin'}——不需密码、不需鉴权。
+ * 服务端响应可能含 tfaKey；若有，loginWithCode 需带回。
+ * 返回 {ok:true, tfaKey?} | {ok:false, error}
+ */
+async function requestSmsCode(region, phone) {
+  if (!phone) return { ok: false, error: '请输入手机号' };
+  try {
+    const res = await httpsJson(SMS_CODE_HOST, SMS_CODE_PATH, 'POST', { phone, type: 'codeLogin' });
+    return { ok: true, tfaKey: res && res.tfaKey };
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    if (/HTTP 429/.test(msg)) return { ok: false, error: '验证码发送过于频繁，请稍后再试' };
+    if (/HTTP 4\d\d/.test(msg)) return { ok: false, error: '手机号无效或发送失败' };
+    return { ok: false, error: humanizeError(e) };
+  }
+}
+
+/**
+ * 用短信验证码换 token（中国区无密码登录第二步）。
+ * 命中登录端点，body {account, code[, tfaKey]}——不带 password（与 pybambu
+ * _get_authentication_token_with_verification_code 一致）。
+ * 中国区 token 不透明，uid 缺失时回退 getUid 拉取。
+ * 返回 {ok:true, token, uid, account} | {ok:false, error}
+ */
+async function loginWithCode(region, account, code, tfaKey) {
+  if (!account || !code) return { ok: false, error: '请输入手机号和验证码' };
+  try {
+    const body = { account, code };
+    if (tfaKey) body.tfaKey = tfaKey;
+    const res = await httpsJson(regionOf(region).api, LOGIN_PATH, 'POST', body);
+    if (!res.accessToken) return { ok: false, error: res.message || '验证码无效' };
+    let uid = res.uid || decodeUidFromToken(res.accessToken);
+    if (!uid) {
+      const u = await getUid(region, res.accessToken);
+      if (u.ok) uid = u.uid;
+    }
+    return { ok: true, token: res.accessToken, uid, account };
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    if (/HTTP 4\d\d/.test(msg)) return { ok: false, error: '验证码错误或已过期' };
+    return { ok: false, error: humanizeError(e) };
+  }
+}
+
+/**
  * 拉取账号绑定的设备列表。
  * 返回 {ok:true, devices:[{serial,name,model,online,printStatus}]} | {ok:false, error}
  */
@@ -168,5 +221,7 @@ module.exports = {
   getUid,
   login,
   sendVerifyCode,
+  requestSmsCode,
+  loginWithCode,
   listDevices,
 };

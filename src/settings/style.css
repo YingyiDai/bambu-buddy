@@ -232,12 +232,22 @@ select {
 /* ── 打印机卡片轮播 ── */
 .carousel { position: relative; }
 .carousel-viewport {
+  position: relative;
   flex: 1; min-width: 0;
   /* clip 横向（裁掉两侧邻卡），纵向保持 visible，让卡片阴影自然过渡到下方圆点
      而不是被硬裁出一条锐线（hidden 会强制另一轴为 auto，clip 不会）。 */
   overflow-x: clip; overflow-y: visible; overflow-clip-margin: 4px;
   padding: 40px 0 22px; perspective: 1200px;
 }
+/* 左右边缘白色→透明渐变：让两侧卡片在边缘逐渐「消失」融入背景。
+   箭头 z-index 更高，依旧清晰浮在渐变之上。 */
+.carousel-viewport::before,
+.carousel-viewport::after {
+  content: ''; position: absolute; top: 0; bottom: 0; width: 72px;
+  z-index: 3; pointer-events: none;
+}
+.carousel-viewport::before { left: 0; background: linear-gradient(to right, var(--panel), transparent); }
+.carousel-viewport::after { right: 0; background: linear-gradient(to left, var(--panel), transparent); }
 .carousel-track {
   display: flex; gap: 20px; align-items: center;
   transition: transform .6s cubic-bezier(0.22, 1, 0.36, 1);
@@ -268,7 +278,7 @@ select {
    圆角卡面交给内层 .pcard-frame，照片浮层 .pcard-pop 可溢出顶部。 */
 .pcard {
   --rx: 0deg; --ry: 0deg; --px: 0px; --py: 0px; --gx: 50%;
-  position: relative; flex: 0 0 auto; width: 216px; height: 358px;
+  position: relative; flex: 0 0 auto; width: 216px; height: 322px;
   background: transparent; border: none; overflow: visible;
   transform: scale(0.86); opacity: 0.6; filter: saturate(0.92);
   transform-style: preserve-3d;
@@ -324,7 +334,9 @@ select {
   transition: transform .35s cubic-bezier(0.22, 1, 0.36, 1), filter .35s ease;
 }
 .pcard.is-active .pcard-img {
-  transform: translate(var(--px), calc(var(--py) - 18px)) scale(1.32);
+  /* 锚定底部 baseline，向上放大 120%（1.32 → 1.58），底部位置保持不变 */
+  transform-origin: 50% 100%;
+  transform: translate(var(--px), var(--py)) scale(1.58);
   filter: drop-shadow(0 16px 16px rgba(0, 0, 0, 0.26));
 }
 .pcard-img-fallback { font-size: 72px; opacity: 0.5; }
@@ -339,6 +351,9 @@ select {
   transition: background .12s ease, color .12s ease;
 }
 .pcard-namerow .pc-act-rename:hover { background: var(--field-bg); color: var(--brand); }
+/* 编辑态：按钮变为「确定」对勾，用品牌绿强调可提交 */
+.pcard-namerow .pc-act-rename.is-confirm { color: var(--brand); }
+.pcard-namerow .pc-act-rename.is-confirm:hover { background: var(--brand-weak); }
 .pcard-name .pc-rename-input { width: 100%; font-size: 14px; font-weight: 600; padding: 4px 7px; }
 .pcard-sub { font-size: 11px; color: var(--text-faint); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* 实时遥测（仅当前打印机） */
@@ -385,7 +400,7 @@ select {
 }
 
 /* 工具卡（账号 / 添加本地打印机）：用 .pcard-frame 卡面 + 可滚动内容 */
-.util-inner { height: 100%; padding: 14px 16px 16px; overflow-y: auto; }
+.util-inner { height: 100%; padding: 14px 16px 16px; overflow-y: auto; display: flex; flex-direction: column; }
 .util-icon { text-align: center; font-size: 24px; line-height: 1; margin-bottom: 2px; }
 .util-title { text-align: center; font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 12px; }
 .util-inner label { margin-bottom: 7px; }
@@ -393,14 +408,24 @@ select {
 .util-inner input, .util-inner select { padding: 7px 10px; }
 .util-inner .util-field { display: block; width: 100%; margin-bottom: 8px; }
 .util-inner .btn { width: 100%; margin-top: 4px; }
+/* 主操作按钮（退出登录 / 添加本地）贴底，与打印机卡操作区位置一致 */
+.util-inner .la-add, .util-inner .ac-logout { margin-top: auto; }
 .util-status { display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text); margin: 0 0 12px; }
 .util-kv { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--row-border); font-size: 12px; }
 .util-kv:last-of-type { border-bottom: none; margin-bottom: 12px; }
 .util-k { color: var(--text-dim); flex-shrink: 0; }
-.util-v { color: var(--text); text-align: right; word-break: break-all; }
+.util-v { color: var(--text); text-align: right; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .add-note { font-size: 11px; color: var(--text-dim); line-height: 1.5; margin: 0 0 10px; }
 .add-msg { font-size: 11px; color: var(--text-faint); margin: 8px 0 0; min-height: 14px; }
 .ac-verify { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--row-border); }
+
+/* 登录方式切换（密码 / 验证码）：分段控件 */
+.seg { display: flex; gap: 4px; padding: 3px; margin-bottom: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 9px; }
+.seg-tab { flex: 1; padding: 6px 4px; font-size: 12px; font-family: inherit; color: var(--text-dim); background: transparent; border: none; border-radius: 6px; cursor: pointer; transition: background .15s, color .15s; }
+.seg-tab:hover { color: var(--text); }
+.seg-tab.is-active { background: var(--brand); color: #fff; }
+.seg-tab:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.ac-codehint { color: var(--brand); margin-top: 8px; }
 
 @media (prefers-reduced-motion: reduce) {
   .carousel-track, .pcard, .pcard-img { transition: none; }
@@ -480,7 +505,7 @@ select {
 
 /* ── 关于 ── */
 .about-hero { text-align: center; padding: 2px 0 14px; }
-.about-img { width: 100%; max-width: 220px; aspect-ratio: 4 / 3; object-fit: contain; margin-bottom: 6px; }
+.about-img { width: 100%; max-width: 286px; aspect-ratio: 4 / 3; object-fit: cover; margin-bottom: 6px; border-radius: 16px; }
 .about-hero h2 { margin: 0 0 6px; font-size: 20px; font-weight: 700; }
 /* 关于页：版本/作者两行等高（去掉纵向 padding，用固定 min-height 统一） */
 .section[data-section="about"] .row { min-height: 52px; padding-top: 6px; padding-bottom: 6px; }

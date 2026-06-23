@@ -1,6 +1,6 @@
 // 设置窗控制器：侧边栏导航 + i18n + 打印机/把玩/外观/关于。
 const el = (id) => document.getElementById(id);
-const pending = { region: 'global', account: '', password: '', tfaKey: null };
+const pending = { region: 'china', account: '', password: '', tfaKey: null };
 let localeStrings = null;
 let currentLocale = 'zh-CN';
 
@@ -48,6 +48,7 @@ let carCount = 0;        // 卡片总数（含末尾添加卡）
 let carouselWired = false;
 let carInitialized = false; // 首次渲染时把焦点定位到当前打印机
 const RENAME_ICON = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
+const CONFIRM_ICON = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
 
 // 型号 → 照片：归一化型号字符串后匹配 assets/printer 下的文件名。
 // 顺序敏感：更具体的关键字（a1mini / x1carbon）必须排在宽泛的（a1 / x1）之前。
@@ -220,13 +221,24 @@ function fillPrinterCard(card, p, isActive, srcText, live) {
 
 function startRename(serial, card, cur) {
   const nameEl = card.querySelector('.pcard-name');
+  const btn = card.querySelector('.pc-act-rename');
   nameEl.innerHTML = '<input type="text" class="pc-rename-input" />';
   const input = nameEl.querySelector('.pc-rename-input');
   input.value = cur; input.focus(); input.select();
+  // 进入编辑态：按钮由「编辑」切换为「确定」（克隆以丢弃旧的 startRename 监听）
+  const confirmBtn = btn.cloneNode(false);
+  confirmBtn.className = 'pc-act-rename is-confirm';
+  confirmBtn.title = t('settings.renameSave');
+  confirmBtn.setAttribute('aria-label', t('settings.renameSave'));
+  confirmBtn.innerHTML = CONFIRM_ICON;
+  btn.replaceWith(confirmBtn);
   let done = false;
   const save = async () => { if (done) return; done = true; const v = input.value.trim(); if (v && v !== cur) await window.bambu.renamePrinter(serial, v); renderPrinters(); };
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); else if (e.key === 'Escape') { done = true; renderPrinters(); } });
   input.addEventListener('blur', save);
+  // 按下不抢焦，避免 blur 先于 click 触发；点击即保存
+  confirmBtn.addEventListener('mousedown', (e) => e.preventDefault());
+  confirmBtn.addEventListener('click', (e) => { e.stopPropagation(); save(); });
 }
 
 // 账号卡：未登录 → 云账号登录（含验证码）；已登录 → 账号信息 + 退出登录
@@ -240,20 +252,37 @@ function buildAccountCard(st) {
     const region = rl[st.region] || st.region || '';
     body =
       '<p class="util-status"><span class="acct-dot"></span>' + escapeHtml(t('printers.acctLoggedIn')) + '</p>' +
-      '<div class="util-kv"><span class="util-k">' + escapeHtml(t('settings.account')) + '</span><span class="util-v">' + escapeHtml(who) + '</span></div>' +
+      '<div class="util-kv"><span class="util-k">' + escapeHtml(t('printers.accountLabel')) + '</span><span class="util-v" title="' + escapeHtml(who) + '">' + escapeHtml(who) + '</span></div>' +
       (region ? '<div class="util-kv"><span class="util-k">' + escapeHtml(t('settings.region')) + '</span><span class="util-v">' + escapeHtml(region) + '</span></div>' : '') +
       '<button class="btn btn-danger ac-logout">' + escapeHtml(t('settings.logout')) + '</button>';
   } else {
+    // 默认区域：中国大陆（列在首位即默认选中）。中国区默认走短信验证码登录。
     body =
       '<p class="add-note">' + escapeHtml(t('printers.loginIntro')) + '</p>' +
-      '<label><span>' + escapeHtml(t('settings.region')) + '</span><select class="ac-region"><option value="global">' + escapeHtml(t('settings.regionGlobalFull')) + '</option><option value="china">' + escapeHtml(t('settings.regionChinaFull')) + '</option></select></label>' +
-      '<label><span>' + escapeHtml(t('settings.account')) + '</span><input class="ac-account" type="text" autocomplete="username" /></label>' +
-      '<label><span>' + escapeHtml(t('settings.password')) + '</span><input class="ac-password" type="password" autocomplete="current-password" /></label>' +
-      '<button class="btn btn-primary ac-login">' + escapeHtml(t('settings.login')) + '</button>' +
-      '<div class="ac-verify hidden">' +
-        '<p class="add-note">' + escapeHtml(t('settings.verifyHint')) + '</p>' +
-        '<label><span>' + escapeHtml(t('settings.verifyCode')) + '</span><input class="ac-code" type="text" inputmode="numeric" /></label>' +
-        '<button class="btn btn-primary ac-verifybtn">' + escapeHtml(t('settings.submit')) + '</button>' +
+      '<label><span>' + escapeHtml(t('settings.region')) + '</span><select class="ac-region"><option value="china">' + escapeHtml(t('settings.regionChinaFull')) + '</option><option value="global">' + escapeHtml(t('settings.regionGlobalFull')) + '</option></select></label>' +
+      // 登录方式切换：仅中国区显示（海外区无短信通道，强制密码登录）
+      '<div class="ac-mode-switch seg">' +
+        '<button type="button" class="seg-tab ac-tab-code is-active">' + escapeHtml(t('settings.loginModeCode')) + '</button>' +
+        '<button type="button" class="seg-tab ac-tab-pw">' + escapeHtml(t('settings.loginModePassword')) + '</button>' +
+      '</div>' +
+      // 短信验证码登录表单
+      '<div class="ac-pane ac-pane-code">' +
+        '<label><span>' + escapeHtml(t('settings.phone')) + '</span><input class="ac-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="' + escapeHtml(t('settings.phonePlaceholder')) + '" /></label>' +
+        '<button class="btn ac-sendcode">' + escapeHtml(t('settings.sendCode')) + '</button>' +
+        '<p class="add-note ac-codehint hidden">' + escapeHtml(t('settings.codeSentHint')) + '</p>' +
+        '<label><span>' + escapeHtml(t('settings.verifyCode')) + '</span><input class="ac-smscode" type="text" inputmode="numeric" autocomplete="one-time-code" /></label>' +
+        '<button class="btn btn-primary ac-codelogin">' + escapeHtml(t('settings.login')) + '</button>' +
+      '</div>' +
+      // 账号密码登录表单（含 2FA/邮箱验证码二次确认）
+      '<div class="ac-pane ac-pane-pw hidden">' +
+        '<label><span>' + escapeHtml(t('settings.account')) + '</span><input class="ac-account" type="text" autocomplete="username" /></label>' +
+        '<label><span>' + escapeHtml(t('settings.password')) + '</span><input class="ac-password" type="password" autocomplete="current-password" /></label>' +
+        '<button class="btn btn-primary ac-login">' + escapeHtml(t('settings.login')) + '</button>' +
+        '<div class="ac-verify hidden">' +
+          '<p class="add-note">' + escapeHtml(t('settings.verifyHint')) + '</p>' +
+          '<label><span>' + escapeHtml(t('settings.verifyCode')) + '</span><input class="ac-code" type="text" inputmode="numeric" /></label>' +
+          '<button class="btn btn-primary ac-verifybtn">' + escapeHtml(t('settings.submit')) + '</button>' +
+        '</div>' +
       '</div>';
   }
   card.innerHTML =
@@ -267,9 +296,84 @@ function buildAccountCard(st) {
   return card;
 }
 
+// 切换密码 / 验证码登录面板
+function setLoginMode(card, mode) {
+  const isCode = mode === 'code';
+  const paneCode = card.querySelector('.ac-pane-code');
+  const panePw = card.querySelector('.ac-pane-pw');
+  if (!paneCode || !panePw) return;
+  paneCode.classList.toggle('hidden', !isCode);
+  panePw.classList.toggle('hidden', isCode);
+  card.querySelector('.ac-tab-code')?.classList.toggle('is-active', isCode);
+  card.querySelector('.ac-tab-pw')?.classList.toggle('is-active', !isCode);
+  clearError();
+}
+
+// 区域决定可用登录方式：海外区无短信通道 → 隐藏切换、强制密码登录；中国区默认验证码。
+function applyRegionUI(card) {
+  const sel = card.querySelector('.ac-region');
+  if (!sel) return;
+  const isChina = sel.value === 'china';
+  card.querySelector('.ac-mode-switch')?.classList.toggle('hidden', !isChina);
+  setLoginMode(card, isChina ? 'code' : 'password');
+}
+
+// 发码按钮 60s 倒计时（防重复发送）
+function startSendCooldown(btn) {
+  let n = 60;
+  const orig = t('settings.sendCode');
+  btn.disabled = true;
+  btn.textContent = t('settings.codeResendIn').replace('{n}', n);
+  const timer = setInterval(() => {
+    n -= 1;
+    if (n <= 0) { clearInterval(timer); btn.disabled = false; btn.textContent = orig; }
+    else { btn.disabled = true; btn.textContent = t('settings.codeResendIn').replace('{n}', n); }
+  }, 1000);
+}
+
 function wireAccountCard(card) {
   const logout = card.querySelector('.ac-logout');
   if (logout) logout.addEventListener('click', async (e) => { e.stopPropagation(); await window.bambu.logout(); renderPrinters(); });
+
+  // 区域切换 + 登录方式切换（仅未登录卡有这些元素）
+  const regionSel = card.querySelector('.ac-region');
+  if (regionSel) { applyRegionUI(card); regionSel.addEventListener('change', () => applyRegionUI(card)); }
+  card.querySelector('.ac-tab-code')?.addEventListener('click', (e) => { e.stopPropagation(); setLoginMode(card, 'code'); });
+  card.querySelector('.ac-tab-pw')?.addEventListener('click', (e) => { e.stopPropagation(); setLoginMode(card, 'password'); });
+
+  // 发送短信验证码
+  const sendBtn = card.querySelector('.ac-sendcode');
+  if (sendBtn) sendBtn.addEventListener('click', async (e) => {
+    e.stopPropagation(); clearError();
+    const phone = card.querySelector('.ac-phone').value.trim();
+    if (!phone) { showError(t('settings.errPhoneRequired')); return; }
+    pending.region = card.querySelector('.ac-region').value;
+    sendBtn.disabled = true;
+    const r = await window.bambu.requestSmsCode(pending.region, phone);
+    if (!r.ok) { sendBtn.disabled = false; showError(r.error || t('settings.errSendCodeFailed')); return; }
+    pending.tfaKey = r.tfaKey || null;
+    card.querySelector('.ac-codehint').classList.remove('hidden');
+    startSendCooldown(sendBtn);
+    card.querySelector('.ac-smscode').focus();
+  });
+
+  // 用验证码登录（无密码）
+  const codeLoginBtn = card.querySelector('.ac-codelogin');
+  if (codeLoginBtn) codeLoginBtn.addEventListener('click', async (e) => {
+    e.stopPropagation(); clearError();
+    pending.region = card.querySelector('.ac-region').value;
+    const phone = card.querySelector('.ac-phone').value.trim();
+    const code = card.querySelector('.ac-smscode').value.trim();
+    if (!phone) { showError(t('settings.errPhoneRequired')); return; }
+    if (!code) { showError(t('settings.errVerifyRequired')); return; }
+    pending.account = phone;
+    setBusy(true);
+    const r = await window.bambu.loginWithCode(pending.region, phone, code, pending.tfaKey);
+    setBusy(false);
+    if (r.ok) { await afterLogin(); return; }
+    showError(r.error || t('settings.errVerifyInvalid'));
+  });
+
   const loginBtn = card.querySelector('.ac-login');
   if (loginBtn) loginBtn.addEventListener('click', async (e) => {
     e.stopPropagation(); clearError();
@@ -308,8 +412,8 @@ function buildLanCard() {
       '<input class="la-code util-field" type="text" placeholder="' + escapeHtml(t('settings.lanCode')) + '" />' +
       '<input class="la-serial util-field" type="text" placeholder="' + escapeHtml(t('settings.lanSerial')) + '" />' +
       '<input class="la-name util-field" type="text" placeholder="' + escapeHtml(t('settings.nameOptional')) + '" />' +
-      '<button class="btn btn-primary la-add">' + escapeHtml(t('settings.addAndConnect')) + '</button>' +
       '<p class="add-msg"></p>' +
+      '<button class="btn btn-primary la-add">' + escapeHtml(t('settings.addAndConnect')) + '</button>' +
     '</div></div>';
   const lanBtn = card.querySelector('.la-add');
   lanBtn.addEventListener('click', async (e) => {

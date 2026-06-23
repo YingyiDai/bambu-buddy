@@ -9,6 +9,11 @@ contextBridge.exposeInMainWorld('bambu', {
     ipcRenderer.invoke('bambu:login', region, account, password),
   submitVerifyCode: (region, account, password, tfaKey, code) =>
     ipcRenderer.invoke('bambu:verify', region, account, password, tfaKey, code),
+  // 短信验证码登录（中国区）：发码 → 码登录（无密码）
+  requestSmsCode: (region, phone) =>
+    ipcRenderer.invoke('bambu:requestSmsCode', region, phone),
+  loginWithCode: (region, account, code, tfaKey) =>
+    ipcRenderer.invoke('bambu:loginWithCode', region, account, code, tfaKey),
   listDevices: () => ipcRenderer.invoke('bambu:listDevices'),
   saveDevice: (serial, name, model) => ipcRenderer.invoke('bambu:saveDevice', serial, name, model),
   completeCloudLogin: () => ipcRenderer.invoke('bambu:completeCloudLogin'),

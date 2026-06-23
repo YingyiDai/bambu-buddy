@@ -549,6 +549,18 @@ ipcMain.handle('bambu:verify', async (_e, region, account, password, tfaKey, cod
   return r;
 });
 
+// 短信验证码登录（中国区）：发码（无需鉴权），再用码换 token（无密码）。
+ipcMain.handle('bambu:requestSmsCode', async (_e, region, phone) =>
+  bambuAuth.requestSmsCode(region, phone));
+
+ipcMain.handle('bambu:loginWithCode', async (_e, region, account, code, tfaKey) => {
+  const r = await bambuAuth.loginWithCode(region, account, code, tfaKey);
+  if (r.ok) {
+    pendingAuth = { region, account, token: r.token, uid: r.uid };
+  }
+  return r;
+});
+
 // listDevices：优先用本次会话刚换到的 token，否则用已存的 token
 ipcMain.handle('bambu:listDevices', async () => {
   const { region, token } = resolveActiveToken();

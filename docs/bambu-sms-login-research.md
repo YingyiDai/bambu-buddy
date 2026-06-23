@@ -16,6 +16,25 @@
 
 ---
 
+## 一·补：实现时核对结果（2026-06-23）
+
+落地前逐字核对了 pybambu 上游源码（greghesp/ha-bambulab → `pybambu/const.py` 与 `bambu_cloud.py`），并核对了本项目现状。结论：**文档基本准确，且核心机制比文档自评更有把握**。
+
+**已逐字证实（不再是「推断」）：**
+- 发码端点确为 `https://bambulab.cn/api/v1/user-service/user/sendsmscode`（host 是 `bambulab.cn`、无 `api.` 子域；path 带 `/api/` 前缀）。const.py 原文一致。
+- 码登录 body 确为 `{account, code}`——**不带 password、不带 tfaKey**。pybambu `_get_authentication_token_with_verification_code(code)` 就是这么发的（用于邮箱/短信码换 token）。所以文档「核心未知」其实**有上游代码背书**，并非纯臆测。
+- 本项目现状描述（IPC 链路、`bambuAccount` 不存密码、UI 两阶段表单、locale 键）核对无误。
+
+**补充/修正：**
+- **uid 解析**：中国区 token 不透明，码登录响应未必带 uid。已在 `loginWithCode` 内加 `getUid` 回退（uid 缺失时拉 `/my/preference`），比仅靠 `decodeUidFromToken` 更稳。
+- **错误文案**：码登录 4xx 统一映射为「验证码错误或已过期」，发码 429/4xx 映射为「发送过于频繁」「手机号无效或发送失败」，避免 `humanizeError` 把它们误报成「账号或密码错误」。
+- **未跑 Stage A**：实现环境无真实中国手机号 / 短信通道，**Stage A 实测未执行**。代码已按上游契约落地，但「真机能否用 `{account, code}` 换到 token、account 是否需带国码、`api.bambulab.cn` 是否与 `.com` 行为一致」仍需一次真机验证。
+- **默认区域**：按需求已将登录默认区域从「全球」改为「中国大陆」（区域选择器中国大陆置顶即默认选中），中国区默认进入「验证码登录」。
+
+**实现状态：已完成 Stage B**（见下）。`bambu-auth.js:95` 的「待核实」注释保留——它针对的是**密码 2FA**（`sendVerifyCode` 复用登录端点带 code），与本次新增的无密码码登录是两条不同路径，仍未实测。
+
+---
+
 ## 二、当前实现（现状）
 
 文件：`src/core/bambu-auth.js`（以 pybambu 为事实来源，逆向接口）
