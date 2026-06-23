@@ -494,9 +494,10 @@ function createSettingsWindow(section = 'printers') {
     return;
   }
   settingsWin = new BrowserWindow({
-    width: 640,
-    height: 620,
+    width: 740,
+    height: 574,
     minWidth: 640,
+    minHeight: 520,
     resizable: true,
     minimizable: false,
     maximizable: false,
@@ -667,12 +668,24 @@ ipcMain.handle('bambu:saveLan', async (_e, host, accessCode, serial, name) => {
 });
 
 // ---- 统一打印机列表管理（§Task 6）----
-ipcMain.handle('printer:list', () => ({
-  printers: getUnified(),
-  activeSerial: store.get('activePrinterSerial') || null,
-  liveLabelKey: lastState ? lastState.labelKey : null,
-  liveLabelParams: lastState ? lastState.labelParams : null,
-}));
+ipcMain.handle('printer:list', () => {
+  // 把玩（mock）模式下 lastState/lastReport 是模拟场景，不能当作真机实时状态显示到卡片上。
+  const liveMode = store.get('dataSource', 'mock') === 'live';
+  const hasLive = liveMode && lastReport && lastReport.connected !== false;
+  return {
+    printers: getUnified(),
+    activeSerial: store.get('activePrinterSerial') || null,
+    liveLabelKey: liveMode && lastState ? lastState.labelKey : null,
+    liveLabelParams: liveMode && lastState ? lastState.labelParams : null,
+    // 当前打印机的实时遥测（仅真机模式 + 活动打印机有效）
+    liveTemps: hasLive ? extractTemps(lastReport) : null,
+    liveProgress: hasLive ? {
+      percent: Number.isFinite(lastReport.mc_percent) ? lastReport.mc_percent : null,
+      layer: Number.isFinite(lastReport.layer_num) ? lastReport.layer_num : null,
+      total: Number.isFinite(lastReport.total_layer_num) ? lastReport.total_layer_num : null,
+    } : null,
+  };
+});
 
 ipcMain.handle('printer:setActive', (_e, serial) => {
   store.set('activePrinterSerial', serial);

@@ -20,7 +20,7 @@ English | <a href="README.zh-CN.md">简体中文</a>
 
 ## What is it?
 
-Bambu Buddy turns your printer's status into a little animated panda that lives on your desktop. It's transparent, always-on-top, draggable, and click-through — it stays out of your way in the corner, using expressions and motion to tell you how your print is going: started, swapping filament, finished, or failed. One glance and you know — no need to open the app or a browser.
+Bambu Buddy turns your printer's status into a little animated panda that lives on your desktop. It's transparent, always-on-top, draggable, and click-through — it stays out of your way in the corner, using expressions and motion to tell you how your print is going: started, swapping filament, finished, or failed. One glance and you know — no need to open Bambu Studio or Bambu Handy.
 
 ---
 
@@ -50,8 +50,6 @@ Bambu Buddy turns your printer's status into a little animated panda that lives 
   </tr>
 </table>
 
-<div align="center"><sub>The status pill shows exact details (progress, layer, filament change, error code); the animation is the mood, the text is the detail.</sub></div>
-
 ---
 
 ## 📥 Download & Install
@@ -63,14 +61,10 @@ Bambu Buddy turns your printer's status into a little animated panda that lives 
 3. If macOS says it "cannot verify the developer" on first launch — the app isn't Apple-signed yet — go to
    **System Settings › Privacy & Security** and click "Open Anyway".
 
-After launch, the panda appears in the bottom-right corner of your screen, a tray icon appears in the menu bar, and there's no Dock icon.
-
 ### Windows
 
 1. Download the latest `.exe` installer from **[Releases](https://github.com/YingyiDai/bambu-buddy/releases/latest)**.
 2. Run the installer. If Windows SmartScreen warns that the publisher is unrecognized — the app isn't code-signed yet — click **More info › Run anyway**.
-
-After launch, the panda appears on your desktop and a tray icon appears in the notification area.
 
 > 🖼️ _Desktop screen recording (placeholder, TBD): `<insert a GIF of the panda on the desktop here>`_
 
@@ -78,11 +72,9 @@ After launch, the panda appears on your desktop and a tray icon appears in the n
 
 ## 🔌 Connect your printer
 
-Open the tray menu → Settings, then pick a mode under "Printer":
-
 | Mode | How |
 |---|---|
-| 🎮 **Playground** (default) | No printer needed — click through every state in the Playground, or auto-cycle. |
+| 🎮 **Playground** | No printer needed — click through every state in the Playground, or auto-cycle. |
 | ☁️ **Bambu Cloud** | Sign in with your Bambu account; cloud printers sync automatically and subscribe to live status via MQTT. |
 | 🏠 **LAN** | Enter the printer's IP + access code (shown on the printer's screen) to connect directly on your local network. |
 

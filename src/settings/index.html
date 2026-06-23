@@ -11,79 +11,47 @@
 <body>
   <div class="app">
     <nav class="tabbar">
-      <button class="nav-item active" data-section="printers"><span class="ico">🖨️</span><span data-i18n="nav.printers">打印机</span></button>
-      <button class="nav-item" data-section="play"><span class="ico">🎮</span><span data-i18n="nav.play">把玩探索</span></button>
-      <button class="nav-item" data-section="appearance"><span class="ico">🎨</span><span data-i18n="nav.appearance">外观</span></button>
-      <button class="nav-item" data-section="about"><span class="ico">ℹ️</span><span data-i18n="nav.about">关于</span></button>
+      <button class="nav-item active" data-section="printers"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/></svg></span><span data-i18n="nav.printers">打印机</span></button>
+      <button class="nav-item" data-section="play"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="11" x2="10" y2="11"/><line x1="8" y1="9" x2="8" y2="13"/><line x1="15" y1="12" x2="15.01" y2="12"/><line x1="18" y1="10" x2="18.01" y2="10"/><path d="M17.32 5H6.68a4 4 0 0 0-3.978 3.59c-.006.052-.01.101-.017.152C2.604 9.416 2 14.456 2 16a3 3 0 0 0 3 3c1 0 1.5-.5 2-1l1.414-1.414A2 2 0 0 1 9.828 16h4.344a2 2 0 0 1 1.414.586L17 18c.5.5 1 1 2 1a3 3 0 0 0 3-3c0-1.544-.604-6.584-.685-7.258-.007-.05-.011-.1-.017-.152A4 4 0 0 0 17.32 5z"/></svg></span><span data-i18n="nav.play">把玩探索</span></button>
+      <button class="nav-item" data-section="appearance"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg></span><span data-i18n="nav.appearance">外观</span></button>
+      <button class="nav-item" data-section="about"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg></span><span data-i18n="nav.about">关于</span></button>
     </nav>
     <main class="content">
 
       <!-- ════ 打印机 ════ -->
-      <section class="section" data-section="printers">
-        <h1 class="section-title" data-i18n="nav.printers">打印机</h1>
-        <!-- 账号块 -->
-        <div class="group-label" data-i18n="printers.sectionAccount">账号</div>
-        <div class="card" id="accountBlock">
-          <!-- 登录态：未登录 -->
-          <div id="cloudLogin" class="acc-step">
-            <p class="section-sub" data-i18n="printers.loginIntro">登录 Bambu 账号以同步云端打印机</p>
-            <label><span data-i18n="settings.region">区域</span>
-              <select id="cloudRegion"><option value="global" data-i18n="settings.regionGlobalFull">全球 / Overseas</option><option value="china" data-i18n="settings.regionChinaFull">中国大陆</option></select></label>
-            <label><span data-i18n="settings.account">账号（邮箱或手机号）</span><input id="cloudAccount" type="text" autocomplete="username" /></label>
-            <label><span data-i18n="settings.password">密码</span><input id="cloudPassword" type="password" autocomplete="current-password" /></label>
-            <button id="cloudLoginBtn" class="btn btn-primary" data-i18n="settings.login">登录</button>
+      <section class="section section-printers" data-section="printers">
+        <!-- 卡片轮播 -->
+        <div class="carousel" id="printerCarousel">
+          <button class="carousel-arrow prev" id="carPrev" aria-label="上一张"><svg viewBox="6 5 12 14" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+          <div class="carousel-viewport" id="carViewport">
+            <div class="carousel-track" id="carTrack"></div>
           </div>
-          <!-- 登录态：验证码 -->
-          <div id="cloudVerify" class="acc-step hidden">
-            <p class="section-sub" data-i18n="settings.verifyHint">已向你的账号发送验证码，请输入：</p>
-            <label><span data-i18n="settings.verifyCode">验证码</span><input id="cloudCode" type="text" inputmode="numeric" /></label>
-            <button id="cloudVerifyBtn" class="btn btn-primary" data-i18n="settings.submit">提交</button>
-            <button id="cloudVerifyBack" class="btn-link" data-i18n="settings.backLogin">← 返回登录</button>
-          </div>
-          <!-- 登录态：已登录摘要 -->
-          <div id="accountSummary" class="acc-step hidden">
-            <div class="account-summary">
-              <span class="who"><span id="sumAccount">—</span> · <span id="sumRegion">—</span></span>
-              <button id="sumLogout" class="btn btn-danger" data-i18n="settings.logout">退出登录</button>
-            </div>
-          </div>
-          <p id="err" class="err hidden"></p>
+          <button class="carousel-arrow next" id="carNext" aria-label="下一张"><svg viewBox="6 5 12 14" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
         </div>
-        <!-- 打印机列表 -->
-        <div class="group-label" data-i18n="printers.sectionList">打印机列表</div>
-        <div id="printerList" class="printer-list"></div>
-        <!-- 添加本地打印机 -->
-        <div class="group-label" data-i18n="settings.addLan">添加本地打印机</div>
-        <div class="card">
-          <label><span data-i18n="settings.lanIp">IP 地址</span><input id="pAddHost" type="text" placeholder="192.168.1.x" /></label>
-          <label><span data-i18n="settings.lanCode">访问码</span><input id="pAddCode" type="text" /></label>
-          <label><span data-i18n="settings.lanSerial">序列号</span><input id="pAddSerial" type="text" /></label>
-          <label><span data-i18n="settings.nameOptional">名称（可选）</span><input id="pAddName" type="text" /></label>
-          <button id="pAddBtn" class="btn btn-primary" data-i18n="settings.addAndConnect">添加</button>
-          <span id="pAddMsg" class="section-sub"></span>
-        </div>
+        <div class="carousel-dots" id="carDots"></div>
+        <p id="err" class="err hidden"></p>
       </section>
 
       <!-- ════ 把玩探索 ════ -->
-      <section class="section hidden" data-section="play">
-        <h1 class="section-title" data-i18n="play.title">把玩探索</h1>
-        <p class="section-sub" data-i18n="play.subtitle">不用连打印机，点一下就能看熊猫的各种状态</p>
-        <div class="play-now" id="playNowCard">
-          <div class="play-now-head">
-            <div>
-              <div class="play-now-cap" data-i18n="play.nowPlaying">当前正在演示</div>
-              <div class="play-now-label" id="playStateLabel">—</div>
-            </div>
+      <section class="section section-play hidden" data-section="play">
+        <div class="gacha-stage">
+          <div class="gacha-title" data-i18n="play.gachaTitle">🎴 状态盲盒</div>
+          <div class="gacha-sub" data-i18n="play.gachaSub">不连打印机，抽一张看看熊猫的各种状态</div>
+          <div class="gacha-card r-common" id="gachaCard">
+            <div class="gacha-icon" id="gachaIcon">🃏</div>
+            <div class="gacha-name" id="gachaName" data-i18n="play.cardBack">点击抽卡</div>
+            <div class="gacha-rarity" id="gachaRarity"></div>
+          </div>
+          <div class="gacha-cap" id="gachaCap" data-i18n="play.drawHint">点一下，随机抽个状态</div>
+          <div class="gacha-actions">
+            <button id="drawBtn" class="btn btn-primary gacha-draw" data-i18n="play.draw">抽一张</button>
             <button id="playReturnBtn" class="btn" data-i18n="play.returnToLive">回到真机</button>
           </div>
-          <div class="progress-row hidden" id="progressRow">
-            <div class="progress-head"><span data-i18n="play.dragProgress">拖动模拟打印进度</span><span class="val" id="playProgressVal">0%</span></div>
-            <input type="range" id="playProgress" class="slider" min="0" max="100" value="0" />
-          </div>
-          <button id="autoTourBtn" class="btn" style="width:100%;margin-top:12px;" data-i18n="play.autoTour">自动巡演（依次播放全部状态）</button>
         </div>
-        <div class="group-label" data-i18n="play.galleryHint">点一下试试</div>
-        <div id="playGallery" class="gallery"></div>
+        <button class="all-states-toggle" id="allStatesToggle">
+          <span class="chev">▶</span> <span data-i18n="play.allStates">全部状态</span>
+        </button>
+        <div id="playGallery" class="gallery all-states hidden"></div>
       </section>
 
       <!-- ════ 外观 ════ -->
