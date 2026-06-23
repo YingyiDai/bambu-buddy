@@ -572,79 +572,27 @@ el('checkUpdateBtn').addEventListener('click', async () => {
   btn.disabled = false; btn.textContent = t('settings.checkUpdate');
 });
 
-// ── 把玩探索：抽卡 ──
-// 场景表（与 src/config/play-scenarios.js 一致）。printing 拆成 0/25/50/75 四档，各自独立可抽。
-// 文案走 locale：play.<id>.name/.desc；printing 档用 play.printing.progressLabel。
-// rarity: common(1★) / rare(2★) / epic(3★) —— 仅用于抽卡的趣味呈现
+// ── 探索 ──
+// 场景表（key/icon 与 src/config/play-scenarios.js 一致；文案走 locale play.<key>.name/.desc）
 const PLAY_SCENARIOS = [
-  { id: 'printing_0',  scenario: 'printing', progress: 0,  icon: '🖨️', rarity: 'common' },
-  { id: 'printing_25', scenario: 'printing', progress: 25, icon: '🖨️', rarity: 'common' },
-  { id: 'printing_50', scenario: 'printing', progress: 50, icon: '🖨️', rarity: 'common' },
-  { id: 'printing_75', scenario: 'printing', progress: 75, icon: '🖨️', rarity: 'common' },
-  { id: 'idle',              scenario: 'idle',              icon: '😴', rarity: 'common' },
-  { id: 'prepare_leveling',  scenario: 'prepare_leveling',  icon: '📐', rarity: 'common' },
-  { id: 'changing_filament', scenario: 'changing_filament', icon: '🔄', rarity: 'rare' },
-  { id: 'paused',            scenario: 'paused',            icon: '⏸️', rarity: 'rare' },
-  { id: 'finished',          scenario: 'finished',          icon: '🎉', rarity: 'epic' },
-  { id: 'failed',            scenario: 'failed',            icon: '😢', rarity: 'rare' },
-  { id: 'offline',           scenario: 'offline',           icon: '🔌', rarity: 'common' },
+  { key: 'printing', icon: '🖨️', hasProgress: true },
+  { key: 'idle', icon: '😴' },
+  { key: 'prepare_leveling', icon: '📐' }, { key: 'changing_filament', icon: '🔄' },
+  { key: 'paused', icon: '⏸️' },
+  { key: 'finished', icon: '🎉' },
+  { key: 'failed', icon: '😢' }, { key: 'offline', icon: '🔌' },
 ];
-const RARITY_STARS = { common: 1, rare: 2, epic: 3 };
 let playGalleryBuilt = false;
-let applying = false;   // 正在向主进程下发状态：期间忽略回推，避免中间帧闪烁
-
-function playLabel(e) {
-  return e.scenario === 'printing'
-    ? t('play.printing.progressLabel', { p: e.progress })
-    : t('play.' + e.id + '.name');
-}
-function playDesc(e) {
-  return t('play.' + (e.scenario === 'printing' ? 'printing' : e.id) + '.desc');
-}
-function findEntry(st) {
-  return PLAY_SCENARIOS.find((e) =>
-    e.scenario === st.currentScenario &&
-    (e.scenario !== 'printing' || (e.progress || 0) === (st.percent || 0)));
-}
-function setCard(e) {
-  const card = el('gachaCard');
-  el('gachaIcon').textContent = e ? e.icon : '🃏';
-  el('gachaName').textContent = e ? playLabel(e) : t('play.cardBack');
-  const rarity = e ? (e.rarity || 'common') : 'common';
-  card.classList.remove('r-common', 'r-rare', 'r-epic');
-  card.classList.add('r-' + rarity);
-  el('gachaRarity').textContent = e ? '★'.repeat(RARITY_STARS[rarity] || 1) : '';
-}
-function spawnSparkles(card) {
-  for (let i = 0; i < 9; i++) {
-    const s = document.createElement('span');
-    s.className = 'gacha-spark'; s.textContent = i % 2 ? '✨' : '⭐';
-    const ang = Math.random() * Math.PI * 2, dist = 42 + Math.random() * 46;
-    s.style.setProperty('--dx', Math.cos(ang) * dist + 'px');
-    s.style.setProperty('--dy', Math.sin(ang) * dist + 'px');
-    card.appendChild(s); setTimeout(() => s.remove(), 950);
-  }
-}
-async function applyEntry(e) {
-  applying = true;
-  try {
-    await window.bambu.playSetScenario(e.scenario);
-    if (e.scenario === 'printing') await window.bambu.playSetProgress(e.progress);
-  } finally {
-    applying = false;
-  }
-  // 下发完成后用最终态刷新一次，避免 printing 两段 IPC 之间的中间帧
-  renderPlayState({ isPlaying: true, currentScenario: e.scenario, percent: e.progress || 0 });
-}
+let autoTouring = false;
 
 function buildGallery() {
   const box = el('playGallery'); box.innerHTML = '';
-  for (const e of PLAY_SCENARIOS) {
+  for (const s of PLAY_SCENARIOS) {
     const card = document.createElement('button');
-    card.className = 'play-card'; card.dataset.id = e.id;
-    card.innerHTML = '<div class="pname">' + e.icon + ' ' + escapeHtml(playLabel(e)) + '</div>' +
-      '<div class="pdesc">' + escapeHtml(playDesc(e)) + '</div>';
-    card.addEventListener('click', () => { applyEntry(e); });
+    card.className = 'play-card'; card.dataset.key = s.key;
+    card.innerHTML = '<div class="pname">' + s.icon + ' ' + escapeHtml(t('play.' + s.key + '.name')) + '</div>' +
+      '<div class="pdesc">' + escapeHtml(t('play.' + s.key + '.desc')) + '</div>';
+    card.addEventListener('click', async () => { await window.bambu.playSetScenario(s.key); });
     box.appendChild(card);
   }
   playGalleryBuilt = true;
@@ -652,18 +600,20 @@ function buildGallery() {
 
 function renderPlayState(st) {
   // st: { isPlaying, currentScenario, percent }
-  const e = findEntry(st);
-  const card = el('gachaCard');
-  if (st.isPlaying && e) {
-    el('gachaCap').textContent = t('play.nowPlaying');
-    setCard(e);
-    card.classList.add('revealed');
+  const sc = PLAY_SCENARIOS.find((x) => x.key === st.currentScenario);
+  if (st.isPlaying && sc) {
+    el('playStateLabel').textContent = sc.icon + ' ' + t('play.' + sc.key + '.name');
+    document.querySelector('.play-now-cap').textContent = t('play.nowPlaying');
   } else {
-    el('gachaCap').textContent = t('play.inLiveMode');
-    setCard(null);
-    card.classList.remove('revealed');
+    el('playStateLabel').textContent = t('play.inLiveMode');
+    document.querySelector('.play-now-cap').textContent = '';
   }
-  document.querySelectorAll('.play-card').forEach((c) => c.classList.toggle('active', st.isPlaying && e && c.dataset.id === e.id));
+  // 进度滑杆仅在场景声明 hasProgress 时显示（目前仅 printing）
+  const showProg = st.isPlaying && !!(sc && sc.hasProgress);
+  el('progressRow').classList.toggle('hidden', !showProg);
+  if (showProg) { el('playProgress').value = st.percent; el('playProgressVal').textContent = st.percent + '%'; syncSliderFill(el('playProgress')); }
+  // 画廊高亮当前
+  document.querySelectorAll('.play-card').forEach((c) => c.classList.toggle('active', st.isPlaying && c.dataset.key === st.currentScenario));
 }
 
 async function initPlay() {
@@ -673,51 +623,25 @@ async function initPlay() {
   renderPlayState(st);
 }
 
-// 抽卡：卡牌内容快速轮播（easeOut 减速），定格后只下发一次到熊猫
-function drawGacha() {
-  if (applying) return;
-  applying = true;
-  const btn = el('drawBtn'); btn.disabled = true;
-  const card = el('gachaCard'); card.classList.add('spinning');
-  const final = PLAY_SCENARIOS[Math.floor(Math.random() * PLAY_SCENARIOS.length)];
-  const TICKS = 16;
-  let i = 0;
-  const tick = () => {
-    if (i < TICKS) {
-      const r = PLAY_SCENARIOS[Math.floor(Math.random() * PLAY_SCENARIOS.length)];
-      setCard(r);
-      i += 1;
-      const p = i / TICKS;                 // easeOutCubic：间隔 55ms → ~220ms
-      setTimeout(tick, 55 + 165 * (p * p));
-    } else {
-      setCard(final);
-      card.classList.remove('spinning');
-      // 揭晓动效：翻牌弹出 + 全息扫光 + 稀有度光晕
-      card.classList.remove('pop', 'shine', 'revealed'); void card.offsetWidth;
-      card.classList.add('pop', 'shine', 'revealed');
-      setTimeout(() => card.classList.remove('pop', 'shine'), 900);
-      if ((final.rarity || 'common') === 'epic') spawnSparkles(card);
-      // applyEntry 内部会管理 applying 并在末尾 renderPlayState(final)
-      applying = false;
-      applyEntry(final).then(() => { btn.disabled = false; });
-    }
-  };
-  tick();
-}
-el('drawBtn').addEventListener('click', drawGacha);
-el('gachaCard').addEventListener('click', drawGacha);  // 点卡面也能抽
-
-// 折叠「全部状态」
-el('allStatesToggle').addEventListener('click', () => {
-  const toggle = el('allStatesToggle');
-  const open = toggle.classList.toggle('open');
-  el('playGallery').classList.toggle('hidden', !open);
+// 滑杆拖动 → 实时设进度
+el('playProgress').addEventListener('input', () => {
+  const v = Number(el('playProgress').value);
+  el('playProgressVal').textContent = v + '%';
+  window.bambu.playSetProgress(v);
 });
-
+// 自动巡演开关
+el('autoTourBtn').addEventListener('click', async () => {
+  autoTouring = !autoTouring;
+  await window.bambu.playAutoTour(autoTouring);
+  el('autoTourBtn').textContent = t(autoTouring ? 'play.autoTourStop' : 'play.autoTour');
+});
 // 回到真机
-el('playReturnBtn').addEventListener('click', () => { window.bambu.playReturnToLive(); });
-// 主进程推送把玩状态变化（下发过程中忽略，避免中间帧）
-window.bambu.onPlayStateChanged((st) => { if (!applying) renderPlayState(st); });
+el('playReturnBtn').addEventListener('click', async () => {
+  autoTouring = false; el('autoTourBtn').textContent = t('play.autoTour');
+  await window.bambu.playReturnToLive();
+});
+// 主进程推送把玩状态变化
+window.bambu.onPlayStateChanged((st) => { autoTouring = false; el('autoTourBtn').textContent = t('play.autoTour'); renderPlayState(st); });
 
 // ── 启动：默认进入打印机区域 ──
 // 初始子页面：由窗口创建时的 hash 决定（如 #play），默认打印机

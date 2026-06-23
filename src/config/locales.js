@@ -117,7 +117,7 @@ const STRINGS = {
     'tray.remainingMin': '剩余 {n} 分钟',
     'tray.noPrinter': '未添加打印机',
     'tray.addPrinter': '添加打印机…',
-    'tray.playMode': '把玩模式',
+    'tray.playMode': '探索',
     'tray.settings': '设置…',
     'tray.checkUpdate': '检查更新…',
     'tray.size': '大小',
@@ -252,7 +252,7 @@ const STRINGS = {
 
     // ── 侧边栏导航 ──
     'nav.printers': '打印机',
-    'nav.play': '把玩探索',
+    'nav.play': '探索',
     'nav.appearance': '外观',
     'nav.about': '关于',
     // ── 打印机区域（合并后）──
@@ -274,19 +274,16 @@ const STRINGS = {
     'printers.lanPrinter': '本地打印机',
     'printers.connecting': '连接中…',
     'printers.paused': '已暂停',
-    // ── 把玩探索页框架 ──
-    'play.title': '把玩探索',
+    // ── 探索页框架 ──
+    'play.title': '探索',
     'play.subtitle': '不用连打印机，点一下就能看熊猫的各种状态',
     'play.nowPlaying': '当前正在演示',
     'play.inLiveMode': '当前为真机模式',
+    'play.dragProgress': '拖动模拟打印进度',
+    'play.autoTour': '自动巡演（依次播放全部状态）',
+    'play.autoTourStop': '停止巡演',
     'play.returnToLive': '回到真机',
-    'play.draw': '抽一张',
-    'play.gachaTitle': '🎴 状态盲盒',
-    'play.gachaSub': '不连打印机，抽一张看看熊猫的各种状态',
-    'play.drawHint': '点一下，随机抽个状态',
-    'play.cardBack': '点击抽卡',
-    'play.allStates': '全部状态',
-    'play.printing.progressLabel': '认真打印 · {p}%',
+    'play.galleryHint': '点一下试试',
     // ── 把玩场景：友好名 + 说明 ──
     'play.printing.name': '认真打印',          'play.printing.desc': '熊猫专注盯着打印',
     'play.idle.name': '空闲发呆',              'play.idle.desc': '没活干，打个盹',
@@ -417,7 +414,7 @@ const STRINGS = {
     'tray.remainingMin': '{n} min left',
     'tray.noPrinter': 'No printer added',
     'tray.addPrinter': 'Add printer…',
-    'tray.playMode': 'Playground',
+    'tray.playMode': 'Explore',
     'tray.settings': 'Settings…',
     'tray.checkUpdate': 'Check for Updates…',
     'tray.size': 'Size',
@@ -551,7 +548,7 @@ const STRINGS = {
 
     // ── Sidebar nav ──
     'nav.printers': 'Printers',
-    'nav.play': 'Playground',
+    'nav.play': 'Explore',
     'nav.appearance': 'Appearance',
     'nav.about': 'About',
     // ── Printers section (merged) ──
@@ -573,19 +570,16 @@ const STRINGS = {
     'printers.lanPrinter': 'LAN printer',
     'printers.connecting': 'Connecting…',
     'printers.paused': 'Paused',
-    // ── Playground page frame ──
-    'play.title': 'Playground',
+    // ── Explore page frame ──
+    'play.title': 'Explore',
     'play.subtitle': 'No printer needed — click to see the panda in every state',
     'play.nowPlaying': 'Now playing',
     'play.inLiveMode': 'Currently in live mode',
+    'play.dragProgress': 'Drag to simulate print progress',
+    'play.autoTour': 'Auto tour (play all states)',
+    'play.autoTourStop': 'Stop tour',
     'play.returnToLive': 'Back to live',
-    'play.draw': 'Draw',
-    'play.gachaTitle': '🎴 Status Gacha',
-    'play.gachaSub': 'No printer needed — draw to preview the panda\'s states',
-    'play.drawHint': 'Click to draw a random state',
-    'play.cardBack': 'Click to draw',
-    'play.allStates': 'All states',
-    'play.printing.progressLabel': 'Printing · {p}%',
+    'play.galleryHint': 'Give it a try',
     // ── Play scenarios: friendly name + desc ──
     'play.printing.name': 'Printing',         'play.printing.desc': 'Panda watching the print intently',
     'play.idle.name': 'Idle',                 'play.idle.desc': 'Nothing to do, taking a nap',

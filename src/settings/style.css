@@ -432,71 +432,15 @@ select {
   .pcard.is-active { transform: scale(1); }
 }
 
-/* ── 把玩页：抽卡 ── */
-.gacha-stage {
-  position: relative; overflow: hidden; text-align: center; margin-bottom: 14px;
-  padding: 22px 16px 18px; border: 1px solid var(--border); border-radius: var(--radius);
-  background: radial-gradient(120% 70% at 50% -10%, var(--brand-weak), var(--panel) 62%);
-  perspective: 800px;
-}
-.gacha-title { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
-.gacha-sub { font-size: 12px; color: var(--text-dim); margin-bottom: 16px; }
-.gacha-cap { font-size: 11px; color: var(--text-faint); margin: 12px 0 14px; }
-.gacha-card {
-  --glow: var(--border);
-  position: relative; width: 184px; height: 244px; margin: 0 auto 14px;
-  border-radius: 16px; border: 1px solid var(--glow); overflow: hidden;
-  background: linear-gradient(160deg, var(--field-bg), var(--panel));
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.10); cursor: pointer;
-  transition: transform .2s cubic-bezier(.2,.8,.2,1), box-shadow .25s ease, border-color .25s ease, background .25s ease;
-}
-.gacha-card:hover { transform: translateY(-2px); }
-/* 稀有度配色 */
-.gacha-card.r-common { --glow: #9aa0a6; }
-.gacha-card.r-rare   { --glow: #5b8def; }
-.gacha-card.r-epic   { --glow: #e0a92e; }
-.gacha-card.revealed {
-  border-color: var(--glow);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--glow) 32%, transparent), 0 16px 38px color-mix(in srgb, var(--glow) 30%, transparent);
-}
-.gacha-card.revealed.r-rare { background: linear-gradient(160deg, rgba(91, 141, 239, 0.16), var(--panel)); }
-.gacha-card.revealed.r-epic { background: linear-gradient(160deg, rgba(224, 169, 46, 0.20), var(--panel)); }
-/* 抽卡中：充能脉冲 + 轻抖 */
-.gacha-card.spinning { animation: gacha-charge .55s ease-in-out infinite; border-color: var(--brand); }
-@keyframes gacha-charge {
-  0%, 100% { transform: scale(1) rotate(0); box-shadow: 0 8px 24px rgba(0,0,0,.10); }
-  50% { transform: scale(1.04) rotate(-.8deg); box-shadow: 0 0 0 4px var(--brand-weak), 0 14px 32px rgba(0,0,0,.16); }
-}
-/* 揭晓：翻牌弹出 */
-.gacha-card.pop { animation: gacha-pop .55s cubic-bezier(.2,1.35,.4,1); }
-@keyframes gacha-pop { 0% { transform: rotateY(85deg) scale(.7); opacity: .25; } 60% { transform: rotateY(0) scale(1.08); opacity: 1; } 100% { transform: scale(1); } }
-/* 全息扫光 */
-.gacha-card::after {
-  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0;
-  background: linear-gradient(115deg, transparent 32%, rgba(255,255,255,.55) 48%, transparent 64%);
-  transform: translateX(-120%);
-}
-.gacha-card.shine::after { animation: gacha-shine .8s ease-out; }
-@keyframes gacha-shine { 0% { opacity: .9; transform: translateX(-120%); } 100% { opacity: 0; transform: translateX(120%); } }
-.gacha-icon { font-size: 62px; line-height: 1; filter: drop-shadow(0 4px 8px rgba(0,0,0,.18)); }
-.gacha-name { font-size: 14px; font-weight: 700; color: var(--text); }
-.gacha-rarity { height: 14px; font-size: 12px; letter-spacing: 2px; color: var(--glow); }
-/* 传说星火 */
-.gacha-spark { position: absolute; left: 50%; top: 42%; font-size: 16px; pointer-events: none; z-index: 5; animation: spark-fly .9s ease-out forwards; }
-@keyframes spark-fly { 0% { opacity: 0; transform: translate(0,0) scale(.4); } 25% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(1.1); } }
-.gacha-actions { display: flex; gap: 10px; justify-content: center; }
-.gacha-draw { padding: 9px 22px; font-size: 13px; }
-@media (prefers-reduced-motion: reduce) {
-  .gacha-card.spinning, .gacha-card.pop, .gacha-card.shine::after, .gacha-spark { animation: none; }
-}
-
-/* ── 把玩页：折叠列表 ── */
-.all-states-toggle { width: 100%; text-align: left; background: transparent; border: none; color: var(--text-dim); font-size: 12px; font-weight: 600; padding: 8px 2px; cursor: pointer; font-family: inherit; }
-.all-states-toggle .chev { display: inline-block; width: 12px; transition: transform .15s ease; }
-.all-states-toggle.open .chev { transform: rotate(90deg); }
-.all-states.hidden { display: none; }
-.gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 6px; }
+/* ── 探索页 ── */
+.play-now { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+.play-now-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.play-now-label { font-size: 15px; font-weight: 600; color: var(--text); margin-top: 2px; }
+.play-now-cap { font-size: 11px; color: var(--text-faint); }
+.progress-row.hidden { display: none; }
+.progress-head { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-faint); margin-bottom: 6px; }
+.progress-head .val { color: var(--brand); font-variant-numeric: tabular-nums; }
+.gallery { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .play-card { text-align: left; background: var(--panel); border: 1px solid var(--border); border-radius: 9px; padding: 11px 12px; cursor: pointer; transition: border-color .12s ease, background .12s ease; }
 .play-card:hover { border-color: var(--brand); }
 .play-card.active { border-color: var(--brand); background: var(--brand-weak); }

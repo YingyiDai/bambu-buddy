@@ -1,22 +1,19 @@
-// 把玩探索：场景元数据（单一数据源，与 src/settings/settings.js 内的副本保持一致）。
-// printing 拆成 0/25/50/75 四档进度，各自独立可抽/可选（对应 state-map.js 的 printing_0/25/50/75）。
-// 每个 scenario 必须与 src/core/mock.js 的 SCENARIOS 键一一对应；progress 走 play:setProgress。
-// 文案走 locales：play.<id>.name/.desc；printing 档用 play.printing.progressLabel。
+// 把玩探索：场景元数据（单一数据源）。
+// 数组顺序 = 状态画廊展示顺序 = 自动巡演顺序。
+// 每个 key 必须与 src/core/mock.js 的 SCENARIOS 键一一对应。
+// 文案（友好名 / 说明）走 locales：play.<key>.name / play.<key>.desc。
 const PLAY_SCENARIOS = [
-  { id: 'printing_0',  scenario: 'printing', progress: 0,  icon: '🖨️' },
-  { id: 'printing_25', scenario: 'printing', progress: 25, icon: '🖨️' },
-  { id: 'printing_50', scenario: 'printing', progress: 50, icon: '🖨️' },
-  { id: 'printing_75', scenario: 'printing', progress: 75, icon: '🖨️' },
-  { id: 'idle',              scenario: 'idle',              icon: '😴' },
-  { id: 'prepare_leveling',  scenario: 'prepare_leveling',  icon: '📐' },
-  { id: 'changing_filament', scenario: 'changing_filament', icon: '🔄' },
-  { id: 'paused',            scenario: 'paused',            icon: '⏸️' },
-  { id: 'finished',          scenario: 'finished',          icon: '🎉' },
-  { id: 'failed',            scenario: 'failed',            icon: '😢' },
-  { id: 'offline',           scenario: 'offline',           icon: '🔌' },
+  { key: 'printing',          icon: '🖨️', hasProgress: true  },
+  { key: 'idle',              icon: '😴', hasProgress: false },
+  { key: 'prepare_leveling',  icon: '📐', hasProgress: false },
+  { key: 'changing_filament', icon: '🔄', hasProgress: false },
+  { key: 'paused',            icon: '⏸️', hasProgress: false },
+  { key: 'finished',          icon: '🎉', hasProgress: false },
+  { key: 'failed',            icon: '😢', hasProgress: false },
+  { key: 'offline',           icon: '🔌', hasProgress: false },
 ];
 
-function playLabelKey(e) { return e.scenario === 'printing' ? 'play.printing.progressLabel' : `play.${e.id}.name`; }
-function playDescKey(e) { return `play.${e.scenario === 'printing' ? 'printing' : e.id}.desc`; }
+function playLabelKey(key) { return `play.${key}.name`; }
+function playDescKey(key) { return `play.${key}.desc`; }
 
 module.exports = { PLAY_SCENARIOS, playLabelKey, playDescKey };
