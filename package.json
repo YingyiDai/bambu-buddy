@@ -12,8 +12,8 @@
   "scripts": {
     "start": "electron .",
     "process-videos": "bash scripts/process-videos.sh",
-    "build:mac": "electron-builder --mac",
-    "build:win": "electron-builder --win"
+    "build:mac": "electron-builder --mac --publish never",
+    "build:win": "electron-builder --win --publish never"
   },
   "dependencies": {
     "electron-store": "^8.2.0",
