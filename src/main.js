@@ -5,6 +5,7 @@ const path = require('path');
 const Store = require('electron-store');
 
 const { resolveState, extractTemps, formatRemainingTime } = require('./core/state-machine');
+const { buildLiveTelemetry } = require('./core/live-telemetry');
 const { MockDataSource } = require('./core/mock');
 const { BambuCloudDataSource, BambuLanDataSource } = require('./core/bambu-mqtt');
 const bambuAuth = require('./core/bambu-auth');
@@ -64,6 +65,7 @@ let settingsWin = null; // Bambu 连接设置窗（Cloud 登录 / LAN 配置）
 let lastState = null; // 最近一次 resolveState 结果，用于托盘展示
 let lastReport = null; // 最近一次 MQTT 原始报文，供托盘菜单读取实时指标
 let cloudPollTimer = null; // 云端粗粒度状态轮询定时器
+let liveNotifyTimer = null; // MQTT 实时状态 → 设置窗重绘的防抖定时器
 let playPercent = 0; // 把玩页打印进度（滑杆位置，0–100）
 
 function currentSizePx() {
@@ -178,6 +180,19 @@ function applyReport(report) {
   lastState = resolveState(report);
   pushState();
   rebuildTray();
+  notifySettingsLive(); // MQTT 实时状态变化 → 刷新设置窗打印机卡片
+}
+
+// MQTT 报文频次较高（打印中每秒量级），防抖后再通知设置窗重绘，避免高频刷新。
+// 仅 live 模式通知；mock 模式的卡片状态由 play:stateChanged 单独驱动。
+function notifySettingsLive() {
+  if (!settingsWin || settingsWin.isDestroyed()) return;
+  if (store.get('dataSource', 'mock') !== 'live') return;
+  if (liveNotifyTimer) return;
+  liveNotifyTimer = setTimeout(() => {
+    liveNotifyTimer = null;
+    if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('printers:changed');
+  }, 1000);
 }
 
 // 给数据源接上统一的 onState 回调：保存原始报文/解析状态、推送、刷新托盘。
@@ -220,6 +235,7 @@ function buildDataSource() {
   const entry = resolveActiveEntry();
   if (!entry) {
     lastState = resolveState({ connected: false });
+    lastReport = null; // 清掉上一台的遥测，避免 printer:list 误把旧进度当作当前机实时数据
     pushState();
     rebuildTray();
     return;
@@ -227,7 +243,10 @@ function buildDataSource() {
   // 切换打印机时先把宠物重置为「离线」，再等新机首帧报文覆盖：
   //   - 在线机：pushall 回传后很快更新为真实状态；
   //   - 离线机：永远收不到报文，保持离线（修复切到离线机仍显示上一台状态的问题）。
+  // 同时清空 lastReport：否则 printer:list 的 hasLive/liveProgress 仍取上一台报文，
+  // 导致切换后活动卡片上串显上一台的进度/层数。
   lastState = resolveState({ connected: false });
+  lastReport = null;
   pushState();
   rebuildTray();
 
@@ -682,20 +701,12 @@ ipcMain.handle('bambu:saveLan', async (_e, host, accessCode, serial, name) => {
 // ---- 统一打印机列表管理（§Task 6）----
 ipcMain.handle('printer:list', () => {
   // 把玩（mock）模式下 lastState/lastReport 是模拟场景，不能当作真机实时状态显示到卡片上。
+  // 实时遥测派生见 core/live-telemetry.js（纯函数，含切换/重登后置空防串台的契约）。
   const liveMode = store.get('dataSource', 'mock') === 'live';
-  const hasLive = liveMode && lastReport && lastReport.connected !== false;
   return {
     printers: getUnified(),
     activeSerial: store.get('activePrinterSerial') || null,
-    liveLabelKey: liveMode && lastState ? lastState.labelKey : null,
-    liveLabelParams: liveMode && lastState ? lastState.labelParams : null,
-    // 当前打印机的实时遥测（仅真机模式 + 活动打印机有效）
-    liveTemps: hasLive ? extractTemps(lastReport) : null,
-    liveProgress: hasLive ? {
-      percent: Number.isFinite(lastReport.mc_percent) ? lastReport.mc_percent : null,
-      layer: Number.isFinite(lastReport.layer_num) ? lastReport.layer_num : null,
-      total: Number.isFinite(lastReport.total_layer_num) ? lastReport.total_layer_num : null,
-    } : null,
+    ...buildLiveTelemetry(liveMode, lastState, lastReport),
   };
 });
 
