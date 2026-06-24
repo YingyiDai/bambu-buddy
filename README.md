@@ -22,7 +22,7 @@ English | <a href="README.zh-CN.md">简体中文</a>
 
 Bambu Buddy turns your printer's status into a little animated panda that lives on your desktop. It's transparent, always-on-top, draggable, and click-through — it stays out of your way in the corner, using expressions and motion to tell you how your print is going: started, swapping filament, finished, or failed. One glance and you know — no need to open Bambu Studio or Bambu Handy.
 
-<div align="center"><img src="assets/readme/whatsthis.png" width="720" alt="Bambu Buddy on the desktop" /></div>
+<div align="center"><img src="assets/readme/whatsthis-en.png" width="720" alt="Bambu Buddy on the desktop" /></div>
 
 ---
 
@@ -78,7 +78,7 @@ Bambu Buddy turns your printer's status into a little animated panda that lives 
 | ☁️ **Bambu Cloud** | Sign in with your Bambu account; cloud printers sync automatically and subscribe to live status via MQTT. |
 | 🏠 **LAN** | Enter the printer's IP + access code (shown on the printer's screen) to connect directly on your local network. |
 
-<div align="center"><img src="assets/readme/connectprinter.png" width="720" alt="Connect your printer" /></div>
+<div align="center"><img src="assets/readme/connectprinter-en.png" width="720" alt="Connect your printer" /></div>
 
 ---
 
