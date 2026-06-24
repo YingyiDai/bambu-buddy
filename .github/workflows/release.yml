@@ -1,0 +1,94 @@
+# 全平台打包 + 发版：打 tag 触发，在 macos / windows 原生 runner 上各打一份，
+# 自动上传到对应 Release。详见仓库根目录 RELEASING.md。
+#
+# 触发方式：
+#   1) 推送 tag：git tag vX.Y.Z && git push origin vX.Y.Z  →  从该 tag 构建并发布
+#   2) 手动补建/重跑：Actions → Run workflow，填 tag（必填，如 v0.1.2），
+#      可选 ref（构建用的 commit，默认即 tag；补建旧版时可填 main）
+#
+# 产物命名（见 package.json build.artifactName）：
+#   macOS arm64 → Bambu.Buddy-<ver>-arm64.dmg（ad-hoc 签名）
+#   Windows x64 → Bambu.Buddy.Setup.<ver>.exe（未签名）
+
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要发布到的 Release tag（如 v0.1.2，必填）'
+        required: true
+      ref:
+        description: '构建用的 commit/ref（默认即 tag；补建旧版可填 main）'
+        required: false
+
+# tag 名（Release 标识）；构建用的 ref（默认与 tag 相同）
+env:
+  TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  BUILD_REF: ${{ github.event_name == 'workflow_dispatch' && (inputs.ref || inputs.tag) || github.ref_name }}
+
+jobs:
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BUILD_REF }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build:mac
+        env:
+          # 无 Apple Developer 证书：跳过正式签名，由 afterSign 钩子做 ad-hoc 签名
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac-dist
+          path: dist/*.dmg
+          if-no-files-found: error
+
+  build-win:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BUILD_REF }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run build:win
+      - uses: actions/upload-artifact@v4
+        with:
+          name: win-dist
+          path: dist/*.exe
+          if-no-files-found: error
+
+  release:
+    needs: [build-mac, build-win]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - name: Upload assets to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ env.TAG_NAME }}
+        run: |
+          set -e
+          # Release 不存在则创建（带自动生成说明；已存在则跳过，保留手写说明）
+          gh release create "$TAG" --title "Bambu Buddy $TAG" --generate-notes --target "$TAG" || true
+          # 上传/覆盖 mac + win 安装包
+          find artifacts -type f \( -name '*.dmg' -o -name '*.exe' \) -print0 \
+            | xargs -0 gh release upload "$TAG" --clobber
+          echo "=== $TAG 资产 ==="
+          gh release view "$TAG" --json assets --jq '.assets[].name'

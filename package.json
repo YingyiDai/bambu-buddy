@@ -12,7 +12,8 @@
   "scripts": {
     "start": "electron .",
     "process-videos": "bash scripts/process-videos.sh",
-    "build:mac": "electron-builder --mac"
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win"
   },
   "dependencies": {
     "electron-store": "^8.2.0",
@@ -37,9 +38,19 @@
     "mac": {
       "category": "public.app-category.utilities",
       "target": "dmg",
+      "artifactName": "Bambu.Buddy-${version}-${arch}.${ext}",
       "extendInfo": {
         "LSUIElement": true
       }
+    },
+    "win": {
+      "target": "nsis",
+      "artifactName": "Bambu.Buddy.Setup.${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
     },
     "afterSign": "build/adhoc-sign.js"
   }
