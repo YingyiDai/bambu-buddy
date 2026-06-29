@@ -2,7 +2,7 @@
 // 用内置 node:test 运行：node --test test/
 const test = require('node:test');
 const assert = require('node:assert');
-const { resolveState, extractTemps, formatRemainingTime } = require('../src/core/state-machine');
+const { resolveState, extractTemps } = require('../src/core/state-machine');
 
 test('连接断开 → offline', () => {
   const r = resolveState({ connected: false, gcode_state: 'RUNNING' });
@@ -94,7 +94,7 @@ test('未知状态兜底 idle', () => {
   assert.equal(r.labelKey, 'label.idle');
 });
 
-// extractTemps + formatRemainingTime tests (unchanged from Task 1, keep all 10)
+// extractTemps tests（剩余时间的 locale 格式化在主进程 getMetricsLabel，已不在此模块）
 test('extractTemps 取 nozzle_temps 数组第一个元素', () => {
   const r = extractTemps({ nozzle_temps: [220, 0], bed_temps: [55, 0], target_nozzle_temp: 220, target_bed_temp: 55 });
   assert.equal(r.nozzleTemp, 220);
@@ -138,24 +138,6 @@ test('extractTemps 非数字容错', () => {
   const r = extractTemps({ nozzle_temp: 'abc', bed_temps: null });
   assert.equal(r.nozzleTemp, null);
   assert.equal(r.bedTemp, null);
-});
-
-test('formatRemainingTime 小于 60 分钟', () => {
-  assert.equal(formatRemainingTime(5), '剩余 5 分钟');
-  assert.equal(formatRemainingTime(59), '剩余 59 分钟');
-});
-
-test('formatRemainingTime 大于等于 60 分钟', () => {
-  assert.equal(formatRemainingTime(60), '剩余 1h');
-  assert.equal(formatRemainingTime(83), '剩余 1h23m');
-  assert.equal(formatRemainingTime(120), '剩余 2h');
-});
-
-test('formatRemainingTime 边界值返回 null', () => {
-  assert.equal(formatRemainingTime(null), null);
-  assert.equal(formatRemainingTime(0), null);
-  assert.equal(formatRemainingTime(-1), null);
-  assert.equal(formatRemainingTime(undefined), null);
 });
 
 // ── Bambu Studio 全阶段富集（stg_cur → 最贴近动画 + 精确文案）──

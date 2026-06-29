@@ -4,7 +4,7 @@ const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, safeStorag
 const path = require('path');
 const Store = require('electron-store');
 
-const { resolveState, extractTemps, formatRemainingTime } = require('./core/state-machine');
+const { resolveState, extractTemps } = require('./core/state-machine');
 const { buildLiveTelemetry } = require('./core/live-telemetry');
 const { MockDataSource } = require('./core/mock');
 const { BambuCloudDataSource, BambuLanDataSource } = require('./core/bambu-mqtt');
@@ -12,6 +12,7 @@ const bambuAuth = require('./core/bambu-auth');
 const { t, STRINGS } = require('./config/locales');
 const { checkForUpdates } = require('./core/updater');
 const registry = require('./core/printer-registry');
+const { clampToVisible } = require('./core/window-position');
 
 const store = new Store();
 
@@ -24,7 +25,9 @@ function migrateStorage() {
       store.set('bambuAccount', {
         region: bambu.region || 'global',
         account: bambu.account || '',
-        token: bambu.token,
+        // 旧格式 token 为明文；迁移时一并加密，与其余写入路径保持一致，
+        // 避免凭据长期以明文留存。decryptSecret 读取时对明文/密文都有兜底。
+        token: encryptSecret(bambu.token),
         uid: bambu.uid,
       });
       store.set('bambuPrinters', [{
@@ -83,10 +86,11 @@ if (!app.requestSingleInstanceLock()) {
 
 function createWindow() {
   const sizePx = currentSizePx();
-  // 读回上次位置（§5.3）
-  const saved = store.get('window.position');
+  // 读回上次位置（§5.3）。先夹到当前仍可见的显示器范围内：
+  // 外接显示器断开 / 分辨率变更后，旧坐标可能落在不可见区域（用户以为程序丢了）。
+  const saved = clampToVisible(store.get('window.position'), screen.getAllDisplays(), sizePx);
   let x, y;
-  if (saved && Number.isFinite(saved.x) && Number.isFinite(saved.y)) {
+  if (saved) {
     x = saved.x; y = saved.y;
   } else {
     // 默认放到主屏右下角
@@ -138,12 +142,10 @@ function setPetSizePx(px) {
   const [x, y] = win.getPosition();
   const [w, h] = win.getSize();
   const cx = x + w / 2, cy = y + h / 2;
-  win.setBounds({
-    x: Math.round(cx - px / 2),
-    y: Math.round(cy - px / 2),
-    width: px,
-    height: px,
-  });
+  // 保持中心不动；放大后若溢出屏幕，夹回可见范围（clamp 失败则退回原中心算法）。
+  const desired = { x: Math.round(cx - px / 2), y: Math.round(cy - px / 2) };
+  const safe = clampToVisible(desired, screen.getAllDisplays(), px) || desired;
+  win.setBounds({ x: safe.x, y: safe.y, width: px, height: px });
   const [nx, ny] = win.getPosition();
   store.set('window.position', { x: nx, y: ny });
   rebuildTray();
@@ -330,7 +332,7 @@ function getMetricsLabel(locale, report) {
       parts.push(`${t(locale, 'tray.bed')} ${temps.bedTemp}°C`);
     }
   }
-  // formatRemainingTime returns Chinese strings — use locale-aware version instead
+  // 剩余时间按当前 locale 格式化（托盘文案，唯一格式化处）
   if (temps.remainingTime != null && temps.remainingTime > 0) {
     const mins = temps.remainingTime;
     if (mins < 60) {
@@ -580,13 +582,6 @@ ipcMain.handle('bambu:loginWithCode', async (_e, region, account, code, tfaKey) 
   return r;
 });
 
-// listDevices：优先用本次会话刚换到的 token，否则用已存的 token
-ipcMain.handle('bambu:listDevices', async () => {
-  const { region, token } = resolveActiveToken();
-  if (!token) return { ok: false, error: '请先登录' };
-  return bambuAuth.listDevices(region, token);
-});
-
 // ---- 云端粗粒度状态轮询（§Task 5）----
 // 定期刷新 bambuPrinters 的 online/printStatus，驱动托盘与设置窗展示。
 async function refreshCloudPrinters() {
@@ -613,33 +608,6 @@ function startCloudPoll() {
   if (cloudPollTimer) clearInterval(cloudPollTimer);
   cloudPollTimer = setInterval(refreshCloudPrinters, 45000);
 }
-
-ipcMain.handle('bambu:saveDevice', async (_e, serial, name, model) => {
-  const { region, token, uid } = resolveActiveToken();
-  if (!token) return { ok: false, error: '登录已失效，请重新登录' };
-
-  // 存账号凭据
-  const existingAccount = store.get('bambuAccount', {});
-  store.set('bambuAccount', {
-    region,
-    account: (pendingAuth && pendingAuth.account) || existingAccount.account || '',
-    uid,
-    token: encryptSecret(token),
-  });
-
-  // 加入/更新打印机列表
-  const printers = store.get('bambuPrinters', []);
-  const idx = printers.findIndex(p => p.serial === serial);
-  const entry = { serial, name: name || serial, model: model || '' };
-  if (idx >= 0) printers[idx] = entry;
-  else printers.push(entry);
-  store.set('bambuPrinters', printers);
-  store.set('activePrinterSerial', serial);
-  store.set('dataSource', 'live');
-
-  afterSave();
-  return { ok: true };
-});
 
 // 合并登录流程：登录成功后一次性持久化账号 + 拉取全部云端打印机进统一列表，
 // 设一台为当前并切到 live —— 不关闭设置窗（用户停留在「打印机」区域看到已同步的列表）。
@@ -673,8 +641,8 @@ ipcMain.handle('bambu:completeCloudLogin', async () => {
   return { ok: true };
 });
 
-// LAN 测试连接：临时建一个数据源探活，5 秒内收到报文即视为成功。
-// 抽出为独立函数，供 `bambu:testLan` 与 `printer:addLan` 复用（DRY）。
+// LAN 测试连接：临时建一个数据源探活，6 秒内收到报文即视为成功。
+// 供 `printer:addLan` 在落库前先探活复用。
 async function testLanConnection(host, accessCode, serial) {
   return new Promise((resolve) => {
     const probe = new BambuLanDataSource({ host, accessCode, serial });
@@ -685,18 +653,6 @@ async function testLanConnection(host, accessCode, serial) {
     const t = setTimeout(() => finish({ ok: false, error: '连接超时，请检查 IP / 访问码' }), 6000);
   });
 }
-
-ipcMain.handle('bambu:testLan', async (_e, host, accessCode, serial) => testLanConnection(host, accessCode, serial));
-
-ipcMain.handle('bambu:saveLan', async (_e, host, accessCode, serial, name) => {
-  const list = registry.addLan(store.get('bambuLanPrinters', []),
-    { serial, name: name || serial, model: '', host, accessCode: encryptSecret(accessCode) });
-  store.set('bambuLanPrinters', list);
-  store.set('activePrinterSerial', serial);
-  store.set('dataSource', 'live');
-  afterSave();
-  return { ok: true };
-});
 
 // ---- 统一打印机列表管理（§Task 6）----
 ipcMain.handle('printer:list', () => {
@@ -802,7 +758,6 @@ ipcMain.handle('bambu:getState', async () => {
   const printers = store.get('bambuPrinters', []);
   const activePrinter = store.get('activePrinterSerial');
   return {
-    mode: 'cloud',
     region: account.region,
     hasToken: !!account.token,
     account: account.account,
@@ -835,14 +790,6 @@ function resolveActiveToken() {
     return { region: account.region, token: decryptSecret(account.token), uid: account.uid };
   }
   return { region: account.region, token: null, uid: account.uid };
-}
-
-// 保存成功后：清会话缓存、重建数据源、关窗、刷新托盘
-function afterSave() {
-  pendingAuth = null;
-  buildDataSource();
-  if (settingsWin && !settingsWin.isDestroyed()) settingsWin.close();
-  rebuildTray();
 }
 
 // ---- IPC：右键宠物弹出上下文菜单（跨平台主入口，§5.2）----

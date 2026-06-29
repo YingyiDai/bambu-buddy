@@ -17,7 +17,9 @@ const REGIONS = {
 
 // 端点常量：实现后若与 pybambu 不符，单点修正。
 const LOGIN_PATH = '/v1/user-service/user/login';
-const TFA_PATH = '/v1/user-service/user/login'; // 2FA/验证码完成：带 code 复用登录端点（待核实）
+// ⚠️ 未经真机验证：2FA/邮箱验证码完成端点与 body 结构为推测（带 code 复用登录端点）。
+//    海外区密码 + 2FA 登录路径尚未对真实账号验证过；若失败，对照 pybambu 修正此处。
+const TFA_PATH = '/v1/user-service/user/login';
 const DEVICE_LIST_PATH = '/v1/iot-service/api/user/bind';
 
 // 短信验证码登录（中国区）。host/path 与登录端点不同：

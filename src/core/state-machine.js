@@ -65,6 +65,8 @@ function printingVideoByPercent(percent) {
 // HMS 严重度判定：fatal/serious → 终止失败；common/info → 可恢复
 // pybambu 中 HMS code 的严重度位通常编码在高位；这里做宽松判定，
 // 兼容 { code, severity } 或纯字符串两种形态。
+// ⚠️ 未经真机验证：真机 HMS 多半把严重度编码在 code 位里而非 severity 字段，
+//    拿到真实 HMS 报文样本后需对照 pybambu 重新校正此判定。
 function hasFatalHms(hms) {
   if (!Array.isArray(hms)) return false;
   return hms.some((h) => {
@@ -196,17 +198,4 @@ function extractTemps(report) {
   };
 }
 
-/**
- * 将剩余时间（分钟）格式化为用户可读字符串。
- * @param {number|null|undefined} minutes
- * @returns {string|null}
- */
-function formatRemainingTime(minutes) {
-  if (minutes == null || !Number.isFinite(minutes) || minutes <= 0) return null;
-  if (minutes < 60) return `剩余 ${minutes} 分钟`;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m > 0 ? `剩余 ${h}h${m}m` : `剩余 ${h}h`;
-}
-
-module.exports = { resolveState, stageLabel, pauseLabel, hasFatalHms, extractTemps, formatRemainingTime, GCODE };
+module.exports = { resolveState, stageLabel, pauseLabel, hasFatalHms, extractTemps, GCODE };

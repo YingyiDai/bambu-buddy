@@ -4,7 +4,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('bambu', {
-  // Cloud 登录 / 验证码 / 设备列表 / 保存选中设备
+  // Cloud 登录 / 验证码 → 登录成功后由 completeCloudLogin 一次性同步设备列表
   submitCredentials: (region, account, password) =>
     ipcRenderer.invoke('bambu:login', region, account, password),
   submitVerifyCode: (region, account, password, tfaKey, code) =>
@@ -14,18 +14,10 @@ contextBridge.exposeInMainWorld('bambu', {
     ipcRenderer.invoke('bambu:requestSmsCode', region, phone),
   loginWithCode: (region, account, code, tfaKey) =>
     ipcRenderer.invoke('bambu:loginWithCode', region, account, code, tfaKey),
-  listDevices: () => ipcRenderer.invoke('bambu:listDevices'),
-  saveDevice: (serial, name, model) => ipcRenderer.invoke('bambu:saveDevice', serial, name, model),
   completeCloudLogin: () => ipcRenderer.invoke('bambu:completeCloudLogin'),
 
   // 主进程请求设置窗切到某个子页面（printers / play / appearance / about）
   onNavigate: (cb) => ipcRenderer.on('settings:navigate', (_e, section) => cb(section)),
-
-  // LAN 测试 / 保存
-  testLan: (host, accessCode, serial) =>
-    ipcRenderer.invoke('bambu:testLan', host, accessCode, serial),
-  saveLan: (host, accessCode, serial, name) =>
-    ipcRenderer.invoke('bambu:saveLan', host, accessCode, serial, name),
 
   // 状态 / 登出 / 关闭
   getStoredState: () => ipcRenderer.invoke('bambu:getState'),

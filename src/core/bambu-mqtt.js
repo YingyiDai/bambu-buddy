@@ -84,7 +84,9 @@ class BambuMQTTBase {
     if (print.command === 'print_error' || print.print_error) report.print_error = true;
     if (print.command === 'print_canceled') report.print_canceled = true;
 
-    // 舱门：部分固件在 home_flag / 单独字段里，pybambu 有解析；此处留出钩子
+    // 舱门：部分固件在 home_flag / 单独字段里，pybambu 有解析；此处留出钩子。
+    // ⚠️ 未经真机验证：真机大概率不会直接给 print.door_open 布尔字段，
+    //    需按 pybambu 从 home_flag 等位字段解析后，door_open 状态才会真正触发。
     if (typeof print.door_open === 'boolean') report.door_open = print.door_open;
 
     if (this._cb) this._cb(report);
