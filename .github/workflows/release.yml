@@ -87,7 +87,7 @@ jobs:
         run: |
           set -e
           # Release 不存在则创建（带自动生成说明；已存在则跳过，保留手写说明）
-          gh release create "$TAG" --repo "$REPO" --title "Bambu Buddy $TAG" --generate-notes --target "$TAG" || true
+          gh release create "$TAG" --repo "$REPO" --title "Bambu Buddy $TAG" --generate-notes || true
           # 上传/覆盖 mac + win 安装包
           find artifacts -type f \( -name '*.dmg' -o -name '*.exe' \) -print0 \
             | xargs -0 gh release upload "$TAG" --repo "$REPO" --clobber

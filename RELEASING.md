@@ -3,6 +3,8 @@
 > 全平台（macOS arm64 + Windows x64）打包与发版由 GitHub Actions 自动完成。
 > 工作流定义：`.github/workflows/release.yml`
 
+> 日常开发默认直接提交到 `main`，不强制走 PR。仅当明确要求 review 时才开 PR。
+
 ## 日常发版（推荐）
 
 每次发版**必须全平台重新打包**，不要只发某一平台。流程：
