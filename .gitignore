@@ -17,3 +17,6 @@ assets/source/
 
 # 开发过程文档（AI 规划/设计稿、调研笔记、发版清单），本地保留不公开
 docs/
+
+# Claude Code 项目说明（本地开发辅助，不公开）
+CLAUDE.md
