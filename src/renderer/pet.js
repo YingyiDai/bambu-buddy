@@ -4,9 +4,8 @@ const petEl = document.getElementById('pet');
 const labelEl = document.getElementById('label');
 const layers = [document.getElementById('videoA'), document.getElementById('videoB')];
 
-let activeIndex = 0;
-let currentVideoFile = null;
-let switchTimer = null;
+// 视频切换由并发安全、防抖不可饿死的控制器统一负责（见 crossfade.js）。
+const video = createVideoController(layers, { base: ANIM_BASE });
 
 // Locale
 let localeStrings = {};
@@ -25,34 +24,12 @@ function t(locale, key, params) {
   return template;
 }
 
-layers[activeIndex].classList.add('active');
-
-function crossfadeTo(videoFile) {
-  if (videoFile === currentVideoFile) return;
-  currentVideoFile = videoFile;
-  const incoming = layers[1 - activeIndex];
-  const outgoing = layers[activeIndex];
-  incoming.src = ANIM_BASE + videoFile;
-  incoming.load();
-  const onReady = () => {
-    incoming.removeEventListener('canplay', onReady);
-    incoming.play().catch(() => {});
-    incoming.classList.add('active');
-    outgoing.classList.remove('active');
-    activeIndex = 1 - activeIndex;
-    setTimeout(() => {
-      if (!outgoing.classList.contains('active')) { outgoing.removeAttribute('src'); outgoing.load(); }
-    }, 400);
-  };
-  incoming.addEventListener('canplay', onReady);
-}
-
 function applyState(state) {
   if (!state) return;
   lastPetState = state;
+  // 标签同步刷新；视频经控制器切换（去重 + 尾沿防抖 + 并发安全）。
   labelEl.textContent = t(currentLocale, state.labelKey, state.labelParams);
-  if (switchTimer) clearTimeout(switchTimer);
-  switchTimer = setTimeout(() => { crossfadeTo(state.videoFile); }, 250);
+  video.request(state.videoFile);
 }
 
 // Locale 更新 → 立即重绘标签
@@ -157,4 +134,4 @@ window.addEventListener('mouseup', () => {
 });
 petEl.addEventListener('contextmenu', (e) => { e.preventDefault(); window.pet.showMenu(); });
 
-crossfadeTo('idle.webm');
+video.request('idle.webm');
