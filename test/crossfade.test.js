@@ -143,3 +143,31 @@ test('同一文件重复 request 不重复加载（去重）', () => {
 
   assert.equal(loadsAfterSecond, loadsAfterFirst, '同名文件不应再次 load');
 });
+
+test('陈旧 cleanup 不得清空已被复用为入场层的层（F1 回归）', () => {
+  // 复现：切换 A 完成后会安排 fadeMs 延迟清理「旧 outgoing」层的 src；
+  // 但两层乒乓复用，下一次切换 B 很可能就把这个「旧 outgoing」拿去当入场层。
+  // 若 B 的 canplay 还没来、陈旧 cleanup 先触发，就会把 B 正在加载的 src 抹掉
+  // → 视频卡住、与标签不同步（正是本次提交想根治的那类 bug 换个触发器又回来）。
+  const { layers, sch, ctrl } = setup({ fadeMs: 400 });
+
+  // 1) 切到 printing_25 并完成（只 fire 入场层，模拟真实只有入场层在加载）
+  ctrl.request('printing_25.webm');
+  sch.advance(250);
+  layers[1 - ctrl.getActiveIndex()].fire('canplay'); // 完成；安排 cleanup(旧 outgoing)@+fadeMs
+  assert.equal(visibleFile(layers), 'printing_25.webm');
+
+  // 2) 紧接着切到 idle —— 复用「旧 outgoing」作入场层，且其加载较慢（暂不 canplay）
+  ctrl.request('idle.webm');
+  sch.advance(250); // to(idle)：incoming = 上一次的旧 outgoing
+  const incoming = layers[1 - ctrl.getActiveIndex()];
+
+  // 3) 时间推进到第 1 次切换当初安排的 cleanup 触发点
+  sch.advance(400);
+
+  // 4) idle 真正加载完成
+  incoming.fire('canplay');
+
+  // 入场层不该被陈旧 cleanup 抹掉 → 最终可见 idle，而不是空白/卡在 printing_25
+  assert.equal(visibleFile(layers), 'idle.webm');
+});

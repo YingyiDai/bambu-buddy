@@ -24,6 +24,7 @@ function createVideoController(layers, opts = {}) {
   let displayedFile = null; // 当前 active 层实际显示的文件
   let targetFile = null;    // 最新「已显示或正在切入」的目标文件（用于去重）
   let pending = null;       // 进行中的切换：{ teardown }
+  let cleanupTimer = null;  // 切换完成后延迟清理「旧 outgoing」src 的定时器句柄
   let debounceTimer = null;
   let debounceTarget = null;
 
@@ -40,6 +41,9 @@ function createVideoController(layers, opts = {}) {
     if (file === targetFile) return; // 已显示 / 正在切入同一文件
     targetFile = file;
     cancelPending();
+    // 取消上一次切换安排的延迟清理：incoming 即将被复用并写入新 src，
+    // 若让陈旧 cleanup 触发会把正在加载的入场层 src 抹掉 → 视频卡死、与标签不同步。
+    if (cleanupTimer != null) { clearT(cleanupTimer); cleanupTimer = null; }
 
     const incoming = layers[1 - activeIndex];
     const outgoing = layers[activeIndex];
@@ -56,7 +60,8 @@ function createVideoController(layers, opts = {}) {
       outgoing.classList.remove('active');
       activeIndex = 1 - activeIndex;
       displayedFile = file;
-      setT(() => {
+      cleanupTimer = setT(() => {
+        cleanupTimer = null;
         if (!outgoing.classList.contains('active')) {
           outgoing.removeAttribute('src');
           outgoing.load();
