@@ -67,6 +67,21 @@ test('PAUSE 断料 labelKey', () => {
   assert.equal(r.labelKey, 'label.paused.runout');
 });
 
+// 回归：真机断料暂停常给 gcode_state=PAUSE + stg_cur=0（无细分子阶段）。
+// stg=0 的 label.stage.0 文案是「打印中」，绝不能泄漏成暂停熊猫下方的文字/卡片状态。
+test('PAUSE 且 stg_cur=0 → 通用暂停文案，不显示「打印中」', () => {
+  const r = resolveState({ connected: true, gcode_state: 'PAUSE', stg_cur: 0, mc_percent: 68, print_error: 131184 });
+  assert.equal(r.stateKey, 'paused');
+  assert.equal(r.videoFile, 'paused.webm');
+  assert.equal(r.labelKey, 'label.paused.generic');
+});
+
+// 暂停时若 stg 属于非暂停类（打印/准备阶段），同样兜底通用暂停，不泄漏该阶段文案
+test('PAUSE 且 stg 属于准备类 → 通用暂停文案', () => {
+  const r = resolveState({ connected: true, gcode_state: 'PAUSE', stg_cur: 1 }); // 1=调平(prepare)
+  assert.equal(r.labelKey, 'label.paused.generic');
+});
+
 test('PAUSE 舱门打开', () => {
   const r = resolveState({ connected: true, gcode_state: 'PAUSE', door_open: true });
   assert.equal(r.labelKey, 'label.doorOpen');

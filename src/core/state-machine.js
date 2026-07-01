@@ -46,9 +46,12 @@ function pauseLabel(stg) {
     case STAGE.HEATBED_TEMP_ABNORMAL:
     case STAGE.HOTEND_TEMP_ABNORMAL: return { labelKey: 'label.paused.tempAbnormal', labelParams: {} };
     default: {
-      // 其余所有 Bambu Studio 暂停原因：用精确文案，未知则兜底「用户暂停」
-      const k = stageLabelKey(stg);
-      return { labelKey: k || 'label.paused', labelParams: {} };
+      // 仅当该 stg 本身属于「暂停类」阶段时才用精确文案；否则兜底通用「暂停」。
+      // ⚠️ 真机断料暂停常给 stg_cur=0（无细分子阶段），而 label.stage.0 文案是「打印中」——
+      //    若直接用 stageLabelKey(0) 会让暂停熊猫下方错显「打印中」、卡片状态也串成打印中。
+      //    故非暂停类 stg（0=打印 / 校准 / 准备等）一律兜底 label.paused。
+      const k = STAGE_VIDEO[stg] === 'paused' ? stageLabelKey(stg) : null;
+      return { labelKey: k || 'label.paused.generic', labelParams: {} };
     }
   }
 }

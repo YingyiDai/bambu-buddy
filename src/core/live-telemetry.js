@@ -9,9 +9,27 @@
 
 const { extractTemps } = require('./state-machine');
 
+// 熊猫权威状态类别（resolveState 的 stateKey）→ 卡片状态胶囊大类。
+// ⚠️ 单一事实来源：卡片分类必须由 stateKey 派生，绝不可由 labelKey 文案字符串再猜一遍
+//    （历史上「用 labelKey 前缀匹配」导致熊猫/卡片状态反复对不上：failed 串成离线、
+//     暂停类 stage / 舱门暂停 / 完成 串成打印中或在线）。新增 stateKey 时在此登记即可。
+function statusClassFromStateKey(stateKey) {
+  switch (stateKey) {
+    case 'offline':
+    case 'authExpired': return 'offline';
+    case 'failed': return 'failed';
+    case 'paused': return 'paused';
+    case 'finished': return 'finished';
+    case 'idle': return 'online';
+    // prepare / changing_filament / printing_0|25|50|75 等「进行中」
+    default: return stateKey ? 'printing' : 'unknown';
+  }
+}
+
 function buildLiveTelemetry(liveMode, lastState, lastReport) {
   const hasLive = liveMode && lastReport && lastReport.connected !== false;
   return {
+    liveStatusClass: liveMode && lastState ? statusClassFromStateKey(lastState.stateKey) : null,
     liveLabelKey: liveMode && lastState ? lastState.labelKey : null,
     liveLabelParams: liveMode && lastState ? lastState.labelParams : null,
     liveTemps: hasLive ? extractTemps(lastReport) : null,
@@ -23,4 +41,4 @@ function buildLiveTelemetry(liveMode, lastState, lastReport) {
   };
 }
 
-module.exports = { buildLiveTelemetry };
+module.exports = { buildLiveTelemetry, statusClassFromStateKey };

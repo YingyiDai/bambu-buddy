@@ -70,22 +70,16 @@ function connCls(p) {
   if (p.online === false) return 'offline';
   return 'unknown';
 }
-// 实时标签 → 状态类别（含离线/暂停/打印等）。
-function liveCls(key) {
-  if (!key) return 'unknown';
-  if (key.startsWith('label.failed')) return 'failed';
-  if (key.startsWith('label.offline') || key.startsWith('label.authExpired')) return 'offline';
-  if (key.startsWith('label.paused')) return 'paused';
-  if (key.startsWith('label.printing') || key.startsWith('label.stage') || key.startsWith('label.prepare') || key === 'label.changingFilament') return 'printing';
-  return 'online';
-}
 // 类别 → 简短状态文案（详细数字交给统计行，避免胶囊过长换行）。
+// ⚠️ 活动打印机的实时状态类别由主进程从熊猫权威 stateKey 派生（live.statusClass），
+//    渲染层不再用 labelKey 文案字符串猜类别 —— 避免熊猫/卡片状态反复对不上。
 function shortStatus(cls, p) {
   switch (cls) {
     case 'printing': return t('settings.statusPrinting');
     case 'online': return t('settings.statusOnline');
     case 'offline': return t('settings.statusOffline');
     case 'failed': return t('settings.statusFailed');
+    case 'finished': return t('settings.statusFinished');
     case 'paused': return t('printers.paused');
     case 'connecting': return t('printers.connecting');
     default: return p && p.hasCloud ? t('settings.statusUnknown') : t('settings.statusNotConnected');
@@ -121,7 +115,8 @@ function buildStats(live) {
 }
 // 决定状态胶囊：用简短文案（数字在统计行）；切换中且未拿到「好」状态显示连接中。
 function pickStatus(p, isActive, live) {
-  let cls = (isActive && live && live.key) ? liveCls(live.key) : connCls(p);
+  // 活动机：用主进程从熊猫 stateKey 派生的权威类别；非活动机：用云端粗粒度在线状态。
+  let cls = (isActive && live && live.statusClass) ? live.statusClass : connCls(p);
   if (isActive && (cls === 'offline' || cls === 'unknown') && isConnecting(p.serial)) cls = 'connecting';
   return { cls, text: shortStatus(cls, p) };
 }
@@ -132,7 +127,7 @@ async function renderPrinters() {
   try { st = (await window.bambu.getStoredState()) || {}; } catch (e) { /* ignore */ }
   const r = await window.bambu.listPrinters();
   const { printers, activeSerial } = r;
-  const live = { key: r.liveLabelKey, params: r.liveLabelParams, temps: r.liveTemps, progress: r.liveProgress };
+  const live = { statusClass: r.liveStatusClass, key: r.liveLabelKey, params: r.liveLabelParams, temps: r.liveTemps, progress: r.liveProgress };
   const srcText = { cloud: t('settings.srcCloud'), lan: t('settings.srcLan'), both: t('settings.srcBoth') };
 
   // 目标卡片描述（含末尾账号卡 + 添加本地卡）
