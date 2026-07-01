@@ -376,6 +376,8 @@ select {
 .status-chip.printing .sdot { background: #0a84ff; animation: sdot-pulse 1.2s ease-in-out infinite; }
 .status-chip.offline { background: var(--danger-weak); color: var(--danger); }
 .status-chip.offline .sdot { background: var(--status-offline); }
+.status-chip.failed { background: var(--danger-weak); color: var(--danger); }
+.status-chip.failed .sdot { background: var(--danger); }
 .status-chip.paused { background: rgba(217, 119, 6, 0.14); color: #d97706; }
 .status-chip.paused .sdot { background: #d97706; }
 @keyframes sdot-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.8); } }

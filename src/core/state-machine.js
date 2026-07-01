@@ -109,27 +109,31 @@ function resolveState(report = {}) {
     return { stateKey: 'offline', videoFile: VIDEO.offline, labelKey: 'label.offline', labelParams: {} };
   }
 
-  // 2. 失败 / 终止报错（含瞬时事件、致命 HMS）
-  if (gcode === GCODE.FAILED || r.print_error || r.print_canceled || hasFatalHms(hms)) {
-    const code = firstHmsCode(hms);
-    if (code) {
-      return { stateKey: 'failed', videoFile: VIDEO.failed, labelKey: 'label.failed.hms', labelParams: { code } };
-    }
-    return { stateKey: 'failed', videoFile: VIDEO.failed, labelKey: 'label.failed', labelParams: {} };
-  }
-
-  // 3. 完成
+  // 2. 完成
   if (gcode === GCODE.FINISH) {
     return { stateKey: 'finished', videoFile: VIDEO.finished, labelKey: 'label.finished', labelParams: {} };
   }
 
-  // 4. 暂停 / 可恢复错误
+  // 3. 暂停 / 可恢复错误。gcode_state 是权威生命周期信号：打印机报 PAUSE 即「可恢复暂停」
+  //    （断料、堵头、舱门等），必须先于失败判定。断料时 print_error 会被置为非零诊断码，
+  //    若失败判定在前会把可恢复暂停误升级为「打印失败」（曾出现卡片「离线」+ 熊猫「失败」的状态不符 bug）。
   if (gcode === GCODE.PAUSE) {
     if (r.door_open) {
       return { stateKey: 'paused', videoFile: VIDEO.paused, labelKey: 'label.doorOpen', labelParams: {} };
     }
     const pl = pauseLabel(stg);
     return { stateKey: 'paused', videoFile: VIDEO.paused, labelKey: pl.labelKey, labelParams: pl.labelParams };
+  }
+
+  // 4. 失败 / 终止报错。仅以权威信号判定终止失败：gcode_state=FAILED、显式取消事件、致命 HMS。
+  //    ⚠️ 不把 print_error 当作失败依据 —— 它是持续型诊断码，断料等可恢复情形也会置非零，
+  //    且在增量报文合并后会跨帧残留，据此判失败会让状态长期卡在「失败」。
+  if (gcode === GCODE.FAILED || r.print_canceled || hasFatalHms(hms)) {
+    const code = firstHmsCode(hms);
+    if (code) {
+      return { stateKey: 'failed', videoFile: VIDEO.failed, labelKey: 'label.failed.hms', labelParams: { code } };
+    }
+    return { stateKey: 'failed', videoFile: VIDEO.failed, labelKey: 'label.failed', labelParams: {} };
   }
 
   // 舱门打开（非 PAUSE 也提示）
