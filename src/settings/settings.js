@@ -73,7 +73,8 @@ function connCls(p) {
 // 实时标签 → 状态类别（含离线/暂停/打印等）。
 function liveCls(key) {
   if (!key) return 'unknown';
-  if (key.startsWith('label.offline') || key.startsWith('label.authExpired') || key.startsWith('label.failed')) return 'offline';
+  if (key.startsWith('label.failed')) return 'failed';
+  if (key.startsWith('label.offline') || key.startsWith('label.authExpired')) return 'offline';
   if (key.startsWith('label.paused')) return 'paused';
   if (key.startsWith('label.printing') || key.startsWith('label.stage') || key.startsWith('label.prepare') || key === 'label.changingFilament') return 'printing';
   return 'online';
@@ -84,6 +85,7 @@ function shortStatus(cls, p) {
     case 'printing': return t('settings.statusPrinting');
     case 'online': return t('settings.statusOnline');
     case 'offline': return t('settings.statusOffline');
+    case 'failed': return t('settings.statusFailed');
     case 'paused': return t('printers.paused');
     case 'connecting': return t('printers.connecting');
     default: return p && p.hasCloud ? t('settings.statusUnknown') : t('settings.statusNotConnected');

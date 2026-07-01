@@ -30,6 +30,31 @@ test('可恢复 HMS（info）不进 failed', () => {
   assert.equal(r.stateKey, 'printing_0');
 });
 
+// 回归：真机断料 = 可恢复 PAUSE（gcode_state 权威），即使带非零 print_error 诊断码 / HMS
+// 也不得升级为「打印失败」。曾出现卡片「离线」+ 熊猫「打印失败 · 131184」的状态不符 bug。
+test('PAUSE 断料带 print_error/hms → 仍是 paused，不是 failed', () => {
+  const r = resolveState({
+    connected: true, gcode_state: 'PAUSE', stg_cur: 6,
+    print_error: 131184, hms: [{ attr: 50348039, code: 131184 }],
+  });
+  assert.equal(r.stateKey, 'paused');
+  assert.equal(r.labelKey, 'label.paused.runout');
+});
+
+// print_error 是持续型诊断码（跨增量报文残留），RUNNING 时不得据此判失败
+test('RUNNING 带残留 print_error → 仍是打印中', () => {
+  const r = resolveState({ connected: true, gcode_state: 'RUNNING', mc_percent: 10, print_error: 131184 });
+  assert.equal(r.stateKey, 'printing_0');
+});
+
+// 真正终止失败（gcode_state=FAILED）仍展示 HMS code
+test('FAILED 带 HMS → failed 且保留 code', () => {
+  const r = resolveState({ connected: true, gcode_state: 'FAILED', hms: [{ code: 131184 }] });
+  assert.equal(r.stateKey, 'failed');
+  assert.equal(r.labelKey, 'label.failed.hms');
+  assert.equal(r.labelParams.code, 131184);
+});
+
 test('FINISH → finished', () => {
   const r = resolveState({ connected: true, gcode_state: 'FINISH' });
   assert.equal(r.stateKey, 'finished');
