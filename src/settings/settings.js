@@ -322,11 +322,11 @@ function startSendCooldown(btn) {
   let n = 60;
   const orig = t('settings.sendCode');
   btn.disabled = true;
-  btn.textContent = t('settings.codeResendIn').replace('{n}', n);
+  btn.textContent = n + 's';
   const timer = setInterval(() => {
     n -= 1;
     if (n <= 0) { clearInterval(timer); btn.disabled = false; btn.textContent = orig; }
-    else { btn.disabled = true; btn.textContent = t('settings.codeResendIn').replace('{n}', n); }
+    else { btn.disabled = true; btn.textContent = n + 's'; }
   }, 1000);
 }
 
