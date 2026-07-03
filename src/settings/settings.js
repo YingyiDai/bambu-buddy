@@ -262,22 +262,24 @@ function buildAccountCard(st) {
         '<button type="button" class="seg-tab ac-tab-code is-active">' + escapeHtml(t('settings.loginModeCode')) + '</button>' +
         '<button type="button" class="seg-tab ac-tab-pw">' + escapeHtml(t('settings.loginModePassword')) + '</button>' +
       '</div>' +
-      // 短信验证码登录表单
+      // 短信验证码登录表单：手机号输入框右侧内嵌「发送验证码」文本按钮，标题以占位符呈现
       '<div class="ac-pane ac-pane-code">' +
-        '<label><span>' + escapeHtml(t('settings.phone')) + '</span><input class="ac-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="' + escapeHtml(t('settings.phonePlaceholder')) + '" /></label>' +
-        '<button class="btn ac-sendcode">' + escapeHtml(t('settings.sendCode')) + '</button>' +
+        '<div class="input-inline">' +
+          '<input class="ac-phone" type="tel" inputmode="tel" autocomplete="tel" placeholder="' + escapeHtml(t('settings.phone')) + '" />' +
+          '<button type="button" class="inline-btn ac-sendcode">' + escapeHtml(t('settings.sendCode')) + '</button>' +
+        '</div>' +
         '<p class="add-note ac-codehint hidden">' + escapeHtml(t('settings.codeSentHint')) + '</p>' +
-        '<label><span>' + escapeHtml(t('settings.verifyCode')) + '</span><input class="ac-smscode" type="text" inputmode="numeric" autocomplete="one-time-code" /></label>' +
+        '<input class="ac-smscode util-field" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="' + escapeHtml(t('settings.verifyCode')) + '" />' +
         '<button class="btn btn-primary ac-codelogin">' + escapeHtml(t('settings.login')) + '</button>' +
       '</div>' +
       // 账号密码登录表单（含 2FA/邮箱验证码二次确认）
       '<div class="ac-pane ac-pane-pw hidden">' +
-        '<label><span>' + escapeHtml(t('settings.account')) + '</span><input class="ac-account" type="text" autocomplete="username" /></label>' +
-        '<label><span>' + escapeHtml(t('settings.password')) + '</span><input class="ac-password" type="password" autocomplete="current-password" /></label>' +
+        '<input class="ac-account util-field" type="text" autocomplete="username" placeholder="' + escapeHtml(t('settings.account')) + '" />' +
+        '<input class="ac-password util-field" type="password" autocomplete="current-password" placeholder="' + escapeHtml(t('settings.password')) + '" />' +
         '<button class="btn btn-primary ac-login">' + escapeHtml(t('settings.login')) + '</button>' +
         '<div class="ac-verify hidden">' +
           '<p class="add-note">' + escapeHtml(t('settings.verifyHint')) + '</p>' +
-          '<label><span>' + escapeHtml(t('settings.verifyCode')) + '</span><input class="ac-code" type="text" inputmode="numeric" /></label>' +
+          '<input class="ac-code util-field" type="text" inputmode="numeric" placeholder="' + escapeHtml(t('settings.verifyCode')) + '" />' +
           '<button class="btn btn-primary ac-verifybtn">' + escapeHtml(t('settings.submit')) + '</button>' +
         '</div>' +
       '</div>';
