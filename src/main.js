@@ -4,6 +4,9 @@ const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, safeStorag
 const path = require('path');
 const Store = require('electron-store');
 
+// 窗口图标：Windows 用 .ico（多尺寸），其余平台用 PNG。
+const WINDOW_ICON = path.join(__dirname, '..', 'assets', 'icon', process.platform === 'win32' ? 'AppIcon.ico' : 'AppIcon.png');
+
 const { resolveState, extractTemps } = require('./core/state-machine');
 const { buildLiveTelemetry } = require('./core/live-telemetry');
 const { MockDataSource } = require('./core/mock');
@@ -524,6 +527,7 @@ function createSettingsWindow(section = 'printers') {
     maximizable: false,
     fullscreenable: false,
     title: t(store.get('locale', 'zh-CN'), 'settings.title'),
+    icon: WINDOW_ICON,
     webPreferences: {
       preload: path.join(__dirname, 'preload-settings.js'),
       contextIsolation: true,
@@ -887,6 +891,10 @@ ipcMain.handle('app:openExternal', (_e, url) => {
 app.setName('Bambu Buddy');
 
 app.whenReady().then(() => {
+  // 移除 Electron 默认应用菜单（File/Edit/View/Window/Help）——本应用操作全在托盘/右键菜单，
+  // Windows/Linux 窗口顶部不再显示这条菜单栏。
+  Menu.setApplicationMenu(null);
+
   // 设置 Dock 图标（开发模式下 Electron 默认图标会被替换）
   if (process.platform === 'darwin' && app.dock) {
     const appIconPath = path.join(__dirname, '..', 'assets', 'icon', 'AppIcon.png');
