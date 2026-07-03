@@ -29,32 +29,73 @@ const DEVICE_LIST_PATH = '/v1/iot-service/api/user/bind';
 const SMS_CODE_HOST = 'bambulab.cn';
 const SMS_CODE_PATH = '/api/v1/user-service/user/sendsmscode';
 
+// Bambu 云 API 认「官方切片客户端」的请求头，否则（尤其 bambulab.cn 的
+// Cloudflare 前置 + 服务端 X-BBL-* 校验）会以 4xx 拒绝——表现为「手机号无效或
+// 发送失败」。值与 pybambu bambu_cloud.py `_get_headers()` 对齐（伪装成
+// OrcaSlicer 切片器）。缺这组头是短信/密码登录被拒的根因。
+//    ⚠️ 不带 Accept-Encoding：一旦声明 gzip，服务端会压缩响应，而下方按纯文本
+//       JSON.parse 无法解压。省略即请求 identity，保持解析正确。
+const BAMBU_HEADERS = {
+  'User-Agent': 'bambu_network_agent/01.09.05.01',
+  'X-BBL-Client-Name': 'OrcaSlicer',
+  'X-BBL-Client-Type': 'slicer',
+  'X-BBL-Client-Version': '01.09.05.51',
+  'X-BBL-Language': 'en-US',
+  'X-BBL-OS-Type': 'linux',
+  'X-BBL-OS-Version': '6.2.0',
+  'X-BBL-Agent-Version': '01.09.05.01',
+  'X-BBL-Executable-info': '{}',
+  'X-BBL-Agent-OS-Type': 'linux',
+  Accept: 'application/json',
+};
+
+// Electron net（Chromium 网络栈）：TLS 指纹与官方浏览器/客户端一致，能过 Cloudflare
+// 对「非浏览器」请求的拦截——Node 原生 https 的指纹会被单独拦掉。仅对被 Cloudflare
+// 前置的 bambulab.cn 发码端点启用（见 requestSmsCode 的 browserStack）。非 Electron
+// 环境（单测）require 失败即回退 https，不影响纯逻辑测试。惰性求值并缓存结果。
+let _electronNet;
+function getElectronNet() {
+  if (_electronNet !== undefined) return _electronNet;
+  try { _electronNet = require('electron').net || null; } catch { _electronNet = null; }
+  return _electronNet;
+}
+
 // HTTPS JSON 请求（共用）。失败 reject(Error)，由调用方捕获归一化。
-function httpsJson(host, path, method, body, headers = {}) {
+// opts.browserStack=true 时优先走 Electron net（过 Cloudflare），否则/回退用 Node https。
+function httpsJson(host, path, method, body, headers = {}, opts = {}) {
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : null;
-    const req = https.request(
-      {
+    const baseHeaders = {
+      ...BAMBU_HEADERS,
+      'Content-Type': 'application/json',
+      ...headers,
+    };
+    // 响应处理对 https / net 的 IncomingMessage 通用（都是带 statusCode 的可读流）。
+    const onResponse = (res) => {
+      let chunks = '';
+      res.on('data', (c) => { chunks += c; });
+      res.on('end', () => {
+        try {
+          const parsed = chunks ? JSON.parse(chunks) : {};
+          if (res.statusCode >= 400) reject(new Error(`HTTP ${res.statusCode}: ${chunks}`));
+          else resolve(parsed);
+        } catch (e) { reject(e); }
+      });
+    };
+
+    let req;
+    const net = opts.browserStack ? getElectronNet() : null;
+    if (net) {
+      // net 由 Chromium 自动计算 Content-Length，不手动设（避免受限头冲突）。
+      req = net.request({ method, url: `https://${host}${path}` });
+      Object.entries(baseHeaders).forEach(([k, v]) => req.setHeader(k, v));
+      req.on('response', onResponse);
+    } else {
+      req = https.request({
         host, path, method,
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'bambu-buddy/0.1',
-          ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}),
-          ...headers,
-        },
-      },
-      (res) => {
-        let chunks = '';
-        res.on('data', (c) => { chunks += c; });
-        res.on('end', () => {
-          try {
-            const parsed = chunks ? JSON.parse(chunks) : {};
-            if (res.statusCode >= 400) reject(new Error(`HTTP ${res.statusCode}: ${chunks}`));
-            else resolve(parsed);
-          } catch (e) { reject(e); }
-        });
-      },
-    );
+        headers: { ...baseHeaders, ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) },
+      }, onResponse);
+    }
     req.on('error', reject);
     if (data) req.write(data);
     req.end();
@@ -124,12 +165,21 @@ async function sendVerifyCode(region, account, password, tfaKey, code) {
 async function requestSmsCode(region, phone) {
   if (!phone) return { ok: false, error: '请输入手机号' };
   try {
-    const res = await httpsJson(SMS_CODE_HOST, SMS_CODE_PATH, 'POST', { phone, type: 'codeLogin' });
+    // browserStack：此端点在 bambulab.cn（Cloudflare 前置），走 Electron net 用
+    // 真浏览器 TLS 指纹绕过对 Node 请求的拦截；其余 api.bambulab.* 调用 https 即可。
+    const res = await httpsJson(SMS_CODE_HOST, SMS_CODE_PATH, 'POST', { phone, type: 'codeLogin' }, {}, { browserStack: true });
     return { ok: true, tfaKey: res && res.tfaKey };
   } catch (e) {
     const msg = e && e.message ? e.message : String(e);
-    if (/HTTP 429/.test(msg)) return { ok: false, error: '验证码发送过于频繁，请稍后再试' };
-    if (/HTTP 4\d\d/.test(msg)) return { ok: false, error: '手机号无效或发送失败' };
+    const status = (msg.match(/HTTP (\d{3})/) || [])[1];
+    // 官方 App 能登录、独此客户端发码失败 → 多半是请求被 Cloudflare/安全策略当成「非浏览器」
+    // 拦掉（403），而非手机号本身有问题。按状态码分开提示，别笼统甩锅给手机号，也便于反馈定位。
+    if (status === '429') return { ok: false, error: '验证码发送过于频繁，请稍后再试' };
+    if (status === '403' || /cloudflare|attention required|forbidden/i.test(msg)) {
+      return { ok: false, error: '发送失败：请求被服务端安全策略拦截（403），请稍后重试' };
+    }
+    if (status === '400') return { ok: false, error: '发送失败：手机号未注册或格式不正确（400）' };
+    if (status) return { ok: false, error: `发送失败（HTTP ${status}）` };
     return { ok: false, error: humanizeError(e) };
   }
 }
