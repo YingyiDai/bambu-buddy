@@ -431,6 +431,27 @@ select {
 .seg-tab:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 .ac-codehint { color: var(--brand); margin-top: 8px; }
 
+/* 手机号输入框：右侧内嵌「发送验证码」纯文本按钮（省一行高度）。
+   用 flex 容器承载边框，按钮取自身宽度、输入占剩余空间——倒计时文案变宽也不会与号码重叠。 */
+.input-inline {
+  display: flex; align-items: stretch; margin-bottom: 8px;
+  background: var(--field-bg); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); transition: border-color .12s ease, box-shadow .12s ease;
+}
+.input-inline:focus-within { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-weak); }
+.input-inline input {
+  flex: 1; min-width: 0; border: none; background: transparent; border-radius: 0;
+}
+.input-inline input:focus { border: none; box-shadow: none; }
+.inline-btn {
+  flex-shrink: 0; padding: 0 12px; font-size: 12px; font-family: inherit;
+  color: var(--brand); background: transparent; border: none;
+  border-left: 1px solid var(--border); cursor: pointer; white-space: nowrap;
+  transition: color .12s ease;
+}
+.inline-btn:hover:not(:disabled) { text-decoration: underline; }
+.inline-btn:disabled { color: var(--text-faint); cursor: default; }
+
 @media (prefers-reduced-motion: reduce) {
   .carousel-track, .pcard, .pcard-img { transition: none; }
   .pcard.is-active { transform: scale(1); }
