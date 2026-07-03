@@ -148,8 +148,15 @@ async function requestSmsCode(region, phone) {
     return { ok: true, tfaKey: res && res.tfaKey };
   } catch (e) {
     const msg = e && e.message ? e.message : String(e);
-    if (/HTTP 429/.test(msg)) return { ok: false, error: '验证码发送过于频繁，请稍后再试' };
-    if (/HTTP 4\d\d/.test(msg)) return { ok: false, error: '手机号无效或发送失败' };
+    const status = (msg.match(/HTTP (\d{3})/) || [])[1];
+    // 官方 App 能登录、独此客户端发码失败 → 多半是请求被 Cloudflare/安全策略当成「非浏览器」
+    // 拦掉（403），而非手机号本身有问题。按状态码分开提示，别笼统甩锅给手机号，也便于反馈定位。
+    if (status === '429') return { ok: false, error: '验证码发送过于频繁，请稍后再试' };
+    if (status === '403' || /cloudflare|attention required|forbidden/i.test(msg)) {
+      return { ok: false, error: '发送失败：请求被服务端安全策略拦截（403），请稍后重试' };
+    }
+    if (status === '400') return { ok: false, error: '发送失败：手机号未注册或格式不正确（400）' };
+    if (status) return { ok: false, error: `发送失败（HTTP ${status}）` };
     return { ok: false, error: humanizeError(e) };
   }
 }
