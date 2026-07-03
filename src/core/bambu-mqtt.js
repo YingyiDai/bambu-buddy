@@ -76,6 +76,12 @@ class BambuMQTTBase {
     const print = msg.print;
     if (!print) return;
 
+    // 取证钩子（默认关闭）：设 BAMBU_DEBUG_REPORT=1 时打印原始 print 对象，
+    // 便于真实 P1S 用户抓多色换料时的 ams_status / stg_cur 实际字段名与取值来核对本地判定。
+    if (process.env.BAMBU_DEBUG_REPORT) {
+      console.log('[bambu-mqtt] print:', JSON.stringify(print));
+    }
+
     // 报文为增量更新，合并进最新状态
     this._latest = { ...this._latest, ...print, connected: true };
 
@@ -84,10 +90,14 @@ class BambuMQTTBase {
     if (print.command === 'print_error' || print.print_error) report.print_error = true;
     if (print.command === 'print_canceled') report.print_canceled = true;
 
-    // 舱门：部分固件在 home_flag / 单独字段里，pybambu 有解析；此处留出钩子。
-    // ⚠️ 未经真机验证：真机大概率不会直接给 print.door_open 布尔字段，
-    //    需按 pybambu 从 home_flag 等位字段解析后，door_open 状态才会真正触发。
-    if (typeof print.door_open === 'boolean') report.door_open = print.door_open;
+    // 舱门：真机不发 door_open 布尔，门态编码在 home_flag 的 bit 23。
+    // pybambu 权威：Home_Flag_Values.DOOR_OPEN = 0x00800000。用合并后的 home_flag
+    // 派生持久门态（home_flag 为增量字段，取 _latest 里最后已知值）。
+    if (typeof print.door_open === 'boolean') {
+      report.door_open = print.door_open;
+    } else if (Number.isFinite(report.home_flag)) {
+      report.door_open = (report.home_flag & 0x00800000) !== 0;
+    }
 
     if (this._cb) this._cb(report);
   }

@@ -99,6 +99,27 @@ test('RUNNING 换料 stage → changing_filament', () => {
   assert.equal(r.labelKey, 'label.changingFilament');
 });
 
+// 回归：P1/A1（P1S）打印中换料常停在 stg_cur=0，只由 ams_status（高字节 main==1）体现。
+// 无 ams_status 判定时熊猫会一直卡「打印中」，从不进入换料。
+test('RUNNING + stg_cur=0 + ams_status 换料 → changing_filament（P1S 修复）', () => {
+  const r = resolveState({ connected: true, gcode_state: 'RUNNING', stg_cur: 0, ams_status: 0x0100, mc_percent: 50 });
+  assert.equal(r.stateKey, 'changing_filament');
+  assert.equal(r.videoFile, 'changing_filament.webm');
+  assert.equal(r.labelKey, 'label.changingFilament');
+});
+
+// ams_status 字段位置按机型/固件可能嵌套在 ams 下，两处都应命中
+test('RUNNING + 嵌套 ams.ams_status 换料 → changing_filament', () => {
+  const r = resolveState({ connected: true, gcode_state: 'RUNNING', stg_cur: 0, ams: { ams_status: 0x0100 }, mc_percent: 50 });
+  assert.equal(r.stateKey, 'changing_filament');
+});
+
+// 收窄：只有 main==1 才是换料；assist(3)/rfid(2)/校准(4) 等不得误触发换料
+test('RUNNING + ams_status main=3（assist）→ 仍是打印中，不误判换料', () => {
+  const r = resolveState({ connected: true, gcode_state: 'RUNNING', stg_cur: 0, ams_status: 0x0300, mc_percent: 50 });
+  assert.equal(r.stateKey, 'printing_50');
+});
+
 test('RUNNING 进度分档', () => {
   assert.equal(resolveState({ connected: true, gcode_state: 'RUNNING', mc_percent: 0 }).videoFile, 'printing_0.webm');
   assert.equal(resolveState({ connected: true, gcode_state: 'RUNNING', mc_percent: 24 }).videoFile, 'printing_0.webm');
@@ -172,6 +193,37 @@ test('extractTemps chamber_temp 通过', () => {
 test('extractTemps remaining_time 通过', () => {
   const r = extractTemps({ remaining_time: 83 });
   assert.equal(r.remainingTime, 83);
+});
+
+// 真机权威字段名（pybambu）：扁平 *_temper + mc_remaining_time。
+test('extractTemps 读真机扁平字段 *_temper / mc_remaining_time', () => {
+  const r = extractTemps({
+    nozzle_temper: 218.6, nozzle_target_temper: 220,
+    bed_temper: 54.9, bed_target_temper: 55,
+    chamber_temper: 33.2, mc_remaining_time: 42,
+  });
+  assert.equal(r.nozzleTemp, 219);
+  assert.equal(r.targetNozzleTemp, 220);
+  assert.equal(r.bedTemp, 55);
+  assert.equal(r.targetBedTemp, 55);
+  assert.equal(r.chamberTemp, 33);
+  assert.equal(r.remainingTime, 42);
+});
+
+// 新固件：温度嵌套在 device.* 且低16位=当前 / 高16位=目标。
+test('extractTemps 读新固件嵌套 device.* 打包温度', () => {
+  const r = extractTemps({
+    device: {
+      extruder: { info: [{ id: 0, temp: (220 << 16) | 219 }] },
+      bed: { info: { temp: (55 << 16) | 54 } },
+      ctc: { info: { temp: 34 } },
+    },
+  });
+  assert.equal(r.nozzleTemp, 219);
+  assert.equal(r.targetNozzleTemp, 220);
+  assert.equal(r.bedTemp, 54);
+  assert.equal(r.targetBedTemp, 55);
+  assert.equal(r.chamberTemp, 34);
 });
 
 test('extractTemps 非数字容错', () => {

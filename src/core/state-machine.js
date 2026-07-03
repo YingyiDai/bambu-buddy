@@ -56,6 +56,15 @@ function pauseLabel(stg) {
   }
 }
 
+// AMS 自身状态 ams_status（pybambu/BambuStudio）。高字节 main==1 = 换料中
+//（AMS_STATUS_MAIN_FILAMENT_CHANGE，解码见 DeviceManager.cpp _parse_ams_status）。
+// P1/A1 打印中换料常停在 stg_cur=0，只能靠此识别；X 系列另给 stg_cur=4/22/24，两信号并存不冲突。
+// 字段位置按机型/固件可能在顶层 ams_status 或嵌套 ams.ams_status，两处都兜。
+function amsChangingFilament(r) {
+  const raw = r.ams_status != null ? r.ams_status : (r.ams && r.ams.ams_status);
+  return Number.isFinite(raw) && ((raw & 0xff00) >> 8) === 1;
+}
+
 // RUNNING 正常打印时按 mc_percent 选视频档
 function printingVideoByPercent(percent) {
   const p = Number(percent) || 0;
@@ -153,9 +162,12 @@ function resolveState(report = {}) {
   // 6. 打印中（RUNNING）。打印过程中 stg_cur 可能是换料 / 中途校准 / 各种自检，
   //    按 STAGE_VIDEO 归到最贴近的动画；正常打印（stg=0 或未知）按进度选档。
   if (gcode === GCODE.RUNNING) {
-    if (CHANGING_FILAMENT_STAGES.has(stg)) {
-      // stg=4 用通用「换料」文案（兼容旧行为）；22/24/68/77 用精确文案（退料/进料/…）
-      const labelKey = stg === STAGE.CHANGING_FILAMENT ? 'label.changingFilament' : (stageLabelKey(stg) || 'label.changingFilament');
+    if (CHANGING_FILAMENT_STAGES.has(stg) || amsChangingFilament(r)) {
+      // stg 命中：stg=4 用通用「换料」文案（兼容旧行为），22/24/68/77 用精确文案（退料/进料/…）。
+      // 仅 AMS 命中（P1/A1 换料常停在 stg_cur=0，无细分子阶段）：用通用「换料」文案。
+      const labelKey = !CHANGING_FILAMENT_STAGES.has(stg)
+        ? 'label.changingFilament'
+        : (stg === STAGE.CHANGING_FILAMENT ? 'label.changingFilament' : (stageLabelKey(stg) || 'label.changingFilament'));
       return { stateKey: 'changing_filament', videoFile: VIDEO.changing_filament, labelKey, labelParams: {} };
     }
     const cat = STAGE_VIDEO[stg];
@@ -186,22 +198,50 @@ function resolveState(report = {}) {
   return { stateKey: 'idle', videoFile: VIDEO.idle, labelKey: 'label.idle', labelParams: {} };
 }
 
+// 取参数里第一个有限数；都不是数字则 null。
+function firstNum(...vals) {
+  for (const v of vals) if (Number.isFinite(v)) return v;
+  return null;
+}
+
 /**
- * 从 MQTT 报文中提取温度等实时指标，兼容不同固件版本的字段名。
+ * 从 MQTT 报文中提取温度等实时指标，兼容多代固件字段名（pybambu 为事实来源）。
+ * 优先级：新固件嵌套 device.*（一个 int 打包，低 16 位=当前 / 高 16 位=目标）
+ *        → 旧固件扁平 *_temper（真机权威名）→ 本仓早期兜底字段名。
+ * ⚠️ 历史上此处读的是 nozzle_temp / bed_temp / target_* / remaining_time —— 与真机
+ *    实际字段（nozzle_temper / bed_temper / mc_remaining_time…）都对不上，导致老机型
+ *    （X1/P1）卡片温度、剩余时间长期为空。
  * @param {object} report - MQTT print 对象（已合并的完整状态）
  * @returns {{ nozzleTemp: number|null, targetNozzleTemp: number|null, bedTemp: number|null, targetBedTemp: number|null, chamberTemp: number|null, remainingTime: number|null }}
  */
 function extractTemps(report) {
   const r = report || {};
-  const nozzleTemp = Array.isArray(r.nozzle_temps) ? r.nozzle_temps[0] : r.nozzle_temp;
-  const bedTemp = Array.isArray(r.bed_temps) ? r.bed_temps[0] : r.bed_temp;
+  const dev = r.device || {};
+
+  // 新固件：温度嵌套在 device.* 且用一个 int 打包（低 16 位=当前，高 16 位=目标）。
+  const extInfo = dev.extruder && Array.isArray(dev.extruder.info) ? dev.extruder.info : null;
+  const extEntry = extInfo ? (extInfo.find((e) => e && (e.id === 0 || e.id === 1)) || extInfo[0]) : null;
+  const extPacked = extEntry && Number.isFinite(extEntry.temp) ? extEntry.temp : null;
+  const bedPacked = dev.bed && dev.bed.info && Number.isFinite(dev.bed.info.temp) ? dev.bed.info.temp : null;
+  const ctcPacked = dev.ctc && dev.ctc.info && Number.isFinite(dev.ctc.info.temp) ? dev.ctc.info.temp : null;
+
+  const nozzleCur = firstNum(extPacked != null ? (extPacked & 0xffff) : NaN, r.nozzle_temper,
+    Array.isArray(r.nozzle_temps) ? r.nozzle_temps[0] : r.nozzle_temp);
+  const nozzleTar = firstNum(extPacked != null ? ((extPacked >> 16) & 0xffff) : NaN,
+    r.nozzle_target_temper, r.target_nozzle_temp);
+  const bedCur = firstNum(bedPacked != null ? (bedPacked & 0xffff) : NaN, r.bed_temper,
+    Array.isArray(r.bed_temps) ? r.bed_temps[0] : r.bed_temp);
+  const bedTar = firstNum(bedPacked != null ? ((bedPacked >> 16) & 0xffff) : NaN,
+    r.bed_target_temper, r.target_bed_temp);
+  const chamberCur = firstNum(ctcPacked != null ? (ctcPacked & 0xffff) : NaN, r.chamber_temper, r.chamber_temp);
+
   return {
-    nozzleTemp: Number.isFinite(nozzleTemp) ? Math.round(nozzleTemp) : null,
-    targetNozzleTemp: Number.isFinite(r.target_nozzle_temp) ? Math.round(r.target_nozzle_temp) : null,
-    bedTemp: Number.isFinite(bedTemp) ? Math.round(bedTemp) : null,
-    targetBedTemp: Number.isFinite(r.target_bed_temp) ? Math.round(r.target_bed_temp) : null,
-    chamberTemp: Number.isFinite(r.chamber_temp) ? Math.round(r.chamber_temp) : null,
-    remainingTime: Number.isFinite(r.remaining_time) ? r.remaining_time : null,
+    nozzleTemp: nozzleCur != null ? Math.round(nozzleCur) : null,
+    targetNozzleTemp: nozzleTar != null ? Math.round(nozzleTar) : null,
+    bedTemp: bedCur != null ? Math.round(bedCur) : null,
+    targetBedTemp: bedTar != null ? Math.round(bedTar) : null,
+    chamberTemp: chamberCur != null ? Math.round(chamberCur) : null,
+    remainingTime: firstNum(r.mc_remaining_time, r.remaining_time),
   };
 }
 
