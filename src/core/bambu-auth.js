@@ -49,32 +49,53 @@ const BAMBU_HEADERS = {
   Accept: 'application/json',
 };
 
+// Electron net（Chromium 网络栈）：TLS 指纹与官方浏览器/客户端一致，能过 Cloudflare
+// 对「非浏览器」请求的拦截——Node 原生 https 的指纹会被单独拦掉。仅对被 Cloudflare
+// 前置的 bambulab.cn 发码端点启用（见 requestSmsCode 的 browserStack）。非 Electron
+// 环境（单测）require 失败即回退 https，不影响纯逻辑测试。惰性求值并缓存结果。
+let _electronNet;
+function getElectronNet() {
+  if (_electronNet !== undefined) return _electronNet;
+  try { _electronNet = require('electron').net || null; } catch { _electronNet = null; }
+  return _electronNet;
+}
+
 // HTTPS JSON 请求（共用）。失败 reject(Error)，由调用方捕获归一化。
-function httpsJson(host, path, method, body, headers = {}) {
+// opts.browserStack=true 时优先走 Electron net（过 Cloudflare），否则/回退用 Node https。
+function httpsJson(host, path, method, body, headers = {}, opts = {}) {
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : null;
-    const req = https.request(
-      {
+    const baseHeaders = {
+      ...BAMBU_HEADERS,
+      'Content-Type': 'application/json',
+      ...headers,
+    };
+    // 响应处理对 https / net 的 IncomingMessage 通用（都是带 statusCode 的可读流）。
+    const onResponse = (res) => {
+      let chunks = '';
+      res.on('data', (c) => { chunks += c; });
+      res.on('end', () => {
+        try {
+          const parsed = chunks ? JSON.parse(chunks) : {};
+          if (res.statusCode >= 400) reject(new Error(`HTTP ${res.statusCode}: ${chunks}`));
+          else resolve(parsed);
+        } catch (e) { reject(e); }
+      });
+    };
+
+    let req;
+    const net = opts.browserStack ? getElectronNet() : null;
+    if (net) {
+      // net 由 Chromium 自动计算 Content-Length，不手动设（避免受限头冲突）。
+      req = net.request({ method, url: `https://${host}${path}` });
+      Object.entries(baseHeaders).forEach(([k, v]) => req.setHeader(k, v));
+      req.on('response', onResponse);
+    } else {
+      req = https.request({
         host, path, method,
-        headers: {
-          ...BAMBU_HEADERS,
-          'Content-Type': 'application/json',
-          ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}),
-          ...headers,
-        },
-      },
-      (res) => {
-        let chunks = '';
-        res.on('data', (c) => { chunks += c; });
-        res.on('end', () => {
-          try {
-            const parsed = chunks ? JSON.parse(chunks) : {};
-            if (res.statusCode >= 400) reject(new Error(`HTTP ${res.statusCode}: ${chunks}`));
-            else resolve(parsed);
-          } catch (e) { reject(e); }
-        });
-      },
-    );
+        headers: { ...baseHeaders, ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) },
+      }, onResponse);
+    }
     req.on('error', reject);
     if (data) req.write(data);
     req.end();
@@ -144,7 +165,9 @@ async function sendVerifyCode(region, account, password, tfaKey, code) {
 async function requestSmsCode(region, phone) {
   if (!phone) return { ok: false, error: '请输入手机号' };
   try {
-    const res = await httpsJson(SMS_CODE_HOST, SMS_CODE_PATH, 'POST', { phone, type: 'codeLogin' });
+    // browserStack：此端点在 bambulab.cn（Cloudflare 前置），走 Electron net 用
+    // 真浏览器 TLS 指纹绕过对 Node 请求的拦截；其余 api.bambulab.* 调用 https 即可。
+    const res = await httpsJson(SMS_CODE_HOST, SMS_CODE_PATH, 'POST', { phone, type: 'codeLogin' }, {}, { browserStack: true });
     return { ok: true, tfaKey: res && res.tfaKey };
   } catch (e) {
     const msg = e && e.message ? e.message : String(e);
