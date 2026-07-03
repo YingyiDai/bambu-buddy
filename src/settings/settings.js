@@ -546,6 +546,10 @@ el('showLabelToggle').addEventListener('change', () => window.bambu.setPreferenc
 el('localeSelect').addEventListener('change', () => { currentLocale = el('localeSelect').value; renderLocale(); window.bambu.setPreference('locale', currentLocale); });
 
 // ── 关于 ──
+// 检查更新进行中标志：防止 loadAbout（可能因切页/托盘再次触发而重入）把「检查中…」状态重置掉，
+// 也防止连点 / 托盘重复触发时并发发起多次检查。
+let updateChecking = false;
+
 async function loadAbout() {
   if (!localeStrings) await loadLocales();
   const info = await window.bambu.getAppInfo();
@@ -554,10 +558,17 @@ async function loadAbout() {
   const author = el('aboutAuthor');
   author.textContent = 'YingyiDai';
   author.onclick = (e) => { e.preventDefault(); window.bambu.openExternal('https://makerworld.com.cn/zh/@yingyidai'); };
-  el('updateStatus').classList.add('hidden');
-  el('checkUpdateBtn').textContent = t('settings.checkUpdate'); el('checkUpdateBtn').disabled = false;
+  // 正在检查时不要重置按钮/状态，避免打断「检查中…」的反馈。
+  if (!updateChecking) {
+    el('updateStatus').classList.add('hidden');
+    el('checkUpdateBtn').textContent = t('settings.checkUpdate'); el('checkUpdateBtn').disabled = false;
+  }
 }
-el('checkUpdateBtn').addEventListener('click', async () => {
+
+async function runUpdateCheck() {
+  if (updateChecking) return;              // 防重入
+  if (!localeStrings) await loadLocales(); // 托盘触发时 locale 可能还没加载好
+  updateChecking = true;
   const btn = el('checkUpdateBtn'), status = el('updateStatus');
   btn.disabled = true; btn.textContent = t('settings.checkingUpdate'); status.classList.add('hidden');
   let result; try { result = await window.bambu.checkForUpdates(); } catch (e) { result = { error: t('settings.updateError') }; }
@@ -569,7 +580,13 @@ el('checkUpdateBtn').addEventListener('click', async () => {
     status.querySelector('.release-link').addEventListener('click', (e) => { e.preventDefault(); window.bambu.openExternal(result.releaseUrl); });
   } else { status.className = 'update-status uptodate'; status.textContent = t('settings.upToDate'); }
   btn.disabled = false; btn.textContent = t('settings.checkUpdate');
-});
+  updateChecking = false;
+}
+
+el('checkUpdateBtn').addEventListener('click', runUpdateCheck);
+
+// 托盘菜单点「检查更新」：主进程会切到关于页并请求自动触发一次检查。
+window.bambu.onCheckUpdate(() => { switchSection('about'); runUpdateCheck(); });
 
 // ── 探索 ──
 // 场景表（key/icon 与 src/config/play-scenarios.js 一致；文案走 locale play.<key>.name/.desc）

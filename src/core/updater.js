@@ -25,7 +25,10 @@ function isValidSemverLike(v) {
 }
 
 // ---- HTTPS 请求 ----
-function httpsGetJson(host, path) {
+// 底层 GET：只负责发请求、收 body，返回 { statusCode, headers, body }。
+// 抽成这个形状是为了让 main.js 能注入一个走 Electron net（尊重系统代理）的实现，
+// 而默认实现仍用 Node 原生 https，保证本模块无 Electron 依赖、可独立单测。
+function httpsGetRaw(host, path) {
   return new Promise((resolve, reject) => {
     const req = https.get(
       {
@@ -40,24 +43,32 @@ function httpsGetJson(host, path) {
         let chunks = '';
         res.on('data', (c) => { chunks += c; });
         res.on('end', () => {
-          // 限流检测
-          if (res.statusCode === 403 && res.headers['x-ratelimit-remaining'] === '0') {
-            reject(new Error('GitHub API 限流，请稍后再试'));
-            return;
-          }
-          if (res.statusCode >= 400) {
-            reject(new Error(`HTTP ${res.statusCode}: ${chunks.slice(0, 200)}`));
-            return;
-          }
-          try {
-            resolve(chunks ? JSON.parse(chunks) : {});
-          } catch (e) { reject(e); }
+          resolve({ statusCode: res.statusCode, headers: res.headers, body: chunks });
         });
       },
     );
     req.on('error', reject);
     req.setTimeout(15000, () => { req.destroy(); reject(new Error('请求超时')); });
   });
+}
+
+// 取某个 header 值：Node https 返回 string，Electron net 返回 string[]，统一成 string。
+function headerValue(headers, name) {
+  const v = headers && (headers[name] || headers[name.toLowerCase()]);
+  return Array.isArray(v) ? v[0] : v;
+}
+
+// 用给定的底层 GET 拿 JSON，并处理限流 / 错误码 / 解析。
+async function fetchGithubJson(getRaw, host, path) {
+  const { statusCode, headers, body } = await getRaw(host, path);
+  // 限流检测
+  if (statusCode === 403 && headerValue(headers, 'x-ratelimit-remaining') === '0') {
+    throw new Error('GitHub API 限流，请稍后再试');
+  }
+  if (statusCode >= 400) {
+    throw new Error(`HTTP ${statusCode}: ${String(body).slice(0, 200)}`);
+  }
+  return body ? JSON.parse(body) : {};
 }
 
 // ---- 入口 ----
@@ -68,9 +79,12 @@ function httpsGetJson(host, path) {
  *
  * @param {string} currentVersion - 当前版本号，如 "0.1.0"
  * @param {string} [repoUrl] - GitHub 仓库 URL；未提供则尝试从 package.json 读取
+ * @param {(host:string, path:string)=>Promise<{statusCode:number, headers:object, body:string}>} [getRaw]
+ *        底层 GET 实现；默认走 Node https。main.js 会注入走 Electron net（尊重系统代理）的实现，
+ *        以便在需要代理的网络环境（如中国大陆经代理访问 GitHub）下也能连上 api.github.com。
  * @returns {Promise<{hasUpdate:boolean, currentVersion:string, latestVersion:string|null, releaseUrl:string|null, releaseName:string|null, error:string|null}>}
  */
-async function checkForUpdates(currentVersion, repoUrl) {
+async function checkForUpdates(currentVersion, repoUrl, getRaw = httpsGetRaw) {
   // 1. 取 repo 地址
   if (!repoUrl) {
     try {
@@ -93,7 +107,7 @@ async function checkForUpdates(currentVersion, repoUrl) {
   // 3. 请求最新 release
   let latest;
   try {
-    latest = await httpsGetJson('api.github.com', `/repos/${owner}/${repo}/releases/latest`);
+    latest = await fetchGithubJson(getRaw, 'api.github.com', `/repos/${owner}/${repo}/releases/latest`);
   } catch (e) {
     const msg = e && e.message ? e.message : String(e);
     return { hasUpdate: false, currentVersion, latestVersion: null, releaseUrl: null, releaseName: null, error: humanizeError(msg) };
@@ -119,7 +133,10 @@ async function checkForUpdates(currentVersion, repoUrl) {
 }
 
 function humanizeError(msg) {
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|getaddrinfo|超时/i.test(msg)) return '网络连接失败，请检查网络';
+  // 覆盖 Node（ECONNRESET / socket disconnected / secure TLS）与 Electron net（net::ERR_*）两类网络错误。
+  if (/ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EPIPE|getaddrinfo|socket disconnected|secure TLS|TLS connection|net::ERR|超时/i.test(msg)) {
+    return '网络连接失败，请检查网络或代理';
+  }
   return msg;
 }
 

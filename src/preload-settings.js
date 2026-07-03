@@ -19,6 +19,9 @@ contextBridge.exposeInMainWorld('bambu', {
   // 主进程请求设置窗切到某个子页面（printers / play / appearance / about）
   onNavigate: (cb) => ipcRenderer.on('settings:navigate', (_e, section) => cb(section)),
 
+  // 主进程请求自动触发「检查更新」（托盘菜单点检查更新时）
+  onCheckUpdate: (cb) => ipcRenderer.on('settings:checkUpdate', () => cb()),
+
   // 状态 / 登出 / 关闭
   getStoredState: () => ipcRenderer.invoke('bambu:getState'),
   logout: () => ipcRenderer.invoke('bambu:logout'),

@@ -1,6 +1,6 @@
 // Electron 主进程：透明置顶窗口、托盘、IPC、位置记忆、数据源驱动（§5）。
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, safeStorage, shell, dialog } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, safeStorage, shell, dialog, net } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 
@@ -15,6 +15,41 @@ const bambuAuth = require('./core/bambu-auth');
 const { t, STRINGS } = require('./config/locales');
 const { checkForUpdates } = require('./core/updater');
 const registry = require('./core/printer-registry');
+
+// 走 Electron net 的底层 GET：net 会尊重系统代理（macOS 网络设置 / Clash 系统代理等），
+// 因此在需要代理才能访问 GitHub 的网络里（如中国大陆），检查更新也能连上 api.github.com。
+// 注入给 updater.checkForUpdates，替代其默认的 Node https（后者不走系统代理）。
+function netGetRaw(host, path) {
+  return new Promise((resolve, reject) => {
+    const request = net.request({ method: 'GET', protocol: 'https:', hostname: host, path });
+    request.setHeader('User-Agent', 'bambu-buddy/0.1');
+    request.setHeader('Accept', 'application/vnd.github.v3+json');
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { request.abort(); } catch { /* ignore */ }
+      reject(new Error('请求超时'));
+    }, 15000);
+    request.on('response', (res) => {
+      let body = '';
+      res.on('data', (c) => { body += c; });
+      res.on('end', () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve({ statusCode: res.statusCode, headers: res.headers, body });
+      });
+    });
+    request.on('error', (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      reject(err);
+    });
+    request.end();
+  });
+}
 const { clampToVisible } = require('./core/window-position');
 
 const store = new Store();
@@ -412,31 +447,9 @@ function buildMenuTemplate() {
       click: () => createSettingsWindow('printers') },
     {
       label: t(locale, 'tray.checkUpdate'),
-      click: async () => {
-        const pkg = require('../package.json');
-        const result = await checkForUpdates(pkg.version);
-        if (result.error) {
-          dialog.showMessageBox({
-            type: 'warning',
-            message: result.error,
-          });
-        } else if (result.hasUpdate) {
-          const { response } = await dialog.showMessageBox({
-            type: 'info',
-            message: t(locale, 'settings.updateAvailable', { version: result.latestVersion }),
-            detail: t(locale, 'settings.updateDetail', { current: result.currentVersion, latest: result.latestVersion }),
-            buttons: [t(locale, 'settings.openRelease'), t(locale, 'settings.close')],
-            defaultId: 0,
-          });
-          if (response === 0) shell.openExternal(result.releaseUrl);
-        } else {
-          dialog.showMessageBox({
-            type: 'info',
-            message: t(locale, 'settings.upToDate'),
-            detail: t(locale, 'settings.upToDateDetail', { version: result.currentVersion }),
-          });
-        }
-      },
+      // 托盘菜单点击后会立即关闭，若在此直接发网络请求，弹结果前的几秒没有任何反馈，像卡死。
+      // 改为打开设置的「关于」页并自动触发页内的检查更新按钮 —— 用户能立刻看到「检查中…」状态与结果。
+      click: () => createSettingsWindow('about', { autoCheckUpdate: true }),
     },
     { type: 'separator' },
     {
@@ -510,11 +523,13 @@ function createTray() {
 }
 
 // ---- Bambu 连接设置窗 ----
-function createSettingsWindow(section = 'printers') {
+function createSettingsWindow(section = 'printers', opts = {}) {
+  const { autoCheckUpdate = false } = opts;
   if (settingsWin && !settingsWin.isDestroyed()) {
     settingsWin.show();
     settingsWin.focus();
     settingsWin.webContents.send('settings:navigate', section);
+    if (autoCheckUpdate) settingsWin.webContents.send('settings:checkUpdate');
     return;
   }
   settingsWin = new BrowserWindow({
@@ -535,6 +550,12 @@ function createSettingsWindow(section = 'printers') {
     },
   });
   settingsWin.loadFile(path.join(__dirname, 'settings', 'index.html'), { hash: section });
+  // 新建窗口时，等渲染进程加载完（监听器就绪）再发自动检查信号。
+  if (autoCheckUpdate) {
+    settingsWin.webContents.once('did-finish-load', () => {
+      settingsWin.webContents.send('settings:checkUpdate');
+    });
+  }
   settingsWin.on('closed', () => { settingsWin = null; });
 }
 
@@ -880,7 +901,7 @@ ipcMain.handle('app:info', () => {
 
 ipcMain.handle('app:checkUpdate', async () => {
   const pkg = require('../package.json');
-  return checkForUpdates(pkg.version);
+  return checkForUpdates(pkg.version, undefined, netGetRaw);
 });
 
 ipcMain.handle('app:openExternal', (_e, url) => {
