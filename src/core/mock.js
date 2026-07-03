@@ -16,6 +16,8 @@ const SCENARIOS = {
     mc_percent: percent, layer_num: layer, total_layer_num: total,
   }),
   changing_filament: () => ({ connected: true, gcode_state: 'RUNNING', stg_cur: STAGE.CHANGING_FILAMENT }),
+  // P1/A1 机型：打印中换料常停在 stg_cur=0，只由 ams_status（高字节 main==1）体现换料。
+  changing_filament_p1s: () => ({ connected: true, gcode_state: 'RUNNING', stg_cur: 0, ams_status: 0x0100 }),
   paused: () => ({ connected: true, gcode_state: 'PAUSE', stg_cur: STAGE.USER_PAUSE }),
   paused_runout: () => ({ connected: true, gcode_state: 'PAUSE', stg_cur: STAGE.FILAMENT_RUNOUT }),
   door_open: () => ({ connected: true, gcode_state: 'PAUSE', door_open: true }),
@@ -31,6 +33,7 @@ const SCENARIO_LABELS = {
   prepare_leveling: '准备中 · 自动调平',
   printing: '打印中（进度推进）',
   changing_filament: '换料中',
+  changing_filament_p1s: 'P1S 换料（ams_status）',
   paused: '已暂停',
   paused_runout: '缺料暂停',
   door_open: '舱门打开',
@@ -92,9 +95,14 @@ class MockDataSource {
           this._emit(SCENARIOS.finished());
           return;
         }
-        // 进度到 40% 时穿插一次换料演示
+        // 进度到 40% 时穿插一次换料演示（X 系列：stg_cur=4）
         if (percent === 40) {
           this._emit(SCENARIOS.changing_filament());
+          return;
+        }
+        // 进度到 60% 时穿插一次 P1S 换料演示（仅 ams_status 体现，stg_cur=0）
+        if (percent === 60) {
+          this._emit(SCENARIOS.changing_filament_p1s());
           return;
         }
         const layer = Math.max(1, Math.round((percent / 100) * total));
