@@ -45,6 +45,7 @@
     },
     "win": {
       "target": "nsis",
+      "icon": "assets/icon/AppIcon.ico",
       "artifactName": "Bambu.Buddy.Setup.${version}.${ext}"
     },
     "nsis": {
