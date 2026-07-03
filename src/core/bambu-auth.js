@@ -77,8 +77,14 @@ function httpsJson(host, path, method, body, headers = {}, opts = {}) {
       res.on('end', () => {
         try {
           const parsed = chunks ? JSON.parse(chunks) : {};
-          if (res.statusCode >= 400) reject(new Error(`HTTP ${res.statusCode}: ${chunks}`));
-          else resolve(parsed);
+          if (res.statusCode >= 400) {
+            // 保留结构化响应体（status/body），供上层读取服务器真实错误码/文案，
+            // 不再只能靠正则从 message 里猜。message 维持原格式，humanizeError 仍可用。
+            const err = new Error(`HTTP ${res.statusCode}: ${chunks}`);
+            err.status = res.statusCode;
+            err.body = parsed;
+            reject(err);
+          } else resolve(parsed);
         } catch (e) { reject(e); }
       });
     };
@@ -149,10 +155,12 @@ async function sendVerifyCode(region, account, password, tfaKey, code) {
       tfaKey,
       code,
     });
-    if (!res.accessToken) return { ok: false, error: res.message || '验证码无效' };
+    if (process.env.BAMBU_DEBUG_AUTH) console.log('[bambu-auth] sendVerifyCode res:', JSON.stringify(redactAuth(res)));
+    if (!res.accessToken) return { ok: false, error: codeLoginError(res, '验证码无效') };
     return { ok: true, token: res.accessToken, uid: res.uid || decodeUidFromToken(res.accessToken), account };
   } catch (e) {
-    return { ok: false, error: humanizeError(e) };
+    if (process.env.BAMBU_DEBUG_AUTH) console.log('[bambu-auth] sendVerifyCode err:', e && e.status, JSON.stringify(e && e.body));
+    return { ok: false, error: codeLoginError(e && e.body, humanizeError(e)) };
   }
 }
 
@@ -197,7 +205,8 @@ async function loginWithCode(region, account, code, tfaKey) {
     const body = { account, code };
     if (tfaKey) body.tfaKey = tfaKey;
     const res = await httpsJson(regionOf(region).api, LOGIN_PATH, 'POST', body);
-    if (!res.accessToken) return { ok: false, error: res.message || '验证码无效' };
+    if (process.env.BAMBU_DEBUG_AUTH) console.log('[bambu-auth] loginWithCode res:', JSON.stringify(redactAuth(res)));
+    if (!res.accessToken) return { ok: false, error: codeLoginError(res, '登录失败，请重试') };
     let uid = res.uid || decodeUidFromToken(res.accessToken);
     if (!uid) {
       const u = await getUid(region, res.accessToken);
@@ -205,9 +214,9 @@ async function loginWithCode(region, account, code, tfaKey) {
     }
     return { ok: true, token: res.accessToken, uid, account };
   } catch (e) {
-    const msg = e && e.message ? e.message : String(e);
-    if (/HTTP 4\d\d/.test(msg)) return { ok: false, error: '验证码错误或已过期' };
-    return { ok: false, error: humanizeError(e) };
+    if (process.env.BAMBU_DEBUG_AUTH) console.log('[bambu-auth] loginWithCode err:', e && e.status, JSON.stringify(e && e.body));
+    // 仅当服务器明确是验证码码错误/过期时才这么说；否则透出真实原因（区域不符/账号异常/网络等）。
+    return { ok: false, error: codeLoginError(e && e.body, humanizeError(e)) };
   }
 }
 
@@ -257,6 +266,28 @@ async function getUid(region, token) {
   }
 }
 
+// 把「验证码登录」的响应体/错误映射为面向用户的中文提示。
+// Bambu 登录响应带整型 code（与 pybambu 一致）：1=验证码已过期，2=验证码错误；
+// 其余情形绝不能盖成「验证码错误」——优先透出服务器真实文案，再回退到通用错误。
+// ⚠️ 历史 bug：中国区短信登录把任何 4xx / 无 token 响应都误报成「验证码错误或已过期」，
+//    把区域不符 / 账号异常等真因全盖住了。
+function codeLoginError(body, fallbackMsg) {
+  const code = body && body.code;
+  if (code === 1) return '验证码已过期，请重新获取';
+  if (code === 2) return '验证码错误，请重新输入';
+  const serverMsg = body && (body.error || body.message);
+  if (serverMsg) return String(serverMsg);
+  return fallbackMsg;
+}
+
+// 调试日志脱敏：抹掉 token 类字段，避免把凭证打进控制台。
+function redactAuth(obj) {
+  if (!obj || typeof obj !== 'object') return obj;
+  const clone = { ...obj };
+  for (const k of ['accessToken', 'refreshToken', 'token']) if (k in clone) clone[k] = '<redacted>';
+  return clone;
+}
+
 // 把底层错误转成面向用户的中文提示
 function humanizeError(e) {
   const msg = e && e.message ? e.message : String(e);
@@ -276,4 +307,6 @@ module.exports = {
   requestSmsCode,
   loginWithCode,
   listDevices,
+  codeLoginError,
+  redactAuth,
 };
