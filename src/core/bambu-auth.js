@@ -29,6 +29,26 @@ const DEVICE_LIST_PATH = '/v1/iot-service/api/user/bind';
 const SMS_CODE_HOST = 'bambulab.cn';
 const SMS_CODE_PATH = '/api/v1/user-service/user/sendsmscode';
 
+// Bambu 云 API 认「官方切片客户端」的请求头，否则（尤其 bambulab.cn 的
+// Cloudflare 前置 + 服务端 X-BBL-* 校验）会以 4xx 拒绝——表现为「手机号无效或
+// 发送失败」。值与 pybambu bambu_cloud.py `_get_headers()` 对齐（伪装成
+// OrcaSlicer 切片器）。缺这组头是短信/密码登录被拒的根因。
+//    ⚠️ 不带 Accept-Encoding：一旦声明 gzip，服务端会压缩响应，而下方按纯文本
+//       JSON.parse 无法解压。省略即请求 identity，保持解析正确。
+const BAMBU_HEADERS = {
+  'User-Agent': 'bambu_network_agent/01.09.05.01',
+  'X-BBL-Client-Name': 'OrcaSlicer',
+  'X-BBL-Client-Type': 'slicer',
+  'X-BBL-Client-Version': '01.09.05.51',
+  'X-BBL-Language': 'en-US',
+  'X-BBL-OS-Type': 'linux',
+  'X-BBL-OS-Version': '6.2.0',
+  'X-BBL-Agent-Version': '01.09.05.01',
+  'X-BBL-Executable-info': '{}',
+  'X-BBL-Agent-OS-Type': 'linux',
+  Accept: 'application/json',
+};
+
 // HTTPS JSON 请求（共用）。失败 reject(Error)，由调用方捕获归一化。
 function httpsJson(host, path, method, body, headers = {}) {
   return new Promise((resolve, reject) => {
@@ -37,8 +57,8 @@ function httpsJson(host, path, method, body, headers = {}) {
       {
         host, path, method,
         headers: {
+          ...BAMBU_HEADERS,
           'Content-Type': 'application/json',
-          'User-Agent': 'bambu-buddy/0.1',
           ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}),
           ...headers,
         },
