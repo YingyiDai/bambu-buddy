@@ -16,6 +16,13 @@ const path = require('path');
 
 exports.default = async function (context) {
   if (context.electronPlatformName !== 'darwin') return;
+  // 有正式 Developer ID 证书时（CI 里通过 CSC_LINK 注入 .p12），跳过 ad-hoc 重签：
+  // electron-builder 此时已用 Developer ID 正式签名（强化运行时），随后还要公证，
+  // 若这里再 `codesign --sign -` 覆盖成 ad-hoc，会毁掉正式签名并导致公证失败。
+  if (process.env.CSC_LINK) {
+    console.log('[adhoc-sign] 检测到 CSC_LINK（正式签名），跳过 ad-hoc 重签');
+    return;
+  }
   const appName = context.packager.appInfo.productFilename;
   const appPath = path.join(context.appOutDir, `${appName}.app`);
   console.log(`\n[adhoc-sign] 重新完整 ad-hoc 签名: ${appPath}`);

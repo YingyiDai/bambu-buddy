@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 强化运行时（Hardened Runtime）所需的 entitlements。公证要求开启强化运行时，
+     而 Electron/Chromium 的 JIT、动态内存、加载未签名第三方 .node 等行为，
+     在强化运行时下必须显式放行，否则应用会崩溃或无法启动。
+     参考 electron-builder 官方文档的 macOS 公证配置。 -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>com.apple.security.cs.allow-jit</key>
+  <true/>
+  <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+  <true/>
+  <key>com.apple.security.cs.disable-library-validation</key>
+  <true/>
+  <key>com.apple.security.cs.allow-dyld-environment-variables</key>
+  <true/>
+</dict>
+</plist>

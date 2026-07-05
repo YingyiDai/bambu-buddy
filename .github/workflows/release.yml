@@ -42,10 +42,18 @@ jobs:
           node-version: '22'
           cache: 'npm'
       - run: npm ci
+      - name: 准备公证用 API Key（把 secret 里的 .p8 写到临时文件）
+        run: |
+          echo "${{ secrets.APPLE_API_KEY_P8 }}" | base64 --decode > "$RUNNER_TEMP/authkey.p8"
+          echo "APPLE_API_KEY=$RUNNER_TEMP/authkey.p8" >> "$GITHUB_ENV"
       - run: npm run build:mac
         env:
-          # 无 Apple Developer 证书：跳过正式签名，由 afterSign 钩子做 ad-hoc 签名
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # Developer ID 正式签名：.p12（证书+私钥）base64 存在 CSC_LINK，密码存在 CSC_KEY_PASSWORD
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          # 公证：App Store Connect API Key（APPLE_API_KEY 指向上一步写出的 .p8 文件）
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
       - uses: actions/upload-artifact@v4
         with:
           name: mac-dist

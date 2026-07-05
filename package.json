@@ -39,6 +39,11 @@
       "category": "public.app-category.utilities",
       "target": "dmg",
       "artifactName": "Bambu.Buddy-${version}-${arch}.${ext}",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": true,
       "extendInfo": {
         "LSUIElement": true
       }
