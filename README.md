@@ -60,8 +60,7 @@ Bambu Buddy turns your printer's status into a little animated panda that lives 
 
 1. Download the latest `.dmg` from **[Releases](https://github.com/YingyiDai/bambu-buddy/releases/latest)** (Apple Silicon / arm64).
 2. Open the DMG and drag **Bambu Buddy** into Applications.
-3. If macOS says it "cannot verify the developer" on first launch — the app isn't Apple-signed yet — go to
-   **System Settings › Privacy & Security** and click "Open Anyway".
+3. Launch **Bambu Buddy** — it's Apple-signed (Developer ID) and notarized, so it opens normally with no security warning.
 
 ### Windows
 
