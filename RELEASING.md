@@ -62,8 +62,11 @@ gh workflow run release.yml -f tag=v0.1.2 -f ref=main
 
 **每次 CI 发版都会自动对 macOS 包做 Developer ID 正式签名 + Apple 公证**，无需手动操作。
 原理：electron-builder 读取下面的环境变量 → 用 Developer ID 证书签名（强化运行时 +
-`build/entitlements.mac.plist`）→ 上传 Apple 公证服务 → staple 票据到 `.dmg`。
-`build/adhoc-sign.js` 检测到 `CSC_LINK` 会自动跳过，不会覆盖正式签名。
+`build/entitlements.mac.plist`）→ 公证 `.app` 并 staple。**注意 electron-builder 只公证
+`.app`，不公证外层 `.dmg`**；而用户下载的是 dmg，未公证的 dmg 在打开时仍会被 Gatekeeper
+拦「无法检查是否含恶意软件」。所以 `build/notarize-dmg.js`（`afterAllArtifactBuild` 钩子）
+会对最终 dmg 再做一次 `notarytool submit --wait` + `stapler staple`，保证「下载→开 dmg→
+拖入应用→启动」全程无警告。`build/adhoc-sign.js` 检测到 `CSC_LINK` 会自动跳过，不覆盖正式签名。
 
 配置全部来自 GitHub Actions Secrets（一次性配好，长期自动生效）：
 

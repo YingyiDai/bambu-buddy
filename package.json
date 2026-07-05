@@ -58,6 +58,7 @@
       "perMachine": false,
       "allowToChangeInstallationDirectory": true
     },
-    "afterSign": "build/adhoc-sign.js"
+    "afterSign": "build/adhoc-sign.js",
+    "afterAllArtifactBuild": "build/notarize-dmg.js"
   }
 }
