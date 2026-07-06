@@ -844,11 +844,20 @@ ipcMain.on('pet:dragStart', () => {
   const cursor = screen.getCursorScreenPoint();
   const [wx, wy] = win.getPosition();
   dragOffset = { dx: cursor.x - wx, dy: cursor.y - wy };
+  // 拖拽全程锁定为当前设定尺寸：分数 DPI 缩放下反复 setPosition 会因
+  // DIP↔像素取整误差让窗口逐帧变大（熊猫随之被放大），每帧用 setBounds
+  // 显式回写固定宽高即可杜绝这种累积（拖拽时大小不应改变）。
+  const size = currentSizePx();
   if (dragTimer) clearInterval(dragTimer);
   dragTimer = setInterval(() => {
     if (!win || win.isDestroyed() || !dragOffset) return;
     const p = screen.getCursorScreenPoint();
-    win.setPosition(Math.round(p.x - dragOffset.dx), Math.round(p.y - dragOffset.dy));
+    win.setBounds({
+      x: Math.round(p.x - dragOffset.dx),
+      y: Math.round(p.y - dragOffset.dy),
+      width: size,
+      height: size,
+    });
   }, 16);
 });
 ipcMain.on('pet:dragEnd', () => {
