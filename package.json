@@ -33,7 +33,8 @@
       "assets/icon/**",
       "assets/printer/**",
       "assets/image/**",
-      "!assets/source/**"
+      "!assets/source/**",
+      "!assets/icon/AppIcon.win.png"
     ],
     "mac": {
       "category": "public.app-category.utilities",
