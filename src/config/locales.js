@@ -121,6 +121,7 @@ const STRINGS = {
     'tray.playMode': '探索',
     'tray.settings': '设置…',
     'tray.checkUpdate': '检查更新…',
+    'tray.updateAvailable': '● 有新版本 {version}',
     'tray.size': '大小',
     'tray.sizeSmall': '小',
     'tray.sizeMedium': '中',
@@ -204,6 +205,7 @@ const STRINGS = {
     'settings.renameCancel': '取消',
     // 关于 Tab
     'settings.checkUpdate': '检查更新',
+    'settings.autoCheckUpdate': '自动检查更新',
     'settings.checkingUpdate': '检查中…',
     'settings.upToDate': 'Bambu Buddy 已是最新版本',
     'settings.upToDateDetail': '当前版本：{version}',
@@ -421,6 +423,7 @@ const STRINGS = {
     'tray.playMode': 'Explore',
     'tray.settings': 'Settings…',
     'tray.checkUpdate': 'Check for Updates…',
+    'tray.updateAvailable': '● Update available {version}',
     'tray.size': 'Size',
     'tray.sizeSmall': 'Small',
     'tray.sizeMedium': 'Medium',
@@ -503,6 +506,7 @@ const STRINGS = {
     'settings.renameCancel': 'Cancel',
     // About Tab
     'settings.checkUpdate': 'Check for Updates',
+    'settings.autoCheckUpdate': 'Automatically check for updates',
     'settings.checkingUpdate': 'Checking…',
     'settings.upToDate': 'Bambu Buddy is up to date',
     'settings.upToDateDetail': 'Current version: {version}',
