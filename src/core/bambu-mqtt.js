@@ -20,6 +20,7 @@ class BambuMQTTBase {
     this._cb = null;
     this._client = null;
     this._latest = {}; // 维护合并后的 print 状态
+    this._canceled = false; // 「本次终止是否为用户取消」的持久标记（详见 _onMessage）
     this._authFailCb = null;
   }
 
@@ -85,10 +86,20 @@ class BambuMQTTBase {
     // 报文为增量更新，合并进最新状态
     this._latest = { ...this._latest, ...print, connected: true };
 
-    // 瞬时事件（§7.3）：print_error / print_canceled 不在持续字段里
+    // 「本次终止是否为用户取消」的持久标记。取消事件是瞬时的（只在某一帧带 command=print_canceled），
+    // 但取消后 gcode_state=FAILED 会一直残留到下次开印。若不持久记住「这是取消而非故障」，熊猫会
+    // 一直显示「打印失败」。故：见到取消事件即置位，直到下次开印（RUNNING/PREPARE/SLICING）再清除。
+    // ⚠️ 用本帧增量里的 gcode_state（print.gcode_state）判「开印」，不能用合并后的 this._latest —
+    //    取消那一帧往往不带新 gcode_state，合并值仍是 RUNNING，据此清除会把刚置的标记立刻抹掉。
+    //    先判清除、后判置位，保证同帧兼有开印与取消时以取消为准。
+    const g = print.gcode_state;
+    if (g === 'RUNNING' || g === 'PREPARE' || g === 'SLICING') this._canceled = false;
+    if (print.command === 'print_canceled') this._canceled = true;
+
+    // 瞬时事件（§7.3）：print_error 不在持续字段里；print_canceled 用上面的持久标记透出
     const report = { ...this._latest };
     if (print.command === 'print_error' || print.print_error) report.print_error = true;
-    if (print.command === 'print_canceled') report.print_canceled = true;
+    if (this._canceled) report.print_canceled = true;
 
     // 舱门：真机不发 door_open 布尔，门态编码在 home_flag 的 bit 23。
     // pybambu 权威：Home_Flag_Values.DOOR_OPEN = 0x00800000。用合并后的 home_flag
@@ -121,6 +132,7 @@ class BambuMQTTBase {
   stop() {
     if (this._pushTimer) { clearInterval(this._pushTimer); this._pushTimer = null; }
     if (this._client) { this._client.end(true); this._client = null; }
+    this._canceled = false;
     this._cb = null;
   }
 }

@@ -14,6 +14,8 @@ const { BambuCloudDataSource, BambuLanDataSource } = require('./core/bambu-mqtt'
 const bambuAuth = require('./core/bambu-auth');
 const { t, STRINGS } = require('./config/locales');
 const { checkForUpdates } = require('./core/updater');
+const errorCodes = require('./core/bambu-error-codes');
+const fs = require('fs');
 const registry = require('./core/printer-registry');
 
 // 走 Electron net 的底层 GET：net 会尊重系统代理（macOS 网络设置 / Clash 系统代理等），
@@ -105,6 +107,8 @@ let dataSource = null;
 let settingsWin = null; // Bambu 连接设置窗（Cloud 登录 / LAN 配置）
 let lastState = null; // 最近一次 resolveState 结果，用于托盘展示
 let lastReport = null; // 最近一次 MQTT 原始报文，供托盘菜单读取实时指标
+let errorTable = null; // 当前机型+语言的官方错误码表（解析后）；打印失败时查它得原因文案，未加载则 null
+let errorTableKey = null; // 已加载表的 "<lang>_<model>" 标识，避免重复加载
 let cloudPollTimer = null; // 云端粗粒度状态轮询定时器
 let liveNotifyTimer = null; // MQTT 实时状态 → 设置窗重绘的防抖定时器
 let playPercent = 0; // 把玩页打印进度（滑杆位置，0–100）
@@ -224,6 +228,12 @@ function pushPlayState() {
 function applyReport(report) {
   lastReport = report; // 保留原始报文供托盘菜单
   lastState = resolveState(report);
+  // 打印失败：用官方码表把错误归到「大类」（断料/堵头/…），熊猫/托盘/卡片统一显示「打印失败 · 大类」。
+  // 具体长句原因太专业，不在熊猫展示 —— 用户要细节请查 Bambu Studio。认不出大类则保持通用「打印失败」。
+  if (lastState.stateKey === 'failed') {
+    const cat = errorCodes.failureCategory(report, errorTable);
+    if (cat) lastState = { ...lastState, labelKey: `label.failed.${cat}`, labelParams: {} };
+  }
   pushState();
   rebuildTray();
   notifySettingsLive(); // MQTT 实时状态变化 → 刷新设置窗打印机卡片
@@ -268,6 +278,42 @@ function makeSourceFor(entry, transport) {
   });
 }
 
+// 官方错误码表：按当前机型（序列号前 3 位）+ 语言下载 BambuStudio 的 hms_<lang>_<model>.json，
+// 缓存到 userData/error-codes/，解析后供托盘/卡片在「打印失败」时显示官方原因文案（与 Bambu Studio 同源）。
+// 全程失败静默 —— 拿不到表只是不显示原因、回退通用「打印失败」，不影响主流程。命中磁盘缓存即用（码表极少变）。
+async function ensureErrorTable(serial, locale) {
+  const model = errorCodes.modelCodeFromSerial(serial);
+  const lang = errorCodes.langForLocale(locale);
+  if (!model) return;
+  const key = `${lang}_${model}`;
+  if (key === errorTableKey && errorTable) return; // 已加载同一张表
+  const fileName = `hms_${lang}_${model}.json`;
+  const cachePath = path.join(app.getPath('userData'), 'error-codes', fileName);
+  try {
+    if (fs.existsSync(cachePath)) {
+      errorTable = errorCodes.parseErrorTable(JSON.parse(fs.readFileSync(cachePath, 'utf8')), lang);
+      errorTableKey = key;
+      rebuildTray();
+      return;
+    }
+  } catch { /* 缓存损坏 → 走下载 */ }
+  try {
+    const res = await netGetRaw('raw.githubusercontent.com',
+      `/bambulab/BambuStudio/master/resources/hms/${fileName}`);
+    if (res.statusCode !== 200) return; // 该机型/语言无对应文件时静默
+    const json = JSON.parse(res.body);
+    try {
+      fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+      fs.writeFileSync(cachePath, res.body);
+    } catch { /* 缓存写失败不影响本次使用 */ }
+    errorTable = errorCodes.parseErrorTable(json, lang);
+    errorTableKey = key;
+    rebuildTray();
+  } catch (e) {
+    console.error('[error-codes] 下载失败:', e && (e.message || e));
+  }
+}
+
 function buildDataSource() {
   if (dataSource) { dataSource.stop(); dataSource = null; }
   const mode = store.get('dataSource', 'mock');
@@ -295,6 +341,9 @@ function buildDataSource() {
   lastReport = null;
   pushState();
   rebuildTray();
+
+  // 该机型的官方错误码表异步就绪（打印失败时用于显示官方原因文案）；不阻塞连接流程
+  ensureErrorTable(entry.serial, store.get('locale', 'zh-CN'));
 
   const transport = registry.pickTransport(entry);
   let triedCloudFallback = false;
@@ -412,7 +461,7 @@ function buildMenuTemplate() {
   const template = [];
 
 
-  // 状态行（总是展示）
+  // 状态行（总是展示）。失败时 statusLabel 已是「打印失败 · 大类」（applyReport 里按官方码表归类注入）。
   template.push({ label: `${t(locale, 'tray.status')}：${statusLabel}`, enabled: false });
 
   // 实时指标（仅 Live 模式且已连接时）：喷嘴 / 热床 / 剩余各占一行，避免拼成一行撑宽菜单。
@@ -910,7 +959,14 @@ ipcMain.handle('pref:set', (_e, key, value) => {
   store.set(key, value);
   if (key === 'sizePx') setPetSizePx(value);
   if (key === 'labelFontSize' || key === 'showLabel') pushPetPrefs();
-  if (key === 'locale') { pushLocale(); resendState(); }
+  if (key === 'locale') {
+    pushLocale(); resendState();
+    // 语言变了 → 重新就绪对应语言的官方错误码表（新 "<lang>_<model>" key 会触发重载）
+    if (store.get('dataSource', 'mock') === 'live') {
+      const s = store.get('activePrinterSerial');
+      if (s) ensureErrorTable(s, value);
+    }
+  }
   if (key === 'showInMenuBar') {
     if (value) { if (!tray) createTray(); }
     else { if (tray) { tray.destroy(); tray = null; } }

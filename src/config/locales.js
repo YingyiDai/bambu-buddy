@@ -26,7 +26,14 @@ const STRINGS = {
     'label.doorOpen': '舱门已打开',
     'label.finished': '打印成功',
     'label.failed': '打印失败',
-    'label.failed.hms': '打印失败 · {code}',
+    'label.failed.runout': '打印失败 · 断料',
+    'label.failed.clog': '打印失败 · 堵头',
+    'label.failed.temp': '打印失败 · 温度',
+    'label.failed.motion': '打印失败 · 机械',
+    'label.failed.calibration': '打印失败 · 校准',
+    'label.failed.plate': '打印失败 · 打印板',
+    'label.failed.nozzle': '打印失败 · 喷嘴',
+    'label.failed.ams': '打印失败 · AMS',
 
     // ── 全部 Bambu Studio 阶段（stg_cur）精确文案，详见 state-map.js STAGE_VIDEO ──
     'label.stage.0': '打印中',
@@ -328,7 +335,14 @@ const STRINGS = {
     'label.doorOpen': 'Door Open',
     'label.finished': 'Print Success',
     'label.failed': 'Print Failed',
-    'label.failed.hms': 'Print Failed · {code}',
+    'label.failed.runout': 'Print Failed · Runout',
+    'label.failed.clog': 'Print Failed · Clog',
+    'label.failed.temp': 'Print Failed · Temp',
+    'label.failed.motion': 'Print Failed · Mechanical',
+    'label.failed.calibration': 'Print Failed · Calibration',
+    'label.failed.plate': 'Print Failed · Build Plate',
+    'label.failed.nozzle': 'Print Failed · Nozzle',
+    'label.failed.ams': 'Print Failed · AMS',
 
     // ── All Bambu Studio stages (stg_cur), see STAGE_VIDEO in state-map.js ──
     'label.stage.0': 'Printing',

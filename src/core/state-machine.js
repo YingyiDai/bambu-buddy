@@ -9,6 +9,18 @@ function stageLabelKey(stg) {
   return STAGE_VIDEO[stg] != null ? `label.stage.${stg}` : null;
 }
 
+// 「用户主动取消打印」的 fail_reason 码。取消一个任务后 gcode_state 会粘滞在 FAILED（与真正
+// 故障无法从 gcode_state 区分），但打印机会把持续字段 fail_reason 置为此码 —— 真机取证 + Bambu
+// 论坛 "Printing Was Cancelled [0300 400C]" 均证实 0x0300400C=50348044 即「打印被取消」。
+// 因是持续字段（pushall 也带），即便应用在取消之后才启动、只能收到残留状态，也能据此判定为取消。
+const FAIL_REASON_USER_CANCELED = 50348044; // 0x0300400C
+
+// 本次终止是否为用户主动取消：持续字段 fail_reason（冷启动也可靠）优先，
+// 兼收数据源透出的瞬时/持久 print_canceled 事件（应用在线时更早响应）。
+function isUserCanceled(r) {
+  return r.print_canceled === true || Number(r.fail_reason) === FAIL_REASON_USER_CANCELED;
+}
+
 // 大状态字符串（gcode_state）。OFFLINE 为本应用内部约定（连接断开时注入）。
 const GCODE = {
   IDLE: 'IDLE',
@@ -88,13 +100,6 @@ function hasFatalHms(hms) {
   });
 }
 
-function firstHmsCode(hms) {
-  if (!Array.isArray(hms) || hms.length === 0) return null;
-  const h = hms[0];
-  if (typeof h === 'string') return h;
-  return h.code || h.attr || null;
-}
-
 /**
  * 把打印机报文（或 mock 注入）解析为宠物状态。
  * @param {object} report - 含 gcode_state, mc_percent, stg_cur, layer_num,
@@ -126,6 +131,14 @@ function resolveState(report = {}) {
     return { stateKey: 'finished', videoFile: VIDEO.finished, labelKey: 'label.finished', labelParams: {} };
   }
 
+  // 2.5 用户主动取消。取消一个任务时打印机同样把 gcode_state 置为 FAILED（与真正故障无法从
+  //     gcode_state 区分），且该 FAILED 会一直残留到下次开印 —— 若据此显示「打印失败」，取消后
+  //     熊猫会一直挂着「打印失败 · <残留 HMS code>」，而 Bambu Studio 早已回到空闲，造成状态不符。
+  //     用 fail_reason=0x0300400C（持续字段，冷启动也可靠）判定取消，命中即视作普通结束 → 空闲。
+  if (isUserCanceled(r)) {
+    return { stateKey: 'idle', videoFile: VIDEO.idle, labelKey: 'label.idle', labelParams: {} };
+  }
+
   // 3. 暂停 / 可恢复错误。gcode_state 是权威生命周期信号：打印机报 PAUSE 即「可恢复暂停」
   //    （断料、堵头、舱门等），必须先于失败判定。断料时 print_error 会被置为非零诊断码，
   //    若失败判定在前会把可恢复暂停误升级为「打印失败」（曾出现卡片「离线」+ 熊猫「失败」的状态不符 bug）。
@@ -137,14 +150,13 @@ function resolveState(report = {}) {
     return { stateKey: 'paused', videoFile: VIDEO.paused, labelKey: pl.labelKey, labelParams: pl.labelParams };
   }
 
-  // 4. 失败 / 终止报错。仅以权威信号判定终止失败：gcode_state=FAILED、显式取消事件、致命 HMS。
+  // 4. 失败 / 终止报错。仅以权威信号判定终止失败：gcode_state=FAILED、致命 HMS。
+  //    （用户取消已在第 2.5 步分流为空闲，不会走到这里。）
   //    ⚠️ 不把 print_error 当作失败依据 —— 它是持续型诊断码，断料等可恢复情形也会置非零，
   //    且在增量报文合并后会跨帧残留，据此判失败会让状态长期卡在「失败」。
-  if (gcode === GCODE.FAILED || r.print_canceled || hasFatalHms(hms)) {
-    const code = firstHmsCode(hms);
-    if (code) {
-      return { stateKey: 'failed', videoFile: VIDEO.failed, labelKey: 'label.failed.hms', labelParams: { code } };
-    }
+  if (gcode === GCODE.FAILED || hasFatalHms(hms)) {
+    // 统一返回通用 label.failed；「打印失败 · 大类」的大类由主进程用官方码表在此之上注入
+    // （state-machine 是纯函数、拿不到需异步下载的官方表，故大类增强放主进程，见 main.js#applyReport）。
     return { stateKey: 'failed', videoFile: VIDEO.failed, labelKey: 'label.failed', labelParams: {} };
   }
 

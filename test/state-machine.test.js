@@ -18,11 +18,11 @@ test('FAILED 优先于其它', () => {
   assert.equal(r.labelKey, 'label.failed');
 });
 
-test('致命 HMS → failed 且 labelKey 带 code', () => {
+// 致命 HMS（未知含义的码）→ failed，但只显示通用「打印失败」，不把看不懂的裸码挂给用户
+test('致命 HMS（未知码）→ failed，不显示裸码', () => {
   const r = resolveState({ connected: true, gcode_state: 'RUNNING', hms: [{ code: 'HMS_0300', severity: 'fatal' }] });
   assert.equal(r.stateKey, 'failed');
-  assert.equal(r.labelKey, 'label.failed.hms');
-  assert.equal(r.labelParams.code, 'HMS_0300');
+  assert.equal(r.labelKey, 'label.failed');
 });
 
 test('可恢复 HMS（info）不进 failed', () => {
@@ -47,12 +47,43 @@ test('RUNNING 带残留 print_error → 仍是打印中', () => {
   assert.equal(r.stateKey, 'printing_0');
 });
 
-// 真正终止失败（gcode_state=FAILED）仍展示 HMS code
-test('FAILED 带 HMS → failed 且保留 code', () => {
+// 终止失败：state-machine 统一返回通用 label.failed；「打印失败 · 大类」的大类由主进程用官方码表
+// 在此之上注入（见 main.js#applyReport + bambu-error-codes 分类），纯函数层不做也不测大类。
+test('FAILED → 通用 label.failed（大类由主进程注入）', () => {
   const r = resolveState({ connected: true, gcode_state: 'FAILED', hms: [{ code: 131184 }] });
   assert.equal(r.stateKey, 'failed');
-  assert.equal(r.labelKey, 'label.failed.hms');
-  assert.equal(r.labelParams.code, 131184);
+  assert.equal(r.labelKey, 'label.failed');
+});
+
+// 回归：用户主动取消任务时打印机同样报 gcode_state=FAILED（且残留 HMS code），但这是用户行为
+// 而非故障，不得显示「打印失败」。曾出现取消后熊猫一直挂「打印失败 · 131184」而 Studio 已空闲。
+test('取消（print_canceled）盖过 FAILED/HMS → idle，不显示失败', () => {
+  const r = resolveState({
+    connected: true, gcode_state: 'FAILED', print_canceled: true, hms: [{ code: 131184 }],
+  });
+  assert.equal(r.stateKey, 'idle');
+  assert.equal(r.labelKey, 'label.idle');
+  assert.equal(r.videoFile, 'idle.webm');
+});
+
+// 冷启动场景（取消后才打开应用）：收不到瞬时取消命令，只有 pushall 的残留状态。
+// 真机取证：取消的任务 gcode_state=FAILED + fail_reason='50348044'(0x0300400C=打印被取消) + 残留 HMS。
+// 必须靠持续字段 fail_reason 判定为取消 → idle，而非「打印失败」。
+test('冷启动取消（fail_reason=50348044，无 print_canceled）→ idle', () => {
+  const r = resolveState({
+    connected: true, gcode_state: 'FAILED', fail_reason: '50348044', hms: [{ code: 131184 }],
+  });
+  assert.equal(r.stateKey, 'idle');
+  assert.equal(r.labelKey, 'label.idle');
+});
+
+// 反向：真正故障（fail_reason 是别的错误码，非取消码）仍判 failed（通用标签，大类由主进程注入）。
+test('真故障（fail_reason 非取消码）→ 仍 failed', () => {
+  const r = resolveState({
+    connected: true, gcode_state: 'FAILED', fail_reason: '50348050', hms: [{ code: 131184 }],
+  });
+  assert.equal(r.stateKey, 'failed');
+  assert.equal(r.labelKey, 'label.failed');
 });
 
 test('FINISH → finished', () => {
