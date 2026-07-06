@@ -358,8 +358,10 @@ function getAccountLabel(locale) {
 }
 
 // 构建托盘菜单中的实时指标行（温度 + 剩余时间）。
-function getMetricsLabel(locale, report) {
-  if (!report || !report.connected) return null;
+// 返回实时指标的**多条**短文本（喷嘴 / 热床 / 剩余各一条），托盘菜单里每条各占一行，
+// 避免拼成一整行（`喷嘴 210→220°C | 热床 60→65°C | 剩余 1h30m`）把菜单顶得很宽。
+function getMetricsLines(locale, report) {
+  if (!report || !report.connected) return [];
   const temps = extractTemps(report);
   const parts = [];
   if (temps.nozzleTemp != null) {
@@ -388,7 +390,7 @@ function getMetricsLabel(locale, report) {
       parts.push(t(locale, 'tray.remaining', { time: timeStr }));
     }
   }
-  return parts.length > 0 ? parts.join(' | ') : null;
+  return parts;
 }
 
 function makeTrayIcon() {
@@ -413,9 +415,10 @@ function buildMenuTemplate() {
   // 状态行（总是展示）
   template.push({ label: `${t(locale, 'tray.status')}：${statusLabel}`, enabled: false });
 
-  // 实时指标（仅 Live 模式且已连接时）
-  const metricsLabel = getMetricsLabel(locale, lastReport);
-  if (metricsLabel) template.push({ label: metricsLabel, enabled: false });
+  // 实时指标（仅 Live 模式且已连接时）：喷嘴 / 热床 / 剩余各占一行，避免拼成一行撑宽菜单。
+  for (const line of getMetricsLines(locale, lastReport)) {
+    template.push({ label: line, enabled: false });
+  }
 
   // Mock 模式：数据源标识
   if (mode === 'mock') {
