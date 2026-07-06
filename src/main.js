@@ -108,6 +108,12 @@ let lastReport = null; // 最近一次 MQTT 原始报文，供托盘菜单读取
 let cloudPollTimer = null; // 云端粗粒度状态轮询定时器
 let liveNotifyTimer = null; // MQTT 实时状态 → 设置窗重绘的防抖定时器
 let playPercent = 0; // 把玩页打印进度（滑杆位置，0–100）
+let pendingUpdate = null; // 自动检查发现的新版本 { version, url }，供托盘菜单常驻高亮
+
+// 自动检查更新的节奏：启动后延迟一次（给网络/系统代理就绪时间），之后每天复查一次。
+// 个人项目更新不频繁，无需更密的轮询。
+const AUTO_UPDATE_STARTUP_DELAY_MS = 8000;
+const AUTO_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 function currentSizePx() {
   return store.get('sizePx', 220);
@@ -352,8 +358,10 @@ function getAccountLabel(locale) {
 }
 
 // 构建托盘菜单中的实时指标行（温度 + 剩余时间）。
-function getMetricsLabel(locale, report) {
-  if (!report || !report.connected) return null;
+// 返回实时指标的**多条**短文本（喷嘴 / 热床 / 剩余各一条），托盘菜单里每条各占一行，
+// 避免拼成一整行（`喷嘴 210→220°C | 热床 60→65°C | 剩余 1h30m`）把菜单顶得很宽。
+function getMetricsLines(locale, report) {
+  if (!report || !report.connected) return [];
   const temps = extractTemps(report);
   const parts = [];
   if (temps.nozzleTemp != null) {
@@ -382,7 +390,7 @@ function getMetricsLabel(locale, report) {
       parts.push(t(locale, 'tray.remaining', { time: timeStr }));
     }
   }
-  return parts.length > 0 ? parts.join(' | ') : null;
+  return parts;
 }
 
 function makeTrayIcon() {
@@ -407,9 +415,10 @@ function buildMenuTemplate() {
   // 状态行（总是展示）
   template.push({ label: `${t(locale, 'tray.status')}：${statusLabel}`, enabled: false });
 
-  // 实时指标（仅 Live 模式且已连接时）
-  const metricsLabel = getMetricsLabel(locale, lastReport);
-  if (metricsLabel) template.push({ label: metricsLabel, enabled: false });
+  // 实时指标（仅 Live 模式且已连接时）：喷嘴 / 热床 / 剩余各占一行，避免拼成一行撑宽菜单。
+  for (const line of getMetricsLines(locale, lastReport)) {
+    template.push({ label: line, enabled: false });
+  }
 
   // Mock 模式：数据源标识
   if (mode === 'mock') {
@@ -446,7 +455,10 @@ function buildMenuTemplate() {
     { label: t(locale, 'tray.settings'),
       click: () => createSettingsWindow('printers') },
     {
-      label: t(locale, 'tray.checkUpdate'),
+      // 自动检查若发现新版本，这条菜单项常驻显示成「● 有新版本 vX.Y.Z」做安静提示（不弹系统通知）。
+      label: pendingUpdate
+        ? t(locale, 'tray.updateAvailable', { version: pendingUpdate.version })
+        : t(locale, 'tray.checkUpdate'),
       // 托盘菜单点击后会立即关闭，若在此直接发网络请求，弹结果前的几秒没有任何反馈，像卡死。
       // 改为打开设置的「关于」页并自动触发页内的检查更新按钮 —— 用户能立刻看到「检查中…」状态与结果。
       click: () => createSettingsWindow('about', { autoCheckUpdate: true }),
@@ -520,6 +532,20 @@ function rebuildTray() {
 function createTray() {
   tray = new Tray(makeTrayIcon());
   rebuildTray();
+}
+
+// 自动检查更新：复用 core/updater 的检测逻辑与 netGetRaw（走系统代理，国内也能连 api.github.com）。
+// 发现新版本时只更新托盘菜单常驻高亮，不弹系统通知（用户不希望被打扰）。
+// 检测失败静默处理，下次再试；手动「检查更新」按钮仍会在关于页展示错误。
+async function runAutoUpdateCheck() {
+  if (!store.get('autoCheckUpdate', true)) return;
+  try {
+    const pkg = require('../package.json');
+    const r = await checkForUpdates(pkg.version, undefined, netGetRaw);
+    if (r.error || !r.hasUpdate) return;
+    pendingUpdate = { version: r.latestVersion, url: r.releaseUrl };
+    rebuildTray();
+  } catch { /* 自动检查静默失败，下次再试 */ }
 }
 
 // ---- Bambu 连接设置窗 ----
@@ -877,6 +903,7 @@ ipcMain.handle('pref:getAll', () => ({
   showInMenuBar: store.get('showInMenuBar', true),
   showInDock: store.get('showInDock', true),
   locale: store.get('locale', 'zh-CN'),
+  autoCheckUpdate: store.get('autoCheckUpdate', true),
 }));
 
 ipcMain.handle('pref:set', (_e, key, value) => {
@@ -945,6 +972,10 @@ app.whenReady().then(() => {
   buildDataSource();
   refreshCloudPrinters();
   startCloudPoll();
+
+  // 自动检查更新：启动后延迟一次，之后每天复查一次（发现新版本仅在托盘菜单常驻高亮）。
+  setTimeout(runAutoUpdateCheck, AUTO_UPDATE_STARTUP_DELAY_MS);
+  setInterval(runAutoUpdateCheck, AUTO_UPDATE_INTERVAL_MS);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

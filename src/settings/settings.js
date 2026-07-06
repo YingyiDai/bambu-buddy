@@ -558,6 +558,7 @@ async function loadAbout() {
   const author = el('aboutAuthor');
   author.textContent = 'YingyiDai';
   author.onclick = (e) => { e.preventDefault(); window.bambu.openExternal('https://makerworld.com.cn/zh/@yingyidai'); };
+  el('autoCheckUpdateToggle').checked = (await window.bambu.getPreferences()).autoCheckUpdate;
   // 正在检查时不要重置按钮/状态，避免打断「检查中…」的反馈。
   if (!updateChecking) {
     el('updateStatus').classList.add('hidden');
@@ -584,6 +585,7 @@ async function runUpdateCheck() {
 }
 
 el('checkUpdateBtn').addEventListener('click', runUpdateCheck);
+el('autoCheckUpdateToggle').addEventListener('change', () => window.bambu.setPreference('autoCheckUpdate', el('autoCheckUpdateToggle').checked));
 
 // 托盘菜单点「检查更新」：主进程会切到关于页并请求自动触发一次检查。
 window.bambu.onCheckUpdate(() => { switchSection('about'); runUpdateCheck(); });
