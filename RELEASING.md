@@ -24,13 +24,25 @@
    git push origin main v0.1.3
    ```
 5. CI 在 `macos-latest` 和 `windows-latest` 上各打一份安装包，上传到 Release `v0.1.3`。
-6.（可选）补充发版说明：在 Release 页面编辑，或
+6. **核对并补全发版说明（必做，非可选）**：CI 用 `--generate-notes` 自动生成的说明
+   **只会列出「已合并的 PR」**。本项目日常允许直接提交到 `main`（见开头说明），这些
+   直提 main、未走 PR 的改动**不会出现在自动说明里**。因此每次发版都要以本区间的完整
+   提交为准，确保说明覆盖**本次全部改动**，而不是只有恰好走了 PR 的那部分。
+
+   先看清本次到底改了什么：
    ```bash
-   gh release edit v0.1.3 --notes-file <说明文件.md>
+   git log --oneline <上个版本 tag>..<本次 tag>   # 如 v0.1.12..v0.1.13
+   ```
+   逐条比对自动说明；凡是直提 main 的改动没被收录，就编辑 Release 补上：
+   ```bash
+   gh release edit v0.1.3 --notes-file <说明文件.md>   # 或在 Release 页面手动编辑
    ```
 
-> CI 会在 Release 不存在时自动创建一份（带自动生成的说明）；如想用手写说明，
-> 可在推 tag 前先 `gh release create v0.1.3 --notes-file ... --draft`，CI 只负责上传资产。
+> **发版说明完整性规则**：一次发版通常打包多次改动（多个 PR + 若干直提 main 的提交）。
+> 发版说明必须涵盖本次区间内的**所有**改动，逐一列出、不遗漏。不要直接照搬 `--generate-notes`
+> 的结果——它漏掉直提 main 的部分（v0.1.13 就因此只写了一个 PR、漏了「区分用户取消与打印失败」）。
+> 若想完全用手写说明，可在推 tag 前先 `gh release create v0.1.3 --notes-file ... --draft`，
+> CI 只负责上传资产、不会覆盖你的说明。
 
 ## 补建 / 重跑某个版本
 
