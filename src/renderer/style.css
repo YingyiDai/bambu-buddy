@@ -54,7 +54,9 @@ html, body {
   left: 50%;
   bottom: 8px;
   transform: translateX(-50%);
-  max-width: 280px;
+  /* 不得超出窗口宽度：窗口宽 = sizePx（默认 220），固定 280px 会被窗口边界左右裁切，
+     ellipsis 永远轮不到生效。留 4px×2 边距，超长文案在 pill 内部省略。 */
+  max-width: min(280px, calc(100% - 8px));
   box-sizing: border-box;
   padding: 4px 12px;
   font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;

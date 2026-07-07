@@ -7,7 +7,7 @@ const Store = require('electron-store');
 // 窗口图标：Windows 用 .ico（多尺寸），其余平台用 PNG。
 const WINDOW_ICON = path.join(__dirname, '..', 'assets', 'icon', process.platform === 'win32' ? 'AppIcon.ico' : 'AppIcon.png');
 
-const { resolveState, extractTemps, fmtRemain } = require('./core/state-machine');
+const { resolveState, extractTemps, fmtRemain, isPrintActive } = require('./core/state-machine');
 const { buildLiveTelemetry } = require('./core/live-telemetry');
 const { MockDataSource } = require('./core/mock');
 const { BambuCloudDataSource, BambuLanDataSource } = require('./core/bambu-mqtt');
@@ -414,13 +414,16 @@ function getMetricsLines(locale, report) {
   if (!report || !report.connected) return [];
   const temps = extractTemps(report);
   const parts = [];
-  // 层数：仅打印中（有 layer/total）时展示
-  if (Number.isFinite(report.layer_num) && Number.isFinite(report.total_layer_num) && report.total_layer_num > 0) {
-    parts.push(t(locale, 'label.layers', { layer: report.layer_num, total: report.total_layer_num }));
+  // 层数 / 剩余时间是任务级指标，仅打印任务进行中（RUNNING/PAUSE/PREPARE）展示：
+  // 真机空闲时报文仍残留上一任务的 layer/total（如 0/400），只判 total>0 会在「空闲」下误显层数行。
+  if (isPrintActive(report)) {
+    if (Number.isFinite(report.layer_num) && Number.isFinite(report.total_layer_num) && report.total_layer_num > 0) {
+      parts.push(t(locale, 'label.layers', { layer: report.layer_num, total: report.total_layer_num }));
+    }
+    // 剩余时间：复用与熊猫标签一致的 fmtRemain 格式化，口径统一
+    const remain = fmtRemain(temps.remainingTime);
+    if (remain != null) parts.push(t(locale, 'label.remaining', { time: remain }));
   }
-  // 剩余时间：复用与熊猫标签一致的 fmtRemain 格式化，口径统一
-  const remain = fmtRemain(temps.remainingTime);
-  if (remain != null) parts.push(t(locale, 'label.remaining', { time: remain }));
   if (temps.nozzleTemp != null) {
     if (temps.targetNozzleTemp != null && temps.targetNozzleTemp > 0) {
       parts.push(`${t(locale, 'tray.nozzle')} ${temps.nozzleTemp}→${temps.targetNozzleTemp}°C`);

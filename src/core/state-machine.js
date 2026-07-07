@@ -96,6 +96,15 @@ function fmtRemain(mins) {
   return m ? `${h}h${m}m` : `${h}h`;
 }
 
+// 打印任务是否进行中（RUNNING / PAUSE / PREPARE）。
+// 真机空闲时报文仍残留上一任务的 layer_num/total_layer_num（如 0/400），
+// 层数、剩余时间等任务级指标必须按此门控，否则空闲态会外显残留数据。
+function isPrintActive(report) {
+  if (!report) return false;
+  const g = report.gcode_state;
+  return g === GCODE.RUNNING || g === GCODE.PAUSE || g === GCODE.PREPARE;
+}
+
 // HMS 严重度判定：fatal/serious → 终止失败；common/info → 可恢复
 // pybambu 中 HMS code 的严重度位通常编码在高位；这里做宽松判定，
 // 兼容 { code, severity } 或纯字符串两种形态。
@@ -274,4 +283,4 @@ function extractTemps(report) {
   };
 }
 
-module.exports = { resolveState, stageLabel, pauseLabel, hasFatalHms, extractTemps, fmtRemain, GCODE };
+module.exports = { resolveState, stageLabel, pauseLabel, hasFatalHms, extractTemps, fmtRemain, isPrintActive, GCODE };

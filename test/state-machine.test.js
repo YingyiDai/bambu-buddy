@@ -329,3 +329,22 @@ test('普通离线（无 authExpired）仍是 offline', () => {
   assert.equal(r.stateKey, 'offline');
   assert.equal(r.labelKey, 'label.offline');
 });
+
+// ── isPrintActive：托盘层数/剩余时间行只在打印任务进行中展示 ──
+// 真机空闲时报文仍残留上一任务的 total_layer_num（如 0/400），不按 gcode_state 门控
+// 会导致托盘在「空闲」下错误显示层数行。
+test('isPrintActive：RUNNING / PAUSE / PREPARE 为进行中', () => {
+  const { isPrintActive } = require('../src/core/state-machine');
+  assert.equal(isPrintActive({ gcode_state: 'RUNNING' }), true);
+  assert.equal(isPrintActive({ gcode_state: 'PAUSE' }), true);
+  assert.equal(isPrintActive({ gcode_state: 'PREPARE' }), true);
+});
+
+test('isPrintActive：IDLE/FINISH/FAILED/离线/缺省不算进行中（残留层数不外显）', () => {
+  const { isPrintActive } = require('../src/core/state-machine');
+  assert.equal(isPrintActive({ gcode_state: 'IDLE', layer_num: 0, total_layer_num: 400 }), false);
+  assert.equal(isPrintActive({ gcode_state: 'FINISH' }), false);
+  assert.equal(isPrintActive({ gcode_state: 'FAILED' }), false);
+  assert.equal(isPrintActive({}), false);
+  assert.equal(isPrintActive(null), false);
+});
