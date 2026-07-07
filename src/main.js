@@ -1011,10 +1011,21 @@ ipcMain.handle('app:openExternal', (_e, url) => {
 // ---- 生命周期 ----
 app.setName('Bambu Buddy');
 
+// 首启默认语言按系统语言决定：中文系统 → zh-CN，其它 → en。只支持这两种 locale。
+function systemDefaultLocale() {
+  let sys = '';
+  try { sys = (app.getLocale() || '').toLowerCase(); } catch (e) { sys = ''; }
+  return sys.startsWith('zh') ? 'zh-CN' : 'en';
+}
+
 app.whenReady().then(() => {
   // 移除 Electron 默认应用菜单（File/Edit/View/Window/Help）——本应用操作全在托盘/右键菜单，
   // Windows/Linux 窗口顶部不再显示这条菜单栏。
   Menu.setApplicationMenu(null);
+
+  // 首次启动（尚未存过 locale）：按系统语言初始化默认语言并持久化，之后用户可在设置里改。
+  // 需在 createWindow / createTray 之前，保证首帧文案即为正确语言。
+  if (store.get('locale') == null) store.set('locale', systemDefaultLocale());
 
   // 设置 Dock 图标（开发模式下 Electron 默认图标会被替换）
   if (process.platform === 'darwin' && app.dock) {

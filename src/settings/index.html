@@ -59,6 +59,15 @@
         <h1 class="section-title" data-i18n="nav.appearance">外观</h1>
         <p class="section-sub" data-i18n="appearance.subtitle">调整熊猫在桌面上的外观与界面语言</p>
         <div class="section-rows">
+          <div class="row">
+            <div class="row-text">
+              <span class="row-label" data-i18n="settings.language">语言</span>
+              <span class="row-desc" data-i18n="settings.languageDesc">菜单与状态文字的界面语言</span>
+            </div>
+            <div class="row-control">
+              <select id="localeSelect"><option value="zh-CN" data-i18n="settings.langZh">中文</option><option value="en" data-i18n="settings.langEn">English</option></select>
+            </div>
+          </div>
           <div class="row row-stack">
             <div class="row-head">
               <span class="row-label" data-i18n="settings.petSize">宠物大小</span>
@@ -94,15 +103,6 @@
               <span class="row-desc" data-i18n="settings.showTimeDesc">打印中在熊猫下方显示预计剩余时间</span>
             </div>
             <div class="row-control"><input type="checkbox" id="showTimeToggle" class="toggle" /></div>
-          </div>
-          <div class="row">
-            <div class="row-text">
-              <span class="row-label" data-i18n="settings.language">语言</span>
-              <span class="row-desc" data-i18n="settings.languageDesc">菜单与状态文字的界面语言</span>
-            </div>
-            <div class="row-control">
-              <select id="localeSelect"><option value="zh-CN" data-i18n="settings.langZh">中文</option><option value="en" data-i18n="settings.langEn">English</option></select>
-            </div>
           </div>
         </div>
       </section>
