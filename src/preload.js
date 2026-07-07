@@ -19,6 +19,8 @@ contextBridge.exposeInMainWorld('pet', {
   setInteractive: (interactive) => {
     ipcRenderer.send('pet:setInteractive', !!interactive);
   },
+  // 上报标签实际像素宽度 → 主进程按需加宽窗口，长标签完整显示
+  setLabelWidth: (px) => ipcRenderer.send('pet:labelWidth', px),
   // 手动拖拽：开始跟随光标 / 结束
   dragStart: () => ipcRenderer.send('pet:dragStart'),
   dragEnd: () => ipcRenderer.send('pet:dragEnd'),

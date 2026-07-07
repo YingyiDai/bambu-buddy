@@ -41,6 +41,20 @@ function renderLabel() {
   if (showLayer && p.layer != null && p.total != null) parts.push(`${p.layer}/${p.total}`);
   if (showTime && p.remain != null) parts.push(t(currentLocale, 'label.remainTime', { time: p.remain }));
   labelEl.textContent = parts.join(' · ');
+  reportLabelWidth();
+}
+
+// 量出标签实际像素宽度，上报主进程按需加宽窗口 —— 这样长标签能完整显示，
+// 既不缩小用户设定的字号，也不截断成「…」。隐藏标签时上报 0，窗口回落到熊猫本身宽度。
+// +14px：给 pill 两侧留一点呼吸空隙（与 CSS max-width 的 12px 边距配合，确保不触发 ellipsis）。
+const LABEL_WIN_MARGIN = 14;
+function reportLabelWidth() {
+  const hidden = labelEl.classList.contains('hidden');
+  // requestAnimationFrame：等本次文本改动完成布局后再量，scrollWidth 才是真实内容宽
+  requestAnimationFrame(() => {
+    const w = hidden ? 0 : Math.ceil(labelEl.scrollWidth) + LABEL_WIN_MARGIN;
+    window.pet.setLabelWidth(w);
+  });
 }
 
 function applyState(state) {

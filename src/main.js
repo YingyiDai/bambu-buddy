@@ -182,20 +182,41 @@ function createWindow() {
   // 位置记忆在 pet:dragEnd 时保存（§5.3），避免拖拽过程中频繁写盘。
 }
 
+// 渲染层上报的标签实际像素宽度：窗口据此加宽以完整显示长标签（不缩字号、不截断）。
+let labelPx = 0;
+
+// 目标窗口宽度：至少容纳熊猫方形（sizePx），标签更宽时按标签宽。
+// 窗口只在**水平**方向加宽；高度恒为 sizePx。两侧多出的透明留白点击穿透、可溢出屏幕边缘，
+// 熊猫始终居中方形（CSS width:100vh），故窗口变宽不改变熊猫位置/大小/热区。
+function targetWinWidth() {
+  return Math.max(currentSizePx(), labelPx);
+}
+
+// 按 targetWinWidth 加宽/收窄窗口，保持窗口中心不动 —— 熊猫居中，故中心不动 = 熊猫不动。
+function applyWinWidth() {
+  if (!win || win.isDestroyed()) return;
+  const b = win.getBounds();
+  const cx = b.x + Math.round(b.width / 2);
+  const w = targetWinWidth();
+  const x = Math.round(cx - w / 2);
+  if (b.width === w && b.x === x) return;
+  win.setBounds({ x, y: b.y, width: w, height: b.height });
+}
+
 // 无极调整宠物窗口大小（80–400px），保持中心不动，持久化。
 function setPetSizePx(px) {
   px = Math.max(80, Math.min(400, Math.round(px)));
   store.set('sizePx', px);
   if (!win || win.isDestroyed()) return;
-  const [x, y] = win.getPosition();
-  const [w, h] = win.getSize();
-  const cx = x + w / 2, cy = y + h / 2;
-  // 保持中心不动；放大后若溢出屏幕，夹回可见范围（clamp 失败则退回原中心算法）。
+  const b = win.getBounds();
+  const cx = b.x + Math.round(b.width / 2), cy = b.y + Math.round(b.height / 2);
+  // 先把「熊猫方形」保持中心不动、夹回可见范围（两侧透明留白允许溢出屏幕，不参与夹取）。
   const desired = { x: Math.round(cx - px / 2), y: Math.round(cy - px / 2) };
-  const safe = clampToVisible(desired, screen.getAllDisplays(), px) || desired;
-  win.setBounds({ x: safe.x, y: safe.y, width: px, height: px });
-  const [nx, ny] = win.getPosition();
-  store.set('window.position', { x: nx, y: ny });
+  const pet = clampToVisible(desired, screen.getAllDisplays(), px) || desired;
+  const w = Math.max(px, labelPx);
+  win.setBounds({ x: Math.round(pet.x - (w - px) / 2), y: pet.y, width: w, height: px });
+  // 记忆熊猫方形左上角（与历史存储口径一致：正方形、margin=0），与 dragEnd 保持一致。
+  store.set('window.position', { x: pet.x, y: pet.y });
   rebuildTray();
 }
 
@@ -930,10 +951,11 @@ ipcMain.on('pet:dragStart', () => {
   const cursor = screen.getCursorScreenPoint();
   const [wx, wy] = win.getPosition();
   dragOffset = { dx: cursor.x - wx, dy: cursor.y - wy };
-  // 拖拽全程锁定为当前设定尺寸：分数 DPI 缩放下反复 setPosition 会因
-  // DIP↔像素取整误差让窗口逐帧变大（熊猫随之被放大），每帧用 setBounds
-  // 显式回写固定宽高即可杜绝这种累积（拖拽时大小不应改变）。
+  // 拖拽全程锁定为当前尺寸：分数 DPI 缩放下反复 setPosition 会因 DIP↔像素取整误差
+  // 让窗口逐帧变大（熊猫随之被放大），每帧用 setBounds 显式回写固定宽高即可杜绝累积。
+  // 宽度锁定为当前窗口宽（含标签加宽的部分），避免拖拽时窗口回落成方形、标签被截断。
   const size = currentSizePx();
+  const width = win.getBounds().width;
   if (dragTimer) clearInterval(dragTimer);
   dragTimer = setInterval(() => {
     if (!win || win.isDestroyed() || !dragOffset) return;
@@ -941,7 +963,7 @@ ipcMain.on('pet:dragStart', () => {
     win.setBounds({
       x: Math.round(p.x - dragOffset.dx),
       y: Math.round(p.y - dragOffset.dy),
-      width: size,
+      width,
       height: size,
     });
   }, 16);
@@ -950,9 +972,19 @@ ipcMain.on('pet:dragEnd', () => {
   if (dragTimer) { clearInterval(dragTimer); dragTimer = null; }
   dragOffset = null;
   if (win && !win.isDestroyed()) {
-    const [px, py] = win.getPosition();
-    store.set('window.position', { x: px, y: py });
+    // 存熊猫方形左上角（由窗口中心反推），与 setPetSizePx 口径一致：窗口两侧透明留白不计入。
+    const b = win.getBounds();
+    const cx = b.x + Math.round(b.width / 2);
+    store.set('window.position', { x: Math.round(cx - currentSizePx() / 2), y: b.y });
   }
+});
+
+// 渲染层量出标签实际宽度 → 按需加宽窗口（保持中心不动，熊猫不移动）。
+ipcMain.on('pet:labelWidth', (_e, px) => {
+  const v = Math.max(0, Math.round(Number(px) || 0));
+  if (v === labelPx) return;
+  labelPx = v;
+  applyWinWidth();
 });
 
 // ---- 偏好设置 IPC ----

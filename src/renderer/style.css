@@ -20,14 +20,16 @@ html, body {
 }
 
 /* 熊猫容器：实体像素区域，可拖动窗口（§5.1）。
-   填满窗口（底部留出 label 空间），随窗口尺寸缩放 —— 大小由主进程
-   调整 BrowserWindow 尺寸驱动（见 main.js 的 size 预设）。 */
+   窗口可能比熊猫更宽 —— 主进程按标签实际宽度加宽窗口（见 main.js applyWinWidth），
+   好让长标签完整显示而不缩字号/截断。这里用「视口高度 = 窗口高 = sizePx」把熊猫
+   锁成居中的方形：窗口再宽，熊猫也居中不变形，热区/交互判定（基于 petEl 尺寸）不受影响。 */
 .pet {
   position: absolute;
   top: 0;
-  left: 0;
-  right: 0;
   bottom: 34px;             /* 给下方 label 留空间（含 +8px 间距） */
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100vh;             /* = 窗口高 = sizePx，熊猫恒为居中方形 */
   /* cursor 由 pet.js 根据热区动态设置 */
 }
 
@@ -54,9 +56,9 @@ html, body {
   left: 50%;
   bottom: 8px;
   transform: translateX(-50%);
-  /* 不得超出窗口宽度：窗口宽 = sizePx（默认 220），固定 280px 会被窗口边界左右裁切，
-     ellipsis 永远轮不到生效。留 4px×2 边距，超长文案在 pill 内部省略。 */
-  max-width: min(280px, calc(100% - 8px));
+  /* 窗口宽度由主进程按本标签实际宽度加宽（pet.js 量好后上报），故这里只需不超出窗口即可，
+     正常情况整条标签完整显示、不截断、不改用户字号。ellipsis 仅作窗口无法再加宽（极端超长）时的兜底。 */
+  max-width: calc(100% - 12px);
   box-sizing: border-box;
   padding: 4px 12px;
   font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
