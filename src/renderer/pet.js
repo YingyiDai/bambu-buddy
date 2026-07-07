@@ -28,20 +28,21 @@ function t(locale, key, params) {
   return template;
 }
 
-// 拼多行标签：第 1 行永远是状态本身（打印中时即「打印中 {p}%」）；
-// 打印中且开关开启时，追加层数、剩余时间行。数据由 resolveState 放进 labelParams
-// （remain 已是 locale 无关的紧凑 token），故切 locale / 切开关都能就地重绘。
+// 拼单行标签：主体是状态本身（打印中时即「打印中 {p}%」）；打印中且开关开启时，
+// 用「 · 」把层数、剩余时间横向追加到同一行——保持标签始终一行、不向上生长盖住熊猫。
+// 数据由 resolveState 放进 labelParams（remain 已是 locale 无关的紧凑 token），
+// 故切 locale / 切开关都能就地重绘。
 function renderLabel() {
   if (!lastPetState) return;
   const p = lastPetState.labelParams || {};
-  const lines = [t(currentLocale, lastPetState.labelKey, p)];
+  const parts = [t(currentLocale, lastPetState.labelKey, p)];
   if (showLayer && p.layer != null && p.total != null) {
-    lines.push(t(currentLocale, 'label.layers', p));
+    parts.push(t(currentLocale, 'label.layers', p));
   }
   if (showTime && p.remain != null) {
-    lines.push(t(currentLocale, 'label.remaining', { time: p.remain }));
+    parts.push(t(currentLocale, 'label.remaining', { time: p.remain }));
   }
-  labelEl.textContent = lines.join('\n');
+  labelEl.textContent = parts.join(' · ');
 }
 
 function applyState(state) {
