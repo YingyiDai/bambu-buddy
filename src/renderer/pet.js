@@ -10,7 +10,11 @@ const video = createVideoController(layers, { base: ANIM_BASE });
 // Locale
 let localeStrings = {};
 let currentLocale = 'zh-CN';
-let lastPetState = null; // 最近一次 printer state，用于 locale 切换时重绘
+let lastPetState = null; // 最近一次 printer state，用于 locale / 偏好切换时重绘
+
+// 「显示层数 / 显示剩余时间」开关（外观页，默认关）——决定标签是否拼出第 2、3 行。
+let showLayer = false;
+let showTime = false;
 
 function t(locale, key, params) {
   const map = localeStrings[locale] || localeStrings['zh-CN'] || {};
@@ -24,11 +28,27 @@ function t(locale, key, params) {
   return template;
 }
 
+// 拼多行标签：第 1 行永远是状态本身（打印中时即「打印中 {p}%」）；
+// 打印中且开关开启时，追加层数、剩余时间行。数据由 resolveState 放进 labelParams
+// （remain 已是 locale 无关的紧凑 token），故切 locale / 切开关都能就地重绘。
+function renderLabel() {
+  if (!lastPetState) return;
+  const p = lastPetState.labelParams || {};
+  const lines = [t(currentLocale, lastPetState.labelKey, p)];
+  if (showLayer && p.layer != null && p.total != null) {
+    lines.push(t(currentLocale, 'label.layers', p));
+  }
+  if (showTime && p.remain != null) {
+    lines.push(t(currentLocale, 'label.remaining', { time: p.remain }));
+  }
+  labelEl.textContent = lines.join('\n');
+}
+
 function applyState(state) {
   if (!state) return;
   lastPetState = state;
   // 标签同步刷新；视频经控制器切换（去重 + 尾沿防抖 + 并发安全）。
-  labelEl.textContent = t(currentLocale, state.labelKey, state.labelParams);
+  renderLabel();
   video.request(state.videoFile);
 }
 
@@ -36,9 +56,7 @@ function applyState(state) {
 window.pet.onLocale((locale, strings) => {
   currentLocale = locale;
   localeStrings[locale] = strings;
-  if (lastPetState) {
-    labelEl.textContent = t(currentLocale, lastPetState.labelKey, lastPetState.labelParams);
-  }
+  renderLabel();
 });
 
 // 偏好更新
@@ -49,6 +67,9 @@ window.pet.onPrefs((prefs) => {
   if (prefs.showLabel != null) {
     labelEl.classList.toggle('hidden', !prefs.showLabel);
   }
+  if (prefs.showLayer != null) showLayer = prefs.showLayer;
+  if (prefs.showTime != null) showTime = prefs.showTime;
+  renderLabel();
 });
 
 // 初始状态

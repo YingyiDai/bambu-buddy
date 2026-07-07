@@ -44,7 +44,7 @@ test('熊猫 stateKey → 卡片类别对所有 gcode×stg 一致（整类回归
 });
 
 test('live + 已连接报文 → 输出进度/层数/温度', () => {
-  const lastState = { stateKey: 'printing_50', labelKey: 'label.printing.layer', labelParams: { p: 50, layer: 100, total: 200 } };
+  const lastState = { stateKey: 'printing_50', labelKey: 'label.printing', labelParams: { p: 50, layer: 100, total: 200 } };
   const lastReport = {
     connected: true, gcode_state: 'RUNNING',
     mc_percent: 50, layer_num: 100, total_layer_num: 200,
@@ -52,7 +52,7 @@ test('live + 已连接报文 → 输出进度/层数/温度', () => {
   };
   const t = buildLiveTelemetry(true, lastState, lastReport);
   assert.equal(t.liveStatusClass, 'printing');
-  assert.equal(t.liveLabelKey, 'label.printing.layer');
+  assert.equal(t.liveLabelKey, 'label.printing');
   assert.deepStrictEqual(t.liveProgress, { percent: 50, layer: 100, total: 200 });
   assert.equal(t.liveTemps.nozzleTemp, 220);
   assert.equal(t.liveTemps.bedTemp, 60);

@@ -7,7 +7,7 @@ const Store = require('electron-store');
 // 窗口图标：Windows 用 .ico（多尺寸），其余平台用 PNG。
 const WINDOW_ICON = path.join(__dirname, '..', 'assets', 'icon', process.platform === 'win32' ? 'AppIcon.ico' : 'AppIcon.png');
 
-const { resolveState, extractTemps } = require('./core/state-machine');
+const { resolveState, extractTemps, fmtRemain } = require('./core/state-machine');
 const { buildLiveTelemetry } = require('./core/live-telemetry');
 const { MockDataSource } = require('./core/mock');
 const { BambuCloudDataSource, BambuLanDataSource } = require('./core/bambu-mqtt');
@@ -406,13 +406,21 @@ function getAccountLabel(locale) {
   return `${t(locale, 'tray.account')}：${account.account} [${regionLabel}]`;
 }
 
-// 构建托盘菜单中的实时指标行（温度 + 剩余时间）。
-// 返回实时指标的**多条**短文本（喷嘴 / 热床 / 剩余各一条），托盘菜单里每条各占一行，
-// 避免拼成一整行（`喷嘴 210→220°C | 热床 60→65°C | 剩余 1h30m`）把菜单顶得很宽。
+// 构建托盘菜单中的实时指标行（层数 / 剩余时间 / 温度）。
+// 返回实时指标的**多条**短文本，托盘菜单里每条各占一行，避免拼成一整行把菜单顶得很宽。
+// 状态行（含百分比）在 buildMenuTemplate 单独展示，故这里从第 2 行起：层数 → 剩余时间 → 喷嘴 → 热床。
+// 托盘始终全显，不受「显示层数 / 剩余时间」开关影响（那两个开关只作用于桌面熊猫标签）。
 function getMetricsLines(locale, report) {
   if (!report || !report.connected) return [];
   const temps = extractTemps(report);
   const parts = [];
+  // 层数：仅打印中（有 layer/total）时展示
+  if (Number.isFinite(report.layer_num) && Number.isFinite(report.total_layer_num) && report.total_layer_num > 0) {
+    parts.push(t(locale, 'label.layers', { layer: report.layer_num, total: report.total_layer_num }));
+  }
+  // 剩余时间：复用与熊猫标签一致的 fmtRemain 格式化，口径统一
+  const remain = fmtRemain(temps.remainingTime);
+  if (remain != null) parts.push(t(locale, 'label.remaining', { time: remain }));
   if (temps.nozzleTemp != null) {
     if (temps.targetNozzleTemp != null && temps.targetNozzleTemp > 0) {
       parts.push(`${t(locale, 'tray.nozzle')} ${temps.nozzleTemp}→${temps.targetNozzleTemp}°C`);
@@ -425,18 +433,6 @@ function getMetricsLines(locale, report) {
       parts.push(`${t(locale, 'tray.bed')} ${temps.bedTemp}→${temps.targetBedTemp}°C`);
     } else {
       parts.push(`${t(locale, 'tray.bed')} ${temps.bedTemp}°C`);
-    }
-  }
-  // 剩余时间按当前 locale 格式化（托盘文案，唯一格式化处）
-  if (temps.remainingTime != null && temps.remainingTime > 0) {
-    const mins = temps.remainingTime;
-    if (mins < 60) {
-      parts.push(t(locale, 'tray.remainingMin', { n: mins }));
-    } else {
-      const h = Math.floor(mins / 60);
-      const m = mins % 60;
-      const timeStr = m > 0 ? `${h}h${m}m` : `${h}h`;
-      parts.push(t(locale, 'tray.remaining', { time: timeStr }));
     }
   }
   return parts;
@@ -476,7 +472,8 @@ function buildMenuTemplate() {
   // 状态行（总是展示）。失败时 statusLabel 已是「打印失败 · 大类」（applyReport 里按官方码表归类注入）。
   template.push({ label: `${t(locale, 'tray.status')}：${statusLabel}`, enabled: false });
 
-  // 实时指标（仅 Live 模式且已连接时）：喷嘴 / 热床 / 剩余各占一行，避免拼成一行撑宽菜单。
+  // 实时指标（已连接时）：层数 / 剩余时间 / 喷嘴 / 热床各占一行，接在状态行（百分比）之后，
+  // 避免拼成一行撑宽菜单。托盘始终全显，不受「显示层数 / 剩余时间」开关影响。
   for (const line of getMetricsLines(locale, lastReport)) {
     template.push({ label: line, enabled: false });
   }
@@ -575,6 +572,8 @@ function pushPetPrefs() {
     win.webContents.send('pet:prefs', {
       labelFontSize: store.get('labelFontSize', 12),
       showLabel: store.get('showLabel', true),
+      showLayer: store.get('showLayer', false),
+      showTime: store.get('showTime', false),
     });
   }
 }
@@ -958,6 +957,8 @@ ipcMain.handle('pref:getAll', () => ({
   sizePx: store.get('sizePx', 220),
   labelFontSize: store.get('labelFontSize', 12),
   showLabel: store.get('showLabel', true),
+  showLayer: store.get('showLayer', false),
+  showTime: store.get('showTime', false),
   showInMenuBar: store.get('showInMenuBar', true),
   showInDock: store.get('showInDock', true),
   locale: store.get('locale', 'zh-CN'),
@@ -967,7 +968,7 @@ ipcMain.handle('pref:getAll', () => ({
 ipcMain.handle('pref:set', (_e, key, value) => {
   store.set(key, value);
   if (key === 'sizePx') setPetSizePx(value);
-  if (key === 'labelFontSize' || key === 'showLabel') pushPetPrefs();
+  if (key === 'labelFontSize' || key === 'showLabel' || key === 'showLayer' || key === 'showTime') pushPetPrefs();
   if (key === 'locale') {
     pushLocale(); resendState();
     // 语言变了 → 重新就绪对应语言的官方错误码表（新 "<lang>_<model>" key 会触发重载）

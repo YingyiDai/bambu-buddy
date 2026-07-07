@@ -2,7 +2,7 @@
 // 用内置 node:test 运行：node --test test/
 const test = require('node:test');
 const assert = require('node:assert');
-const { resolveState, extractTemps } = require('../src/core/state-machine');
+const { resolveState, extractTemps, fmtRemain } = require('../src/core/state-machine');
 
 test('连接断开 → offline', () => {
   const r = resolveState({ connected: false, gcode_state: 'RUNNING' });
@@ -160,18 +160,40 @@ test('RUNNING 进度分档', () => {
   assert.equal(resolveState({ connected: true, gcode_state: 'RUNNING', mc_percent: 99 }).videoFile, 'printing_75.webm');
 });
 
-test('RUNNING labelKey 含进度与层数', () => {
-  const r = resolveState({ connected: true, gcode_state: 'RUNNING', mc_percent: 50, layer_num: 100, total_layer_num: 200 });
-  assert.equal(r.labelKey, 'label.printing.layer');
+test('RUNNING labelKey 恒为 label.printing，层数/剩余时间进 labelParams', () => {
+  const r = resolveState({
+    connected: true, gcode_state: 'RUNNING', mc_percent: 50,
+    layer_num: 100, total_layer_num: 200, mc_remaining_time: 45,
+  });
+  assert.equal(r.labelKey, 'label.printing');
   assert.equal(r.labelParams.p, 50);
   assert.equal(r.labelParams.layer, 100);
   assert.equal(r.labelParams.total, 200);
+  assert.equal(r.labelParams.remain, '45m'); // 预格式化为紧凑 token
 });
 
-test('RUNNING labelKey 仅进度（无层数）', () => {
+test('RUNNING labelParams 仅进度（无层数 / 无剩余时间）', () => {
   const r = resolveState({ connected: true, gcode_state: 'RUNNING', mc_percent: 30 });
   assert.equal(r.labelKey, 'label.printing');
   assert.equal(r.labelParams.p, 30);
+  assert.equal(r.labelParams.layer, undefined);
+  assert.equal(r.labelParams.remain, undefined);
+});
+
+test('RUNNING 剩余时间 >=60 分钟格式化为 h/m', () => {
+  const r = resolveState({ connected: true, gcode_state: 'RUNNING', mc_percent: 10, mc_remaining_time: 125 });
+  assert.equal(r.labelParams.remain, '2h5m');
+});
+
+test('fmtRemain 紧凑格式化（托盘 / 标签共用）', () => {
+  assert.equal(fmtRemain(45), '45m');
+  assert.equal(fmtRemain(59), '59m');
+  assert.equal(fmtRemain(60), '1h');
+  assert.equal(fmtRemain(90), '1h30m');
+  assert.equal(fmtRemain(125), '2h5m');
+  assert.equal(fmtRemain(0), null);
+  assert.equal(fmtRemain(undefined), null);
+  assert.equal(fmtRemain(NaN), null);
 });
 
 test('IDLE → idle', () => {

@@ -525,6 +525,8 @@ async function loadPreferences() {
   el('sizeSlider').value = p.sizePx; el('sizeVal').textContent = p.sizePx + 'px';
   el('fontSizeSlider').value = p.labelFontSize; el('fontSizeVal').textContent = p.labelFontSize + 'px';
   el('showLabelToggle').checked = p.showLabel;
+  el('showLayerToggle').checked = p.showLayer;
+  el('showTimeToggle').checked = p.showTime;
   el('localeSelect').value = p.locale;
   if (p.locale !== currentLocale) { currentLocale = p.locale; renderLocale(); }
   syncAllSliderFills();
@@ -543,6 +545,8 @@ el('sizeSlider').addEventListener('input', () => { const v = el('sizeSlider').va
 el('fontSizeSlider').addEventListener('input', () => { el('fontSizeVal').textContent = el('fontSizeSlider').value + 'px'; });
 el('fontSizeSlider').addEventListener('change', () => window.bambu.setPreference('labelFontSize', Number(el('fontSizeSlider').value)));
 el('showLabelToggle').addEventListener('change', () => window.bambu.setPreference('showLabel', el('showLabelToggle').checked));
+el('showLayerToggle').addEventListener('change', () => window.bambu.setPreference('showLayer', el('showLayerToggle').checked));
+el('showTimeToggle').addEventListener('change', () => window.bambu.setPreference('showTime', el('showTimeToggle').checked));
 el('localeSelect').addEventListener('change', () => { currentLocale = el('localeSelect').value; renderLocale(); window.bambu.setPreference('locale', currentLocale); });
 
 // ── 关于 ──
