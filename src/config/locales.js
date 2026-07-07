@@ -17,6 +17,8 @@ const STRINGS = {
     'label.printing': '打印中 {p}%',
     'label.layers': '第{layer}/{total}层',
     'label.remaining': '剩余 {time}',
+    // 熊猫标签紧凑进度段的时间文案（层数段在渲染层直接拼 {layer}/{total}）。
+    'label.remainTime': '剩余{time}',
     'label.changingFilament': '换料',
     'label.paused': '用户暂停',
     'label.paused.generic': '已暂停',
@@ -330,6 +332,8 @@ const STRINGS = {
     'label.printing': 'Printing {p}%',
     'label.layers': 'Layer {layer}/{total}',
     'label.remaining': '{time} left',
+    // Time text of the panda label's compact progress segment (layers are joined as {layer}/{total} in the renderer).
+    'label.remainTime': '{time} left',
     'label.changingFilament': 'Changing filament',
     'label.paused': 'Paused by the user',
     'label.paused.generic': 'Paused',
