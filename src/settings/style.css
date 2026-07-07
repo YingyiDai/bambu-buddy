@@ -150,6 +150,9 @@ html, body {
 .row-control select { width: auto; min-width: 130px; }
 .row-head { display: flex; align-items: center; justify-content: space-between; }
 .row-val { font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+/* 「显示文字」的子开关：缩进 + 略淡标签，表示从属于上方总开关 */
+.row-sub { padding-left: 34px; }
+.row-sub .row-label { font-weight: 400; }
 
 /* ── 卡片 / 分组 ── */
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }

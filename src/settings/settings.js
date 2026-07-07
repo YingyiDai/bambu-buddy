@@ -525,6 +525,9 @@ async function loadPreferences() {
   el('sizeSlider').value = p.sizePx; el('sizeVal').textContent = p.sizePx + 'px';
   el('fontSizeSlider').value = p.labelFontSize; el('fontSizeVal').textContent = p.labelFontSize + 'px';
   el('showLabelToggle').checked = p.showLabel;
+  el('showLayerToggle').checked = p.showLayer;
+  el('showTimeToggle').checked = p.showTime;
+  syncLabelSubRows();
   el('localeSelect').value = p.locale;
   if (p.locale !== currentLocale) { currentLocale = p.locale; renderLocale(); }
   syncAllSliderFills();
@@ -542,7 +545,16 @@ document.addEventListener('input', (e) => { if (e.target.classList && e.target.c
 el('sizeSlider').addEventListener('input', () => { const v = el('sizeSlider').value; el('sizeVal').textContent = v + 'px'; window.bambu.setPreference('sizePx', Number(v)); });
 el('fontSizeSlider').addEventListener('input', () => { el('fontSizeVal').textContent = el('fontSizeSlider').value + 'px'; });
 el('fontSizeSlider').addEventListener('change', () => window.bambu.setPreference('labelFontSize', Number(el('fontSizeSlider').value)));
-el('showLabelToggle').addEventListener('change', () => window.bambu.setPreference('showLabel', el('showLabelToggle').checked));
+// 「显示层数 / 剩余时间」是「显示文字」的子设置：关掉「显示文字」时整个标签都不显示，
+// 这两项无意义，直接隐藏（而非置灰）。
+function syncLabelSubRows() {
+  const on = el('showLabelToggle').checked;
+  el('rowShowLayer').classList.toggle('hidden', !on);
+  el('rowShowTime').classList.toggle('hidden', !on);
+}
+el('showLabelToggle').addEventListener('change', () => { window.bambu.setPreference('showLabel', el('showLabelToggle').checked); syncLabelSubRows(); });
+el('showLayerToggle').addEventListener('change', () => window.bambu.setPreference('showLayer', el('showLayerToggle').checked));
+el('showTimeToggle').addEventListener('change', () => window.bambu.setPreference('showTime', el('showTimeToggle').checked));
 el('localeSelect').addEventListener('change', () => { currentLocale = el('localeSelect').value; renderLocale(); window.bambu.setPreference('locale', currentLocale); });
 
 // ── 关于 ──

@@ -63,7 +63,7 @@ html, body {
   color: #f5f5f7;
   background: rgba(20, 20, 22, 0.62);
   border-radius: 999px;
-  white-space: nowrap;
+  white-space: nowrap;      /* 标签恒为一行：层数 / 剩余时间用「 · 」横向拼接，不向上生长盖住熊猫 */
   overflow: hidden;
   text-overflow: ellipsis;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);

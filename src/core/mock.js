@@ -14,6 +14,8 @@ const SCENARIOS = {
   printing: (percent = 0, layer = 1, total = 200) => ({
     connected: true, gcode_state: 'RUNNING', stg_cur: 0,
     mc_percent: percent, layer_num: layer, total_layer_num: total,
+    // 剩余时间（分钟）：按剩余进度粗略推算，供把玩 / mock 下自测「显示剩余时间」行。
+    mc_remaining_time: Math.max(0, Math.round((100 - percent) * 1.5)),
   }),
   changing_filament: () => ({ connected: true, gcode_state: 'RUNNING', stg_cur: STAGE.CHANGING_FILAMENT }),
   // P1/A1 机型：打印中换料常停在 stg_cur=0，只由 ams_status（高字节 main==1）体现换料。

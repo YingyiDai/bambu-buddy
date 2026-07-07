@@ -86,6 +86,16 @@ function printingVideoByPercent(percent) {
   return VIDEO.printing_75;
 }
 
+// 剩余时间（分钟）→ 紧凑 token：<60 → "45m"；>=60 → "1h30m" / "2h"。
+// 唯一格式化处，托盘菜单与熊猫标签共用，保证两处口径一致（避免「45 分钟」vs「45m」漂移）。
+function fmtRemain(mins) {
+  if (!Number.isFinite(mins) || mins <= 0) return null;
+  if (mins < 60) return mins + 'm';
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m ? `${h}h${m}m` : `${h}h`;
+}
+
 // HMS 严重度判定：fatal/serious → 终止失败；common/info → 可恢复
 // pybambu 中 HMS code 的严重度位通常编码在高位；这里做宽松判定，
 // 兼容 { code, severity } 或纯字符串两种形态。
@@ -195,10 +205,17 @@ function resolveState(report = {}) {
     const videoFile = printingVideoByPercent(percent);
     const p = Number(percent) || 0;
     const stateKey = videoFile.replace('.webm', '');
+    // 第 1 行永远是「打印中 {p}%」；层数与剩余时间作为可选行的数据放进 labelParams，
+    // 由渲染层（pet.js）按用户「显示层数 / 显示剩余时间」开关决定是否拼成第 2、3 行。
+    // remain 预格式化为 locale 无关的紧凑 token，以便切换语言时 pet.js 就地重绘。
+    const labelParams = { p };
     if (Number.isFinite(layer) && Number.isFinite(totalLayer) && totalLayer > 0) {
-      return { stateKey, videoFile, labelKey: 'label.printing.layer', labelParams: { p, layer, total: totalLayer } };
+      labelParams.layer = layer;
+      labelParams.total = totalLayer;
     }
-    return { stateKey, videoFile, labelKey: 'label.printing', labelParams: { p } };
+    const remain = fmtRemain(firstNum(r.mc_remaining_time, r.remaining_time));
+    if (remain != null) labelParams.remain = remain;
+    return { stateKey, videoFile, labelKey: 'label.printing', labelParams };
   }
 
   // 7. 空闲
@@ -257,4 +274,4 @@ function extractTemps(report) {
   };
 }
 
-module.exports = { resolveState, stageLabel, pauseLabel, hasFatalHms, extractTemps, GCODE };
+module.exports = { resolveState, stageLabel, pauseLabel, hasFatalHms, extractTemps, fmtRemain, GCODE };
