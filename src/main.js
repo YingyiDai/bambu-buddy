@@ -454,6 +454,18 @@ function makeTrayIcon() {
 }
 
 // 构建菜单模板（托盘菜单与「右键宠物」上下文菜单共用，保证跨平台一致）。
+// 「在程序坞/任务栏显示」的跨平台落地：
+// - macOS：切换程序坞图标显隐（app.dock）
+// - Windows：无程序坞，以任务栏为等价物 —— 切换宠物窗口是否出现在任务栏
+// - Linux：无对应概念，忽略
+function applyDockVisibility(visible) {
+  if (process.platform === 'darwin' && app.dock) {
+    if (visible) app.dock.show(); else app.dock.hide();
+  } else if (process.platform === 'win32' && win && !win.isDestroyed()) {
+    win.setSkipTaskbar(!visible);
+  }
+}
+
 function buildMenuTemplate() {
   const mode = store.get('dataSource', 'mock');
   const locale = store.get('locale', 'zh-CN');
@@ -527,16 +539,13 @@ function buildMenuTemplate() {
       },
     },
     {
-      label: t(locale, 'tray.showInDock'),
+      // Windows 没有程序坞，标签改用「任务栏」以贴合平台语义
+      label: t(locale, process.platform === 'win32' ? 'tray.showInTaskbar' : 'tray.showInDock'),
       type: 'checkbox',
       checked: store.get('showInDock', true),
       click: (mi) => {
         store.set('showInDock', mi.checked);
-        if (mi.checked && process.platform === 'darwin' && app.dock) {
-          app.dock.show();
-        } else if (!mi.checked && process.platform === 'darwin' && app.dock) {
-          app.dock.hide();
-        }
+        applyDockVisibility(mi.checked);
       },
     },
     { type: 'separator' },
@@ -971,9 +980,7 @@ ipcMain.handle('pref:set', (_e, key, value) => {
     if (value) { if (!tray) createTray(); }
     else { if (tray) { tray.destroy(); tray = null; } }
   }
-  if (key === 'showInDock' && process.platform === 'darwin' && app.dock) {
-    if (value) app.dock.show(); else app.dock.hide();
-  }
+  if (key === 'showInDock') applyDockVisibility(value);
   if (key === 'labelFontSize' || key === 'locale' || key === 'showLabel') rebuildTray();
   return { ok: true };
 });
@@ -1014,16 +1021,11 @@ app.whenReady().then(() => {
     try { app.dock.setIcon(appIconPath); } catch (e) { /* 开发模式下可能失败，忽略 */ }
   }
 
-  // 根据用户偏好决定是否在程序坞/菜单栏显示
-  if (process.platform === 'darwin' && app.dock) {
-    if (store.get('showInDock', true)) {
-      app.dock.show();
-    } else {
-      app.dock.hide();
-    }
-  }
   migrateStorage();
   createWindow();
+  // 根据用户偏好决定是否在程序坞（macOS）/任务栏（Windows）显示。
+  // 需在 createWindow 之后：Windows 分支要操作宠物窗口的任务栏可见性。
+  applyDockVisibility(store.get('showInDock', true));
   if (store.get('showInMenuBar', true)) createTray();
   buildDataSource();
   refreshCloudPrinters();
