@@ -80,14 +80,15 @@
             </div>
             <div class="row-control"><input type="checkbox" id="showLabelToggle" class="toggle" checked /></div>
           </div>
-          <div class="row">
+          <!-- 「显示文字」的子开关：缩进从属；关掉「显示文字」时由 settings.js 整体隐藏 -->
+          <div class="row row-sub" id="rowShowLayer">
             <div class="row-text">
               <span class="row-label" data-i18n="settings.showLayer">显示层数</span>
               <span class="row-desc" data-i18n="settings.showLayerDesc">打印中在熊猫下方显示当前层 / 总层数</span>
             </div>
             <div class="row-control"><input type="checkbox" id="showLayerToggle" class="toggle" /></div>
           </div>
-          <div class="row">
+          <div class="row row-sub" id="rowShowTime">
             <div class="row-text">
               <span class="row-label" data-i18n="settings.showTime">显示剩余时间</span>
               <span class="row-desc" data-i18n="settings.showTimeDesc">打印中在熊猫下方显示预计剩余时间</span>
