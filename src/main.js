@@ -56,13 +56,6 @@ const { clampToVisible } = require('./core/window-position');
 
 const store = new Store();
 
-// 熊猫透明视频（webm，VP9 + BlockAdditional 附加 alpha 通道）依赖软件解码才能正确合成透明度。
-// 部分机器（尤其新款 Apple Silicon，如 M4）媒体引擎更强，Chromium 更容易对 VP9 走硬件解码，
-// 而硬件解码路径不识别这种附加 alpha 数据，会把该帧当作不透明处理 —— 表现为熊猫区域出现白底/黑底。
-// 关掉「视频解码硬件加速」（不影响其余 GPU 合成/渲染），强制走软件解码，从根上避免这个问题。
-// 必须在 app ready 前设置。
-app.commandLine.appendSwitch('disable-accelerated-video-decode');
-
 // 将旧版 bambu 存储格式迁移到新版（账号与打印机解耦）。
 // 幂等：检测到旧格式才迁移，已迁移则跳过。
 function migrateStorage() {
@@ -154,10 +147,14 @@ function createWindow() {
     y = workArea.y + workArea.height - sizePx - 40;
   }
 
+  // 初始宽度同样走 targetWinWidth（启动时 labelPx=0，即 max(sizePx, 宽度下限)）；
+  // x 按「熊猫方形居中」反推窗口左缘，保证熊猫落在记忆位置上。
+  const winW = targetWinWidth();
   win = new BrowserWindow({
-    width: sizePx,
+    width: winW,
     height: sizePx,
-    x, y,
+    x: Math.round(x - (winW - sizePx) / 2),
+    y,
     transparent: true,
     frame: false,
     hasShadow: false,
@@ -192,11 +189,18 @@ function createWindow() {
 // 渲染层上报的标签实际像素宽度：窗口据此加宽以完整显示长标签（不缩字号、不截断）。
 let labelPx = 0;
 
-// 目标窗口宽度：至少容纳熊猫方形（sizePx），标签更宽时按标签宽。
+// macOS 上宽度小于约 162px 的透明窗口会整窗变成不透明白底（Electron 已知缺陷，官方标记不修：
+// electron/electron#44884，Apple Silicon + 缩放显示器上必现）。实际用户反馈的阈值与 162 吻合：
+// 熊猫尺寸 <160 时空闲态（短标签、窗口不加宽）白底，打印中（长标签把窗口撑宽越过阈值）正常，
+// 也证明该缺陷只受宽度影响、与高度无关。给窗口宽度设下限兜底：熊猫仍按用户尺寸居中渲染，
+// 两侧多出的透明留白与「标签加宽」共用同一机制 —— 点击穿透，不影响交互/热区/位置记忆。
+const MIN_WIN_WIDTH = 170;
+
+// 目标窗口宽度：至少容纳熊猫方形（sizePx），标签更宽时按标签宽，且不低于透明窗口安全下限。
 // 窗口只在**水平**方向加宽；高度恒为 sizePx。两侧多出的透明留白点击穿透、可溢出屏幕边缘，
 // 熊猫始终居中方形（CSS width:100vh），故窗口变宽不改变熊猫位置/大小/热区。
 function targetWinWidth() {
-  return Math.max(currentSizePx(), labelPx);
+  return Math.max(currentSizePx(), labelPx, MIN_WIN_WIDTH);
 }
 
 // 按 targetWinWidth 加宽/收窄窗口，保持窗口中心不动 —— 熊猫居中，故中心不动 = 熊猫不动。
@@ -220,7 +224,7 @@ function setPetSizePx(px) {
   // 先把「熊猫方形」保持中心不动、夹回可见范围（两侧透明留白允许溢出屏幕，不参与夹取）。
   const desired = { x: Math.round(cx - px / 2), y: Math.round(cy - px / 2) };
   const pet = clampToVisible(desired, screen.getAllDisplays(), px) || desired;
-  const w = Math.max(px, labelPx);
+  const w = targetWinWidth(); // sizePx 已在上面写入 store，此处即 max(px, labelPx, 宽度下限)
   win.setBounds({ x: Math.round(pet.x - (w - px) / 2), y: pet.y, width: w, height: px });
   // 记忆熊猫方形左上角（与历史存储口径一致：正方形、margin=0），与 dragEnd 保持一致。
   store.set('window.position', { x: pet.x, y: pet.y });
