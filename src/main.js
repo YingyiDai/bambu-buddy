@@ -56,6 +56,13 @@ const { clampToVisible } = require('./core/window-position');
 
 const store = new Store();
 
+// 熊猫透明视频（webm，VP9 + BlockAdditional 附加 alpha 通道）依赖软件解码才能正确合成透明度。
+// 部分机器（尤其新款 Apple Silicon，如 M4）媒体引擎更强，Chromium 更容易对 VP9 走硬件解码，
+// 而硬件解码路径不识别这种附加 alpha 数据，会把该帧当作不透明处理 —— 表现为熊猫区域出现白底/黑底。
+// 关掉「视频解码硬件加速」（不影响其余 GPU 合成/渲染），强制走软件解码，从根上避免这个问题。
+// 必须在 app ready 前设置。
+app.commandLine.appendSwitch('disable-accelerated-video-decode');
+
 // 将旧版 bambu 存储格式迁移到新版（账号与打印机解耦）。
 // 幂等：检测到旧格式才迁移，已迁移则跳过。
 function migrateStorage() {
