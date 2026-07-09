@@ -146,10 +146,11 @@ async function renderPrinters() {
       if (!card || card.dataset.model !== (d.p.model || '')) card = buildPrinterCard(d.p);
       fillPrinterCard(card, d.p, d.isActive, srcText, live);   // 原位更新，避免重建闪烁/重置动画
     } else if (d.type === 'account') {
-      const sig = 'acct:' + (st && st.hasToken ? 'in:' + (st.account || '') + ':' + (st.region || '') : 'out');
+      // sig 含 currentLocale：切换语言时强制重建卡片，否则复用旧 DOM → 文案不刷新
+      const sig = 'acct:' + currentLocale + ':' + (st && st.hasToken ? 'in:' + (st.account || '') + ':' + (st.region || '') : 'out');
       if (!card || card.dataset.sig !== sig) { card = buildAccountCard(st); card.dataset.key = '__account'; card.dataset.sig = sig; }
     } else { // lan
-      if (!card) { card = buildLanCard(); card.dataset.key = '__lan'; }
+      if (!card || card.dataset.locale !== currentLocale) { card = buildLanCard(); card.dataset.key = '__lan'; card.dataset.locale = currentLocale; }
     }
     order.push(card);
   });
@@ -256,7 +257,7 @@ function buildAccountCard(st) {
     // 默认区域：中国大陆（列在首位即默认选中）。中国区默认走短信验证码登录。
     body =
       '<p class="add-note">' + escapeHtml(t('printers.loginIntro')) + '</p>' +
-      '<label><span>' + escapeHtml(t('settings.region')) + '</span><select class="ac-region"><option value="china">' + escapeHtml(t('settings.regionChinaFull')) + '</option><option value="global">' + escapeHtml(t('settings.regionGlobalFull')) + '</option></select></label>' +
+      '<label><select class="ac-region"><option value="china">' + escapeHtml(t('settings.regionChinaFull')) + '</option><option value="global">' + escapeHtml(t('settings.regionGlobalFull')) + '</option></select></label>' +
       // 登录方式切换：仅中国区显示（海外区无短信通道，强制密码登录）
       '<div class="ac-mode-switch seg">' +
         '<button type="button" class="seg-tab ac-tab-code is-active">' + escapeHtml(t('settings.loginModeCode')) + '</button>' +
@@ -286,8 +287,8 @@ function buildAccountCard(st) {
   }
   card.innerHTML =
     '<div class="pcard-frame"><div class="util-inner">' +
-      '<div class="util-icon">☁️</div>' +
-      '<div class="util-title">' + escapeHtml(t('printers.accountTitle')) + '</div>' +
+      '<div class="util-head"><span class="util-icon">☁️</span>' +
+      '<span class="util-title">' + escapeHtml(t('printers.accountTitle')) + '</span></div>' +
       body +
     '</div></div>';
   wireAccountCard(card);
@@ -405,8 +406,8 @@ function buildLanCard() {
   card.className = 'pcard pcard-util';
   card.innerHTML =
     '<div class="pcard-frame"><div class="util-inner">' +
-      '<div class="util-icon">🏠</div>' +
-      '<div class="util-title">' + escapeHtml(t('settings.addLan')) + '</div>' +
+      '<div class="util-head"><span class="util-icon">🏠</span>' +
+      '<span class="util-title">' + escapeHtml(t('settings.addLan')) + '</span></div>' +
       '<input class="la-host util-field" type="text" placeholder="' + escapeHtml(t('settings.lanIp')) + '（192.168.1.x）" />' +
       '<input class="la-code util-field" type="text" placeholder="' + escapeHtml(t('settings.lanCode')) + '" />' +
       '<input class="la-serial util-field" type="text" placeholder="' + escapeHtml(t('settings.lanSerial')) + '" />' +
@@ -555,7 +556,7 @@ function syncLabelSubRows() {
 el('showLabelToggle').addEventListener('change', () => { window.bambu.setPreference('showLabel', el('showLabelToggle').checked); syncLabelSubRows(); });
 el('showLayerToggle').addEventListener('change', () => window.bambu.setPreference('showLayer', el('showLayerToggle').checked));
 el('showTimeToggle').addEventListener('change', () => window.bambu.setPreference('showTime', el('showTimeToggle').checked));
-el('localeSelect').addEventListener('change', () => { currentLocale = el('localeSelect').value; renderLocale(); window.bambu.setPreference('locale', currentLocale); });
+el('localeSelect').addEventListener('change', () => { currentLocale = el('localeSelect').value; renderLocale(); renderPrinters(); if (playGalleryBuilt) buildGallery(); window.bambu.setPreference('locale', currentLocale); });
 
 // ── 关于 ──
 // 检查更新进行中标志：防止 loadAbout（可能因切页/托盘再次触发而重入）把「检查中…」状态重置掉，
