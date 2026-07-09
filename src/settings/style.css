@@ -407,13 +407,15 @@ select {
 }
 
 /* 工具卡（账号 / 添加本地打印机）：用 .pcard-frame 卡面 + 可滚动内容 */
-.util-inner { height: 100%; padding: 14px 16px 16px; overflow-y: auto; display: flex; flex-direction: column; }
-.util-icon { text-align: center; font-size: 24px; line-height: 1; margin-bottom: 2px; }
-.util-title { text-align: center; font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 12px; }
-.util-inner label { margin-bottom: 7px; }
+.util-inner { height: 100%; padding: 12px 16px 14px; overflow-y: auto; display: flex; flex-direction: column; }
+/* emoji 与标题同一行居中 */
+.util-head { display: flex; align-items: center; justify-content: center; gap: 7px; margin-bottom: 10px; }
+.util-icon { font-size: 18px; line-height: 1; }
+.util-title { font-size: 14px; font-weight: 700; color: var(--text); }
+.util-inner label { margin-bottom: 6px; }
 .util-inner label > span { margin-bottom: 4px; }
 .util-inner input, .util-inner select { padding: 7px 10px; }
-.util-inner .util-field { display: block; width: 100%; margin-bottom: 8px; }
+.util-inner .util-field { display: block; width: 100%; margin-bottom: 7px; }
 .util-inner .btn { width: 100%; margin-top: 4px; }
 /* 主操作按钮（退出登录 / 添加本地）贴底，与打印机卡操作区位置一致 */
 .util-inner .la-add, .util-inner .ac-logout { margin-top: auto; }
@@ -422,12 +424,12 @@ select {
 .util-kv:last-of-type { border-bottom: none; margin-bottom: 12px; }
 .util-k { color: var(--text-dim); flex-shrink: 0; }
 .util-v { color: var(--text); text-align: right; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.add-note { font-size: 11px; color: var(--text-dim); line-height: 1.5; margin: 0 0 10px; }
+.add-note { font-size: 11px; color: var(--text-dim); line-height: 1.45; margin: 0 0 8px; }
 .add-msg { font-size: 11px; color: var(--text-faint); margin: 8px 0 0; min-height: 14px; }
 .ac-verify { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--row-border); }
 
 /* 登录方式切换（密码 / 验证码）：分段控件 */
-.seg { display: flex; gap: 4px; padding: 3px; margin-bottom: 12px; background: var(--panel); border: 1px solid var(--border); border-radius: 9px; }
+.seg { display: flex; gap: 4px; padding: 3px; margin-bottom: 8px; background: var(--panel); border: 1px solid var(--border); border-radius: 9px; }
 .seg-tab { flex: 1; padding: 6px 4px; font-size: 12px; font-family: inherit; color: var(--text-dim); background: transparent; border: none; border-radius: 6px; cursor: pointer; transition: background .15s, color .15s; }
 .seg-tab:hover { color: var(--text); }
 .seg-tab.is-active { background: var(--brand); color: #fff; }
@@ -437,7 +439,7 @@ select {
 /* 手机号输入框：右侧内嵌「发送验证码」纯文本按钮（省一行高度）。
    用 flex 容器承载边框，按钮取自身宽度、输入占剩余空间——倒计时文案变宽也不会与号码重叠。 */
 .input-inline {
-  display: flex; align-items: stretch; margin-bottom: 8px;
+  display: flex; align-items: stretch; margin-bottom: 7px;
   background: var(--field-bg); border: 1px solid var(--border);
   border-radius: var(--radius-sm); transition: border-color .12s ease, box-shadow .12s ease;
 }
