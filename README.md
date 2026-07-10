@@ -83,7 +83,7 @@ Bambu Buddy turns your printer's status into a little animated panda that lives 
 
 ## ❓ FAQ
 
-**Does it phone home?**
+**Does it send my data anywhere?**
 No. Account credentials are encrypted locally via macOS `safeStorage` and only used to connect to your own printer — nothing is sent to any third-party server.
 
 **How do I update?**
