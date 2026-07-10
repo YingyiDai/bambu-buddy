@@ -14,6 +14,15 @@ test('requestSmsCode 缺手机号即返回错误，不触网', async () => {
   assert.ok(r.error);
 });
 
+// 发码端点必须在 api.bambulab.cn，绝不能用官网域名 bambulab.cn/api/...：
+// 官网域名 2026-07 起被 Cloudflare 交互式挑战（Just a moment...）前置，非浏览器
+// 客户端一律 403；API 域名上同一服务无挑战、可直达（无效号返回业务 400 已实测）。
+// pybambu 的 SMS_CODE 常量仍指官网域名——此处故意与它不一致，别按 pybambu 改回去。
+test('短信发码端点走 api 域名而非官网域名', () => {
+  assert.strictEqual(auth.SMS_CODE_HOST, 'api.bambulab.cn');
+  assert.strictEqual(auth.SMS_CODE_PATH, '/v1/user-service/user/sendsmscode');
+});
+
 test('loginWithCode 缺手机号或验证码即返回错误，不触网', async () => {
   assert.strictEqual((await auth.loginWithCode('china', '', '1234')).ok, false);
   assert.strictEqual((await auth.loginWithCode('china', '138', '')).ok, false);

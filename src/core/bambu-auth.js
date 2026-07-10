@@ -22,12 +22,14 @@ const LOGIN_PATH = '/v1/user-service/user/login';
 const TFA_PATH = '/v1/user-service/user/login';
 const DEVICE_LIST_PATH = '/v1/iot-service/api/user/bind';
 
-// 短信验证码登录（中国区）。host/path 与登录端点不同：
-//   host 是 bambulab.cn（无 api. 子域），path 带 /api/ 前缀。
-// 与 pybambu const.py 的 BambuUrl.SMS_CODE 逐字一致：
-//   'https://bambulab.cn/api/v1/user-service/user/sendsmscode'
-const SMS_CODE_HOST = 'bambulab.cn';
-const SMS_CODE_PATH = '/api/v1/user-service/user/sendsmscode';
+// 短信验证码登录（中国区）。⚠️ 此处故意与 pybambu 的 BambuUrl.SMS_CODE
+// （'https://bambulab.cn/api/v1/...'）不一致：官网域名 bambulab.cn 2026-07 起被
+// Cloudflare 交互式挑战（Just a moment... 页）前置，非浏览器客户端一律 403，
+// Electron net 的浏览器 TLS 指纹也过不去（挑战要执行页面 JS）。
+// API 域名 api.bambulab.cn 上有同一服务（path 去掉 /api 前缀）、无挑战——
+// 无效号返回业务 400 已实测可直达。密码登录一直正常正因它全程走 api 域名。
+const SMS_CODE_HOST = 'api.bambulab.cn';
+const SMS_CODE_PATH = '/v1/user-service/user/sendsmscode';
 
 // Bambu 云 API 认「官方切片客户端」的请求头，否则（尤其 bambulab.cn 的
 // Cloudflare 前置 + 服务端 X-BBL-* 校验）会以 4xx 拒绝——表现为「手机号无效或
@@ -49,10 +51,11 @@ const BAMBU_HEADERS = {
   Accept: 'application/json',
 };
 
-// Electron net（Chromium 网络栈）：TLS 指纹与官方浏览器/客户端一致，能过 Cloudflare
-// 对「非浏览器」请求的拦截——Node 原生 https 的指纹会被单独拦掉。仅对被 Cloudflare
-// 前置的 bambulab.cn 发码端点启用（见 requestSmsCode 的 browserStack）。非 Electron
-// 环境（单测）require 失败即回退 https，不影响纯逻辑测试。惰性求值并缓存结果。
+// Electron net（Chromium 网络栈）：TLS 指纹与真实浏览器一致，不易被 WAF 的
+// 「非浏览器」规则误伤（Node 原生 https 指纹可被单独识别）。仅发码端点启用
+// （见 requestSmsCode 的 browserStack）。注意它挡不住 Cloudflare 交互式挑战
+// ——那需要执行页面 JS，所以发码必须走无挑战的 api 域名（见 SMS_CODE_HOST）。
+// 非 Electron 环境（单测）require 失败即回退 https，不影响纯逻辑测试。惰性求值并缓存结果。
 let _electronNet;
 function getElectronNet() {
   if (_electronNet !== undefined) return _electronNet;
@@ -166,15 +169,16 @@ async function sendVerifyCode(region, account, password, tfaKey, code) {
 
 /**
  * 请求短信验证码（中国区无密码登录第一步）。
- * 命中 bambulab.cn/api/v1/.../sendsmscode，body {phone, type:'codeLogin'}——不需密码、不需鉴权。
+ * 命中 api.bambulab.cn/v1/.../sendsmscode（勿改回官网域名，见 SMS_CODE_HOST 注释），
+ * body {phone, type:'codeLogin'}——不需密码、不需鉴权。
  * 服务端响应可能含 tfaKey；若有，loginWithCode 需带回。
  * 返回 {ok:true, tfaKey?} | {ok:false, error}
  */
 async function requestSmsCode(region, phone) {
   if (!phone) return { ok: false, error: '请输入手机号' };
   try {
-    // browserStack：此端点在 bambulab.cn（Cloudflare 前置），走 Electron net 用
-    // 真浏览器 TLS 指纹绕过对 Node 请求的拦截；其余 api.bambulab.* 调用 https 即可。
+    // browserStack：api 域名当前不设 Cloudflare 挑战、Node https 也能通，但发码是
+    // 全站最易被 bot 规则盯上的端点，保留 Electron net 的真浏览器 TLS 指纹更稳。
     const res = await httpsJson(SMS_CODE_HOST, SMS_CODE_PATH, 'POST', { phone, type: 'codeLogin' }, {}, { browserStack: true });
     return { ok: true, tfaKey: res && res.tfaKey };
   } catch (e) {
@@ -299,6 +303,8 @@ function humanizeError(e) {
 
 module.exports = {
   REGIONS,
+  SMS_CODE_HOST,
+  SMS_CODE_PATH,
   httpsJson,
   decodeUidFromToken,
   getUid,
