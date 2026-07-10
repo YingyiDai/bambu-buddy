@@ -408,7 +408,7 @@ function buildLanCard() {
     '<div class="pcard-frame"><div class="util-inner">' +
       '<div class="util-head"><span class="util-icon">🏠</span>' +
       '<span class="util-title">' + escapeHtml(t('settings.addLan')) + '</span></div>' +
-      '<input class="la-host util-field" type="text" placeholder="' + escapeHtml(t('settings.lanIp')) + '（192.168.1.x）" />' +
+      '<input class="la-host util-field" type="text" placeholder="' + escapeHtml(t('settings.lanIp')) + '" />' +
       '<input class="la-code util-field" type="text" placeholder="' + escapeHtml(t('settings.lanCode')) + '" />' +
       '<input class="la-serial util-field" type="text" placeholder="' + escapeHtml(t('settings.lanSerial')) + '" />' +
       '<input class="la-name util-field" type="text" placeholder="' + escapeHtml(t('settings.nameOptional')) + '" />' +

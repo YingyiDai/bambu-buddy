@@ -281,7 +281,9 @@ select {
    圆角卡面交给内层 .pcard-frame，照片浮层 .pcard-pop 可溢出顶部。 */
 .pcard {
   --rx: 0deg; --ry: 0deg; --px: 0px; --py: 0px; --gx: 50%;
-  position: relative; flex: 0 0 auto; width: 216px; height: 322px;
+  /* 高度须容纳未登录账号卡验证码面板「验证码已发送」提示语展开后的内容
+     （提示语占 24px，见 .ac-codehint），否则 .util-inner 会出现纵向滚动条 */
+  position: relative; flex: 0 0 auto; width: 216px; height: 346px;
   background: transparent; border: none; overflow: visible;
   transform: scale(0.86); opacity: 0.6; filter: saturate(0.92);
   transform-style: preserve-3d;
@@ -438,7 +440,8 @@ select {
 .seg-tab:hover { color: var(--text); }
 .seg-tab.is-active { background: var(--brand); color: #fff; }
 .seg-tab:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
-.ac-codehint { color: var(--brand); margin-top: 8px; }
+/* 展开后总占位 = 16px 行高 + 上下各 4px = 24px，与 .pcard 预留的加高量对齐 */
+.ac-codehint { color: var(--brand); margin: 4px 0; }
 
 /* 手机号输入框：右侧内嵌「发送验证码」纯文本按钮（省一行高度）。
    用 flex 容器承载边框，按钮取自身宽度、输入占剩余空间——倒计时文案变宽也不会与号码重叠。 */
