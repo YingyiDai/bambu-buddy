@@ -419,6 +419,10 @@ select {
 .util-inner .btn { width: 100%; margin-top: 4px; }
 /* 主操作按钮（退出登录 / 添加本地）贴底，与打印机卡操作区位置一致 */
 .util-inner .la-add, .util-inner .ac-logout { margin-top: auto; }
+/* 登录面板撑满账号卡剩余高度，登录按钮贴底，与本地打印机「添加」位置一致 */
+.ac-pane { display: flex; flex-direction: column; flex: 1 1 auto; }
+.ac-pane.hidden { display: none; }
+.ac-pane .ac-codelogin, .ac-pane .ac-login { margin-top: auto; }
 .util-status { display: flex; align-items: center; justify-content: center; gap: 7px; font-size: 12px; font-weight: 600; color: var(--text); margin: 0 0 12px; }
 .util-kv { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--row-border); font-size: 12px; }
 .util-kv:last-of-type { border-bottom: none; margin-bottom: 12px; }
