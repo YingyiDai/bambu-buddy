@@ -13,6 +13,27 @@ const auth = require('./bambu-auth');
 const { REGIONS } = auth;
 
 /**
+ * LAN 探活结果分类（纯函数，便于单测）。
+ * 仅在探活超时（始终未收到 report）时调用，把观测到的事件映射成精准原因码——
+ * 现状是鉴权失败/序列号错误/网络不通全都报「连接超时」，误导用户排障。
+ * @param {object} o
+ * @param {boolean} o.gotConnect - mqtt `connect` 是否触发过（TLS+CONNACK 通过 = IP/访问码对）
+ * @param {Error|{code?:string,message?:string}|null} o.error - 探活期间观测到的最后一个 mqtt 错误
+ * @returns {'serial'|'auth'|'network'|'timeout'}
+ */
+function classifyLanProbe({ gotConnect, error }) {
+  // 已连上且鉴权通过，却收不到 device/<serial>/report → 订阅的 topic 序列号多半填错。
+  if (gotConnect) return 'serial';
+  const msg = String((error && (error.message || error.code)) || '');
+  // mqtt.js 对 CONNACK 拒绝抛「Connection refused: Bad username or password / Not authorized」。
+  if (/not authoriz|bad username|bad user|password/i.test(msg)) return 'auth';
+  // 主动拒绝 / 主机不可达 / DNS 解析失败 → 网络或 IP 问题。
+  if (/ECONNREFUSED|ETIMEDOUT|EHOSTUNREACH|ENETUNREACH|EHOSTDOWN|ENOTFOUND|ECONNRESET|getaddrinfo/i.test(msg)) return 'network';
+  // 全程无事件（SYN 被静默丢弃，如路由器 AP 隔离/访客网络/跨网段）→ 泛化超时。
+  return 'timeout';
+}
+
+/**
  * 共享基类：连 MQTT、订阅 device/<serial>/report、维护合并后的 print 状态并回调。
  */
 class BambuMQTTBase {
@@ -22,12 +43,20 @@ class BambuMQTTBase {
     this._latest = {}; // 维护合并后的 print 状态
     this._canceled = false; // 「本次终止是否为用户取消」的持久标记（详见 _onMessage）
     this._authFailCb = null;
+    this._diagCb = null;
   }
 
   onState(cb) { this._cb = cb; }
 
   /** 鉴权/登录失败时回调（如 token 过期、登录异常），供主进程打开登录窗。 */
   onAuthFailure(cb) { this._authFailCb = cb; }
+
+  /**
+   * 连接生命周期诊断回调，供「添加本地打印机」探活区分失败原因（见 classifyLanProbe）。
+   * evt: { type: 'connect' } | { type: 'error', error }
+   */
+  onDiagnostic(cb) { this._diagCb = cb; }
+  _emitDiag(evt) { if (this._diagCb) this._diagCb(evt); }
 
   /** 连接 MQTT broker。tls=true 用 mqtts://，自签名证书传 rejectUnauthorized:false。 */
   _connectMqtt(host, username, password, serial, { tls = true, rejectUnauthorized = true } = {}) {
@@ -42,6 +71,7 @@ class BambuMQTTBase {
     });
 
     this._client.on('connect', () => {
+      this._emitDiag({ type: 'connect' });
       this._client.subscribe(`device/${serial}/report`, (err) => {
         if (err) { console.error('[bambu-mqtt] 订阅失败:', err.message); return; }
         // Bambu 打印机只在「被请求」时推送完整状态，否则不会主动发首帧。
@@ -52,6 +82,7 @@ class BambuMQTTBase {
     this._client.on('message', (_topic, payload) => this._onMessage(payload));
     this._client.on('error', (err) => {
       console.error('[bambu-mqtt] 连接错误:', err && (err.message || err.code));
+      this._emitDiag({ type: 'error', error: err });
       this._emitOffline();
     });
     this._client.on('offline', () => this._emitOffline());
@@ -251,4 +282,4 @@ class BambuLanDataSource extends BambuMQTTBase {
   }
 }
 
-module.exports = { BambuCloudDataSource, BambuLanDataSource, BambuMQTTBase };
+module.exports = { BambuCloudDataSource, BambuLanDataSource, BambuMQTTBase, classifyLanProbe };

@@ -10,7 +10,7 @@ const WINDOW_ICON = path.join(__dirname, '..', 'assets', 'icon', process.platfor
 const { resolveState, extractTemps, fmtRemain, isPrintActive } = require('./core/state-machine');
 const { buildLiveTelemetry } = require('./core/live-telemetry');
 const { MockDataSource } = require('./core/mock');
-const { BambuCloudDataSource, BambuLanDataSource } = require('./core/bambu-mqtt');
+const { BambuCloudDataSource, BambuLanDataSource, classifyLanProbe } = require('./core/bambu-mqtt');
 const bambuAuth = require('./core/bambu-auth');
 const { t, STRINGS } = require('./config/locales');
 const { checkForUpdates } = require('./core/updater');
@@ -786,14 +786,28 @@ ipcMain.handle('bambu:completeCloudLogin', async () => {
 
 // LAN 测试连接：临时建一个数据源探活，6 秒内收到报文即视为成功。
 // 供 `printer:addLan` 在落库前先探活复用。
+// 超时/失败时按 classifyLanProbe 给出精准原因（网络不通 / 访问码错 / 序列号错），
+// 而非笼统的「连接超时」——后者对三类完全不同的故障都是同一句话，误导排障。
 async function testLanConnection(host, accessCode, serial) {
+  const locale = store.get('locale', 'zh-CN');
+  const ERR_KEY = { serial: 'settings.errLanSerial', auth: 'settings.errLanAuth',
+    network: 'settings.errLanNetwork', timeout: 'settings.errLanTimeout' };
   return new Promise((resolve) => {
     const probe = new BambuLanDataSource({ host, accessCode, serial });
     let done = false;
-    const finish = (r) => { if (done) return; done = true; clearTimeout(t); probe.stop(); resolve(r); };
+    let gotConnect = false;
+    let lastError = null;
+    const finish = (r) => { if (done) return; done = true; clearTimeout(timer); probe.stop(); resolve(r); };
+    probe.onDiagnostic((evt) => {
+      if (evt.type === 'connect') gotConnect = true;
+      else if (evt.type === 'error') lastError = evt.error;
+    });
     probe.onState((report) => { if (report.connected) finish({ ok: true }); });
     probe.start();
-    const t = setTimeout(() => finish({ ok: false, error: '连接超时，请检查 IP / 访问码' }), 6000);
+    const timer = setTimeout(() => {
+      const reason = classifyLanProbe({ gotConnect, error: lastError });
+      finish({ ok: false, error: t(locale, ERR_KEY[reason]) });
+    }, 6000);
   });
 }
 
