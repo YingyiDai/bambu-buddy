@@ -65,6 +65,10 @@ function getElectronNet() {
 
 // HTTPS JSON 请求（共用）。失败 reject(Error)，由调用方捕获归一化。
 // opts.browserStack=true 时优先走 Electron net（过 Cloudflare），否则/回退用 Node https。
+// opts.timeoutMs 覆盖默认 20s 整体超时。
+// ⚠️ 必有超时：登录/发码是设置窗的阻塞路径，请求悬死（弱网/连接静默丢包）会让
+//    发码按钮永久禁用、登录 busy 永不释放——用户只能重启应用。
+const HTTPS_TIMEOUT_MS = 20000;
 function httpsJson(host, path, method, body, headers = {}, opts = {}) {
   return new Promise((resolve, reject) => {
     const data = body ? JSON.stringify(body) : null;
@@ -73,26 +77,45 @@ function httpsJson(host, path, method, body, headers = {}, opts = {}) {
       'Content-Type': 'application/json',
       ...headers,
     };
+    let req;
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; clearTimeout(timer); resolve(v); } };
+    const fail = (e) => { if (!settled) { settled = true; clearTimeout(timer); reject(e); } };
+    const timer = setTimeout(() => {
+      // ETIMEDOUT 关键字让 humanizeError 归为「网络连接失败」
+      fail(new Error(`ETIMEDOUT: 请求超时（${host}）`));
+      // Electron net 是 abort()，Node https 是 destroy()
+      try { if (req) (typeof req.abort === 'function' ? req.abort() : req.destroy()); } catch { /* 已结束 */ }
+    }, opts.timeoutMs || HTTPS_TIMEOUT_MS);
+
     // 响应处理对 https / net 的 IncomingMessage 通用（都是带 statusCode 的可读流）。
     const onResponse = (res) => {
       let chunks = '';
       res.on('data', (c) => { chunks += c; });
+      res.on('error', fail);
       res.on('end', () => {
-        try {
-          const parsed = chunks ? JSON.parse(chunks) : {};
-          if (res.statusCode >= 400) {
-            // 保留结构化响应体（status/body），供上层读取服务器真实错误码/文案，
-            // 不再只能靠正则从 message 里猜。message 维持原格式，humanizeError 仍可用。
-            const err = new Error(`HTTP ${res.statusCode}: ${chunks}`);
-            err.status = res.statusCode;
-            err.body = parsed;
-            reject(err);
-          } else resolve(parsed);
-        } catch (e) { reject(e); }
+        // 响应体可能不是 JSON——Cloudflare 挑战页 / WAF 拦截页都是 HTML。
+        // 解析失败绝不能吞掉状态码（曾把 403 HTML 报成 SyntaxError，
+        // 上层按状态码分支的友好提示全部失效），4xx 一律按 HTTP 错误 reject。
+        let parsed = {};
+        let parseFailed = false;
+        try { parsed = chunks ? JSON.parse(chunks) : {}; } catch { parseFailed = true; }
+        // message 只带截断片段：挑战页 HTML 几十 KB，不能整页甩进错误提示；
+        // 片段保留头部（含 <title>Just a moment...</title>），供上层识别拦截页。
+        const snippet = chunks.slice(0, 200).replace(/\s+/g, ' ');
+        if (res.statusCode >= 400) {
+          // 保留结构化响应体（status/body），供上层读取服务器真实错误码/文案，
+          // 不再只能靠正则从 message 里猜。message 维持 HTTP 前缀，humanizeError 仍可用。
+          const err = new Error(`HTTP ${res.statusCode}: ${snippet}`);
+          err.status = res.statusCode;
+          err.body = parsed;
+          fail(err);
+        } else if (parseFailed) {
+          fail(new Error(`服务器响应异常（HTTP ${res.statusCode}，非 JSON）：${snippet}`));
+        } else done(parsed);
       });
     };
 
-    let req;
     const net = opts.browserStack ? getElectronNet() : null;
     if (net) {
       // net 由 Chromium 自动计算 Content-Length，不手动设（避免受限头冲突）。
@@ -105,7 +128,7 @@ function httpsJson(host, path, method, body, headers = {}, opts = {}) {
         headers: { ...baseHeaders, ...(data ? { 'Content-Length': Buffer.byteLength(data) } : {}) },
       }, onResponse);
     }
-    req.on('error', reject);
+    req.on('error', fail);
     if (data) req.write(data);
     req.end();
   });
@@ -180,14 +203,16 @@ async function requestSmsCode(region, phone) {
     // browserStack：api 域名当前不设 Cloudflare 挑战、Node https 也能通，但发码是
     // 全站最易被 bot 规则盯上的端点，保留 Electron net 的真浏览器 TLS 指纹更稳。
     const res = await httpsJson(SMS_CODE_HOST, SMS_CODE_PATH, 'POST', { phone, type: 'codeLogin' }, {}, { browserStack: true });
+    if (process.env.BAMBU_DEBUG_AUTH) console.log('[bambu-auth] requestSmsCode res:', JSON.stringify(redactAuth(res)));
     return { ok: true, tfaKey: res && res.tfaKey };
   } catch (e) {
     const msg = e && e.message ? e.message : String(e);
-    const status = (msg.match(/HTTP (\d{3})/) || [])[1];
+    // 优先用 httpsJson 挂的结构化 e.status；正则只兜底非本模块产生的错误。
+    const status = String((e && e.status) || (msg.match(/HTTP (\d{3})/) || [])[1] || '');
     // 官方 App 能登录、独此客户端发码失败 → 多半是请求被 Cloudflare/安全策略当成「非浏览器」
     // 拦掉（403），而非手机号本身有问题。按状态码分开提示，别笼统甩锅给手机号，也便于反馈定位。
     if (status === '429') return { ok: false, error: '验证码发送过于频繁，请稍后再试' };
-    if (status === '403' || /cloudflare|attention required|forbidden/i.test(msg)) {
+    if (status === '403' || /cloudflare|attention required|just a moment|forbidden/i.test(msg)) {
       return { ok: false, error: '发送失败：请求被服务端安全策略拦截（403），请稍后重试' };
     }
     if (status === '400') return { ok: false, error: '发送失败：手机号未注册或格式不正确（400）' };

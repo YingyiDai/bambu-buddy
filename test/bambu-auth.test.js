@@ -1,7 +1,30 @@
 // 短信验证码登录的入参校验与导出契约（不触网）。
 const test = require('node:test');
 const assert = require('node:assert');
+const https = require('node:https');
+const { EventEmitter } = require('node:events');
 const auth = require('../src/core/bambu-auth');
+
+// 打桩 https.request：回放固定 statusCode/body（不触网）。返回恢复函数。
+// bambu-auth 每次调用都取 https.request 属性，替换共享模块对象上的属性即可生效。
+// statusCode 传 null 表示「永不响应」，用于测超时。
+function stubHttps(statusCode, bodyText) {
+  const orig = https.request;
+  https.request = (_options, cb) => {
+    const req = new EventEmitter();
+    req.write = () => {};
+    req.destroy = () => {};
+    req.end = () => {
+      if (statusCode == null) return; // 悬死，等调用方超时
+      const res = new EventEmitter();
+      res.statusCode = statusCode;
+      cb(res);
+      process.nextTick(() => { res.emit('data', bodyText); res.emit('end'); });
+    };
+    return req;
+  };
+  return () => { https.request = orig; };
+}
 
 test('requestSmsCode / loginWithCode 已导出', () => {
   assert.strictEqual(typeof auth.requestSmsCode, 'function');
@@ -21,6 +44,52 @@ test('requestSmsCode 缺手机号即返回错误，不触网', async () => {
 test('短信发码端点走 api 域名而非官网域名', () => {
   assert.strictEqual(auth.SMS_CODE_HOST, 'api.bambulab.cn');
   assert.strictEqual(auth.SMS_CODE_PATH, '/v1/user-service/user/sendsmscode');
+});
+
+// —— 以下三条守住「发码失败时用户不能卡死/看天书」的底线 ——
+
+// 曾有隐患：4xx 响应体是 HTML（Cloudflare 挑战页正是如此）时 JSON.parse 先抛
+// SyntaxError，把状态码整个吞掉，403 分支的友好提示全部失效，用户看到
+// 「Unexpected token '<'...」。此测保证 HTML 4xx 仍以带 status 的 HTTP 错误 reject。
+test('httpsJson: 4xx + HTML 响应体不吞状态码', async () => {
+  const restore = stubHttps(403, '<!DOCTYPE html><html><head><title>Just a moment...</title></head></html>');
+  try {
+    await assert.rejects(
+      auth.httpsJson('api.bambulab.cn', '/v1/x', 'POST', { a: 1 }),
+      (e) => e.status === 403 && /^HTTP 403/.test(e.message),
+    );
+  } finally { restore(); }
+});
+
+test('requestSmsCode: 被拦截返回 HTML 403 → 给出安全策略拦截提示，而非解析报错', async () => {
+  const restore = stubHttps(403, '<!DOCTYPE html><html><head><title>Just a moment...</title></head></html>');
+  try {
+    const r = await auth.requestSmsCode('china', '13800000000');
+    assert.strictEqual(r.ok, false);
+    assert.match(r.error, /安全策略拦截/);
+  } finally { restore(); }
+});
+
+// 曾有隐患：请求无超时，连接悬死时 Promise 永不 settle，发码按钮永久禁用、
+// 登录 busy 永不释放，用户只能重启应用。此测保证悬死请求会以 ETIMEDOUT reject。
+test('httpsJson: 请求悬死会超时 reject，不会永久挂起', async () => {
+  const restore = stubHttps(null, '');
+  try {
+    await assert.rejects(
+      auth.httpsJson('api.bambulab.cn', '/v1/x', 'POST', { a: 1 }, {}, { timeoutMs: 50 }),
+      /ETIMEDOUT/,
+    );
+  } finally { restore(); }
+});
+
+test('httpsJson: 2xx 但响应体非 JSON → 明确报「服务器响应异常」', async () => {
+  const restore = stubHttps(200, '<html>not json</html>');
+  try {
+    await assert.rejects(
+      auth.httpsJson('api.bambulab.cn', '/v1/x', 'GET', null),
+      /服务器响应异常/,
+    );
+  } finally { restore(); }
 });
 
 test('loginWithCode 缺手机号或验证码即返回错误，不触网', async () => {
