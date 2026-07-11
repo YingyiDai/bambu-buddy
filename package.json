@@ -39,7 +39,7 @@
     "mac": {
       "category": "public.app-category.utilities",
       "target": "dmg",
-      "artifactName": "Bambu.Buddy-${version}-${arch}.${ext}",
+      "artifactName": "Bambu.Buddy-${version}-macOS-${arch}.${ext}",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
@@ -52,7 +52,7 @@
     "win": {
       "target": "nsis",
       "icon": "assets/icon/AppIcon.ico",
-      "artifactName": "Bambu.Buddy.Setup.${version}.${ext}"
+      "artifactName": "Bambu.Buddy-${version}-Windows-${arch}.Setup.${ext}"
     },
     "nsis": {
       "oneClick": false,

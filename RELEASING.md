@@ -62,8 +62,10 @@ gh workflow run release.yml -f tag=v0.1.2 -f ref=main
 
 | 平台 | 产物 | 签名 |
 |---|---|---|
-| macOS（Apple Silicon） | `Bambu.Buddy-<ver>-arm64.dmg` | Developer ID 正式签名 + 公证（CI 自动） |
-| Windows（x64） | `Bambu.Buddy.Setup.<ver>.exe` | 未签名 |
+| macOS（Apple Silicon） | `Bambu.Buddy-<ver>-macOS-arm64.dmg` | Developer ID 正式签名 + 公证（CI 自动） |
+| Windows（x64） | `Bambu.Buddy-<ver>-Windows-x64.Setup.exe` | 未签名 |
+
+> 文件名里带 `macOS` / `Windows`（以及 `arm64` / `x64` 架构），下载时一眼就能分清是哪个平台。
 
 - macOS 已做 Developer ID 签名 + Apple 公证，正常下载打开**不再有开发者警告**。
 - 本地 `npm run build:mac`（无证书环境）仍走 ad-hoc（`build/adhoc-sign.js`），只用于自测，别拿去分发。
