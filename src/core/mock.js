@@ -49,6 +49,7 @@ class MockDataSource {
     this._autoTimer = null;
     this._printingTimer = null;
     this._current = 'idle';
+    this._filamentColor = null; // 把玩页测试用耗材色（'#rrggbb'）；null = 不注入，保持原始素材绿
   }
 
   onState(cb) {
@@ -66,7 +67,27 @@ class MockDataSource {
   }
 
   _emit(report) {
+    this._lastBase = report; // 记住未注入的原始帧，供 setFilamentColor 即时重发
+    // 设了测试耗材色时，以真机同构形状（外挂料盘 tray_now=254 → vt_tray）注入报文，
+    // 走与真机完全相同的 resolveFilamentColor 链路。
+    if (this._filamentColor) {
+      report = {
+        ...report,
+        ams: { ...(report.ams || {}), tray_now: '254' },
+        vt_tray: { tray_color: this._filamentColor.slice(1).toUpperCase() + 'FF' },
+      };
+    }
     if (this._cb) this._cb(report);
+  }
+
+  /**
+   * 把玩页测试用：设定/清除模拟耗材颜色（'#rrggbb' | null）。
+   * 立即按当前场景重发一帧，让改色即时生效；不持久化。
+   */
+  setFilamentColor(hexOrNull) {
+    this._filamentColor = (typeof hexOrNull === 'string' && /^#[0-9a-fA-F]{6}$/.test(hexOrNull))
+      ? hexOrNull.toLowerCase() : null;
+    if (this._lastBase) this._emit(this._lastBase); // 立即生效，静态场景（无定时器）也不用等下一帧
   }
 
   _clearTimers() {

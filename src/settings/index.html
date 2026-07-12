@@ -44,9 +44,33 @@
             </div>
             <button id="playReturnBtn" class="btn" data-i18n="play.returnToLive">回到真机</button>
           </div>
+          <!-- 进度行：仅打印中显示（renderPlayState 按场景 hasProgress 切换）。
+               耗材颜色控件放在头行同一行——只有打印中改色才有意义，故与进度同显隐。 -->
+          <!-- 左右两栏：左=进度（占更多空间），右=耗材颜色（占更少空间）。
+               各自「标签在上、控件在下」，两栏顶端对齐。仅打印中显示。 -->
           <div class="progress-row hidden" id="progressRow">
-            <div class="progress-head"><span data-i18n="play.dragProgress">拖动模拟打印进度</span><span class="val" id="playProgressVal">0%</span></div>
-            <input type="range" id="playProgress" class="slider" min="0" max="100" value="0" />
+            <div class="play-controls">
+              <div class="play-progress">
+                <div class="play-field-head">
+                  <span class="play-field-label" data-i18n="play.dragProgress">拖动模拟打印进度</span>
+                  <span class="play-field-val" id="playProgressVal">0%</span>
+                </div>
+                <div class="play-field-body">
+                  <input type="range" id="playProgress" class="slider" min="0" max="100" value="0" />
+                </div>
+              </div>
+              <div class="play-color">
+                <div class="play-field-head">
+                  <span class="play-field-label" data-i18n="play.filamentColor">耗材颜色</span>
+                </div>
+                <div class="play-field-body play-color-ctl">
+                  <input type="color" id="playFilamentColor" class="color-swatch" value="#80ae3b" />
+                  <button id="playFilamentReset" class="icon-btn" data-i18n-title="play.filamentReset" title="恢复原始绿" aria-label="恢复原始绿">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
           <button id="autoTourBtn" class="btn" style="width:100%;margin-top:12px;" data-i18n="play.autoTour">自动巡演（依次播放全部状态）</button>
         </div>
@@ -103,6 +127,13 @@
               <span class="row-desc" data-i18n="settings.showTimeDesc">打印中在熊猫下方显示预计剩余时间</span>
             </div>
             <div class="row-control"><input type="checkbox" id="showTimeToggle" class="toggle" /></div>
+          </div>
+          <div class="row">
+            <div class="row-text">
+              <span class="row-label" data-i18n="settings.matchFilamentColor">跟随耗材颜色</span>
+              <span class="row-desc" data-i18n="settings.matchFilamentColorDesc">打印中把熊猫吃的耗材和竹子染成当前耗材的颜色；关闭则保持原始绿色</span>
+            </div>
+            <div class="row-control"><input type="checkbox" id="matchFilamentColorToggle" class="toggle" checked /></div>
           </div>
         </div>
       </section>

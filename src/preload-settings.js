@@ -60,6 +60,7 @@ contextBridge.exposeInMainWorld('bambu', {
   playSetScenario: (key) => ipcRenderer.invoke('play:setScenario', key),
   playSetProgress: (percent) => ipcRenderer.invoke('play:setProgress', percent),
   playAutoTour: (start) => ipcRenderer.invoke('play:autoTour', start),
+  playSetFilamentColor: (hexOrNull) => ipcRenderer.invoke('play:setFilamentColor', hexOrNull),
   playReturnToLive: () => ipcRenderer.invoke('play:returnToLive'),
   onPlayStateChanged: (cb) => ipcRenderer.on('play:stateChanged', (_e, st) => cb(st)),
 });

@@ -1,6 +1,6 @@
 {
   "name": "bambu-buddy",
-  "version": "0.1.22",
+  "version": "0.2.0",
   "description": "Bambu Buddy — 一只熊猫常驻桌面，根据打印机状态播放对应动画",
   "main": "src/main.js",
   "author": "YingyiDai",

@@ -2,6 +2,7 @@
 // 解析优先级见技术文档 §6.2，labelKey 映射见 §6.4。
 
 const { STAGE, CHANGING_FILAMENT_STAGES, VIDEO, STAGE_VIDEO } = require('../config/state-map');
+const { resolveFilamentColor } = require('./filament-color');
 
 // 任一已知 stg_cur 的精确文案 key（取自 Bambu Studio，见 locales.js label.stage.<n>）。
 // 未知 stage 返回 null，由调用方走大状态兜底。
@@ -123,9 +124,17 @@ function hasFatalHms(hms) {
  * 把打印机报文（或 mock 注入）解析为宠物状态。
  * @param {object} report - 含 gcode_state, mc_percent, stg_cur, layer_num,
  *   total_layer_num, hms, door_open, print_error/print_canceled（瞬时事件）等。
- * @returns {{ stateKey: string, videoFile: string, labelKey: string, labelParams: object }}
+ * @returns {{ stateKey: string, videoFile: string, labelKey: string, labelParams: object,
+ *   filamentColor: (string|null) }}
  */
 function resolveState(report = {}) {
+  // 统一在出口附加当前耗材颜色（渲染层只对 printing_* 视频生效，其余状态携带无害）
+  const s = resolveStateCore(report);
+  s.filamentColor = resolveFilamentColor(report);
+  return s;
+}
+
+function resolveStateCore(report = {}) {
   const r = report || {};
   const gcode = r.gcode_state;
   const stg = r.stg_cur;
