@@ -609,6 +609,7 @@ function pushPetPrefs() {
       showLabel: store.get('showLabel', true),
       showLayer: store.get('showLayer', false),
       showTime: store.get('showTime', false),
+      matchFilamentColor: store.get('matchFilamentColor', true),
     });
   }
 }
@@ -893,6 +894,13 @@ ipcMain.handle('play:setProgress', (_e, percent) => {
   return { ok: true };
 });
 
+// 把玩页「耗材颜色（测试）」：仅 mock 数据源生效；null = 恢复原始素材绿。不持久化。
+ipcMain.handle('play:setFilamentColor', (_e, hexOrNull) => {
+  ensurePlayMode();
+  if (dataSource instanceof MockDataSource) dataSource.setFilamentColor(hexOrNull);
+  return { ok: true };
+});
+
 ipcMain.handle('play:autoTour', (_e, start) => {
   ensurePlayMode();
   if (dataSource instanceof MockDataSource) {
@@ -1019,6 +1027,7 @@ ipcMain.handle('pref:getAll', () => ({
   showLabel: store.get('showLabel', true),
   showLayer: store.get('showLayer', false),
   showTime: store.get('showTime', false),
+  matchFilamentColor: store.get('matchFilamentColor', true),
   showInMenuBar: store.get('showInMenuBar', true),
   showInDock: store.get('showInDock', true),
   locale: store.get('locale', 'zh-CN'),
@@ -1028,7 +1037,7 @@ ipcMain.handle('pref:getAll', () => ({
 ipcMain.handle('pref:set', (_e, key, value) => {
   store.set(key, value);
   if (key === 'sizePx') setPetSizePx(value);
-  if (key === 'labelFontSize' || key === 'showLabel' || key === 'showLayer' || key === 'showTime') pushPetPrefs();
+  if (key === 'labelFontSize' || key === 'showLabel' || key === 'showLayer' || key === 'showTime' || key === 'matchFilamentColor') pushPetPrefs();
   if (key === 'locale') {
     pushLocale(); resendState();
     // 语言变了 → 重新就绪对应语言的官方错误码表（新 "<lang>_<model>" key 会触发重载）

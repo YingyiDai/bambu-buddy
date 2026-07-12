@@ -10,15 +10,20 @@
 <body>
   <!-- 熊猫容器：实体像素区域，鼠标进入时关闭点击穿透并允许拖窗 -->
   <div id="pet" class="pet">
-    <!-- 两个叠放的 video 做交叉淡入淡出（§8） -->
+    <!-- 两个叠放的 video 做交叉淡入淡出（§8）。
+         每个 video 后紧跟一个 overlay canvas（耗材改色层，见 recolor.js）：
+         CSS 兄弟选择器让 canvas 跟随所属 video 的 .active 同步淡入淡出，crossfade.js 零改动 -->
     <video id="videoA" class="layer" muted playsinline autoplay loop></video>
+    <canvas id="overlayA" class="layer overlay" width="640" height="640"></canvas>
     <video id="videoB" class="layer" muted playsinline autoplay loop></video>
+    <canvas id="overlayB" class="layer overlay" width="640" height="640"></canvas>
   </div>
 
   <!-- 状态文本 pill（§8.1），点击穿透的非交互区 -->
   <div id="label" class="status-pill">启动中…</div>
 
   <script src="crossfade.js"></script>
+  <script src="recolor.js"></script>
   <script src="pet.js"></script>
 </body>
 </html>

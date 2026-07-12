@@ -50,6 +50,12 @@ html, body {
   opacity: 1;
 }
 
+/* 耗材改色 overlay：紧跟在所属 video 之后，随其 .active 同步淡入淡出。
+   canvas 与 video 同为 1:1 内容 + object-fit:contain，几何完全重合。 */
+video.layer.active + canvas.overlay {
+  opacity: 1;
+}
+
 /* 状态文本 pill（§8.1）：半透明深色底 + 浅色字 + 轻阴影，浮在任意壁纸上可读 */
 .status-pill {
   position: absolute;
