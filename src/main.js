@@ -52,7 +52,7 @@ function netGetRaw(host, path) {
     request.end();
   });
 }
-const { clampToVisible } = require('./core/window-position');
+const { clampToVisible, horizontalResizeBounds } = require('./core/window-position');
 
 const store = new Store();
 
@@ -206,12 +206,10 @@ function targetWinWidth() {
 // 按 targetWinWidth 加宽/收窄窗口，保持窗口中心不动 —— 熊猫居中，故中心不动 = 熊猫不动。
 function applyWinWidth() {
   if (!win || win.isDestroyed()) return;
-  const b = win.getBounds();
-  const cx = b.x + Math.round(b.width / 2);
-  const w = targetWinWidth();
-  const x = Math.round(cx - w / 2);
-  if (b.width === w && b.x === x) return;
-  win.setBounds({ x, y: b.y, width: w, height: b.height });
+  // height 恒为权威 currentSizePx()（见 horizontalResizeBounds 注释）——不可回写
+  // b.height，否则分数 DPI 取整误差会让熊猫在标签频繁变宽时（如拖进度滑杆）越变越大。
+  const next = horizontalResizeBounds(win.getBounds(), targetWinWidth(), currentSizePx());
+  if (next) win.setBounds(next);
 }
 
 // 无极调整宠物窗口大小（80–400px），保持中心不动，持久化。
