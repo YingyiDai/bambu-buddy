@@ -43,14 +43,13 @@ function t(locale, key, params) {
   return template;
 }
 
-// 预计完成时刻：当前时间 + 剩余分钟，按本机时区格式化为 24 小时制 HH:MM。
-// getHours/getMinutes 天然使用运行电脑的本地时区，符合「按用户电脑时区展示」的诉求。
+// 预计完成时刻：当前时间 + 剩余分钟。用 toLocaleTimeString（不传 locale → 取系统默认
+// locale）格式化为「时:分」，因此时区、以及 12 小时制(AM/PM) / 24 小时制的选择都跟随
+// 运行电脑的系统设置——习惯 AM/PM 的用户会看到「2:30 PM」，24 小时制则是「14:30」。
 function fmtFinishClock(remainMins) {
   if (!Number.isFinite(remainMins) || remainMins <= 0) return null;
   const d = new Date(Date.now() + remainMins * 60000);
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${hh}:${mm}`;
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
 // 拼单行标签，紧凑平级：主体是状态本身（打印中时即「打印中 {p}%」）；打印中且开关开启时，
