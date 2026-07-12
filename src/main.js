@@ -629,6 +629,7 @@ function pushPetPrefs() {
       showLabel: store.get('showLabel', true),
       showLayer: store.get('showLayer', false),
       showTime: store.get('showTime', false),
+      showFinishTime: store.get('showFinishTime', false),
       matchFilamentColor: store.get('matchFilamentColor', true),
     });
   }
@@ -1054,6 +1055,7 @@ ipcMain.handle('pref:getAll', () => ({
   showLabel: store.get('showLabel', true),
   showLayer: store.get('showLayer', false),
   showTime: store.get('showTime', false),
+  showFinishTime: store.get('showFinishTime', false),
   matchFilamentColor: store.get('matchFilamentColor', true),
   showInMenuBar: store.get('showInMenuBar', true),
   showInDock: store.get('showInDock', true),
@@ -1064,7 +1066,7 @@ ipcMain.handle('pref:getAll', () => ({
 ipcMain.handle('pref:set', (_e, key, value) => {
   store.set(key, value);
   if (key === 'sizePx') setPetSizePx(value);
-  if (key === 'labelFontSize' || key === 'showLabel' || key === 'showLayer' || key === 'showTime' || key === 'matchFilamentColor') pushPetPrefs();
+  if (key === 'labelFontSize' || key === 'showLabel' || key === 'showLayer' || key === 'showTime' || key === 'showFinishTime' || key === 'matchFilamentColor') pushPetPrefs();
   if (key === 'locale') {
     pushLocale(); resendState();
     // 语言变了 → 重新就绪对应语言的官方错误码表（新 "<lang>_<model>" key 会触发重载）

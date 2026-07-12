@@ -231,8 +231,10 @@ function resolveStateCore(report = {}) {
       labelParams.layer = layer;
       labelParams.total = totalLayer;
     }
-    const remain = fmtRemain(firstNum(r.mc_remaining_time, r.remaining_time));
-    if (remain != null) labelParams.remain = remain;
+    const remainMins = firstNum(r.mc_remaining_time, r.remaining_time);
+    const remain = fmtRemain(remainMins);
+    // remain（紧凑 token）供「剩余时间」段；remainMins（原始分钟）供渲染层按本机时区算「完成时刻」。
+    if (remain != null) { labelParams.remain = remain; labelParams.remainMins = remainMins; }
     return { stateKey, videoFile, labelKey: 'label.printing', labelParams };
   }
 

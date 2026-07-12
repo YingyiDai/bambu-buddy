@@ -19,6 +19,8 @@ const STRINGS = {
     'label.remaining': '剩余 {time}',
     // 熊猫标签紧凑进度段的时间文案（层数段在渲染层直接拼 {layer}/{total}）。
     'label.remainTime': '剩余{time}',
+    // 预计完成时刻（本机时区，如「完成 14:30」），由渲染层用 remainMins + 本机时间算出。
+    'label.finishTime': '完成 {time}',
     'label.changingFilament': '换料',
     'label.paused': '用户暂停',
     'label.paused.generic': '已暂停',
@@ -188,6 +190,8 @@ const STRINGS = {
     'settings.showLayerDesc': '打印中在熊猫下方显示当前层 / 总层数',
     'settings.showTime': '显示剩余时间',
     'settings.showTimeDesc': '打印中在熊猫下方显示预计剩余时间',
+    'settings.showFinishTime': '显示完成时间',
+    'settings.showFinishTimeDesc': '打印中在熊猫下方显示预计完成时刻（按本机时区）',
     'settings.matchFilamentColor': '跟随耗材颜色',
     'settings.matchFilamentColorDesc': '打印中把熊猫吃的耗材和竹子染成当前耗材的颜色；关闭则保持原始绿色',
     'settings.language': '语言',
@@ -341,6 +345,8 @@ const STRINGS = {
     'label.remaining': '{time} left',
     // Time text of the panda label's compact progress segment (layers are joined as {layer}/{total} in the renderer).
     'label.remainTime': '{time} left',
+    // Estimated completion clock time (computer's timezone, e.g. "done 14:30"), computed in the renderer from remainMins + local time.
+    'label.finishTime': 'done {time}',
     'label.changingFilament': 'Changing filament',
     'label.paused': 'Paused by the user',
     'label.paused.generic': 'Paused',
@@ -509,6 +515,8 @@ const STRINGS = {
     'settings.showLayerDesc': 'While printing, show current / total layers below the panda',
     'settings.showTime': 'Show Remaining Time',
     'settings.showTimeDesc': 'While printing, show estimated time remaining below the panda',
+    'settings.showFinishTime': 'Show Completion Time',
+    'settings.showFinishTimeDesc': 'While printing, show the estimated completion time (in your computer\'s timezone) below the panda',
     'settings.matchFilamentColor': 'Match Filament Color',
     'settings.matchFilamentColorDesc': 'While printing, tint the filament the panda eats (and its bamboo) to the current filament color; off keeps the original green',
     'settings.language': 'Language',

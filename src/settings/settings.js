@@ -531,6 +531,7 @@ async function loadPreferences() {
   el('showLabelToggle').checked = p.showLabel;
   el('showLayerToggle').checked = p.showLayer;
   el('showTimeToggle').checked = p.showTime;
+  el('showFinishTimeToggle').checked = p.showFinishTime;
   el('matchFilamentColorToggle').checked = p.matchFilamentColor;
   syncLabelSubRows();
   el('localeSelect').value = p.locale;
@@ -556,10 +557,12 @@ function syncLabelSubRows() {
   const on = el('showLabelToggle').checked;
   el('rowShowLayer').classList.toggle('hidden', !on);
   el('rowShowTime').classList.toggle('hidden', !on);
+  el('rowShowFinishTime').classList.toggle('hidden', !on);
 }
 el('showLabelToggle').addEventListener('change', () => { window.bambu.setPreference('showLabel', el('showLabelToggle').checked); syncLabelSubRows(); });
 el('showLayerToggle').addEventListener('change', () => window.bambu.setPreference('showLayer', el('showLayerToggle').checked));
 el('showTimeToggle').addEventListener('change', () => window.bambu.setPreference('showTime', el('showTimeToggle').checked));
+el('showFinishTimeToggle').addEventListener('change', () => window.bambu.setPreference('showFinishTime', el('showFinishTimeToggle').checked));
 el('matchFilamentColorToggle').addEventListener('change', () => window.bambu.setPreference('matchFilamentColor', el('matchFilamentColorToggle').checked));
 el('localeSelect').addEventListener('change', () => { currentLocale = el('localeSelect').value; renderLocale(); renderPrinters(); if (playGalleryBuilt) buildGallery(); window.bambu.setPreference('locale', currentLocale); });
 
