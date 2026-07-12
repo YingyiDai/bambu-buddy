@@ -144,6 +144,33 @@ test('同一文件重复 request 不重复加载（去重）', () => {
   assert.equal(loadsAfterSecond, loadsAfterFirst, '同名文件不应再次 load');
 });
 
+// ── 每层文件跟踪 + onLayerChange：让耗材改色 overlay 跟随「各层实际显示的视频」，
+//    而非最新请求的 state（后者因防抖+淡入而滞后）。否则从打印中切换到换料时，overlay
+//    会在视频还显示打印素材时就提前清空 → 打印素材露出原始绿几帧（切换时机不准）。 ──
+test('onLayerChange / getLayerFile：入场层拿到新文件，出场层保留旧文件直到被复用', () => {
+  const changes = [];
+  const { layers, sch, ctrl } = setup({ onLayerChange: (i, f) => changes.push([i, f]) });
+
+  // 1) 切到打印中并完成
+  ctrl.request('printing_25.webm');
+  sch.advance(250);
+  const printIdx = 1 - ctrl.getActiveIndex(); // 入场层（即将成为 active）
+  layers[printIdx].fire('canplay');
+  assert.equal(ctrl.getActiveIndex(), printIdx);
+  assert.equal(ctrl.getLayerFile(printIdx), 'printing_25.webm');
+  assert.deepEqual(changes.at(-1), [printIdx, 'printing_25.webm']);
+
+  // 2) 切到换料：防抖后 to() 把换料装进「入场层」（另一层）
+  ctrl.request('changing_filament.webm');
+  sch.advance(250);
+  const incoming = 1 - printIdx;
+  // 入场层拿到换料文件（overlay 据此关闭改色）
+  assert.deepEqual(changes.at(-1), [incoming, 'changing_filament.webm']);
+  assert.equal(ctrl.getLayerFile(incoming), 'changing_filament.webm');
+  // 关键：出场层（仍在淡出、显示打印素材）保留 printing_25 → overlay 保持改色，不露原始绿
+  assert.equal(ctrl.getLayerFile(printIdx), 'printing_25.webm');
+});
+
 test('陈旧 cleanup 不得清空已被复用为入场层的层（F1 回归）', () => {
   // 复现：切换 A 完成后会安排 fadeMs 延迟清理「旧 outgoing」层的 src；
   // 但两层乒乓复用，下一次切换 B 很可能就把这个「旧 outgoing」拿去当入场层。
