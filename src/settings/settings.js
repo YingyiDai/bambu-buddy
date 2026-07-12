@@ -17,7 +17,10 @@ function applyLocaleText(node, text) {
   }
   node.textContent = text;
 }
-function renderLocale() { document.querySelectorAll('[data-i18n]').forEach((n) => applyLocaleText(n, t(n.dataset.i18n))); }
+function renderLocale() {
+  document.querySelectorAll('[data-i18n]').forEach((n) => applyLocaleText(n, t(n.dataset.i18n)));
+  document.querySelectorAll('[data-i18n-title]').forEach((n) => { n.title = t(n.dataset.i18nTitle); });
+}
 async function loadLocales() {
   localeStrings = await window.bambu.getLocaleStrings();
   currentLocale = await window.bambu.getCurrentLocale();
@@ -528,6 +531,7 @@ async function loadPreferences() {
   el('showLabelToggle').checked = p.showLabel;
   el('showLayerToggle').checked = p.showLayer;
   el('showTimeToggle').checked = p.showTime;
+  el('matchFilamentColorToggle').checked = p.matchFilamentColor;
   syncLabelSubRows();
   el('localeSelect').value = p.locale;
   if (p.locale !== currentLocale) { currentLocale = p.locale; renderLocale(); }
@@ -556,6 +560,7 @@ function syncLabelSubRows() {
 el('showLabelToggle').addEventListener('change', () => { window.bambu.setPreference('showLabel', el('showLabelToggle').checked); syncLabelSubRows(); });
 el('showLayerToggle').addEventListener('change', () => window.bambu.setPreference('showLayer', el('showLayerToggle').checked));
 el('showTimeToggle').addEventListener('change', () => window.bambu.setPreference('showTime', el('showTimeToggle').checked));
+el('matchFilamentColorToggle').addEventListener('change', () => window.bambu.setPreference('matchFilamentColor', el('matchFilamentColorToggle').checked));
 el('localeSelect').addEventListener('change', () => { currentLocale = el('localeSelect').value; renderLocale(); renderPrinters(); if (playGalleryBuilt) buildGallery(); window.bambu.setPreference('locale', currentLocale); });
 
 // ── 关于 ──
@@ -659,6 +664,14 @@ el('playProgress').addEventListener('input', () => {
   const v = Number(el('playProgress').value);
   el('playProgressVal').textContent = v + '%';
   window.bambu.playSetProgress(v);
+});
+// 耗材颜色：选色即时改色；「恢复原始绿」清除注入（回到原始素材色）。不持久化，重启/回真机自然复位。
+// PLAY_FILAMENT_GREEN 与 index.html 里色井 value / recolor.js 参考绿一致：恢复时把色井显示值一并复位。
+const PLAY_FILAMENT_GREEN = '#80ae3b';
+el('playFilamentColor').addEventListener('input', () => window.bambu.playSetFilamentColor(el('playFilamentColor').value));
+el('playFilamentReset').addEventListener('click', () => {
+  el('playFilamentColor').value = PLAY_FILAMENT_GREEN; // 复位色井显示，否则界面仍停在上次选的颜色
+  window.bambu.playSetFilamentColor(null);
 });
 // 自动巡演开关
 el('autoTourBtn').addEventListener('click', async () => {
