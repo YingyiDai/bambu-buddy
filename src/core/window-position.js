@@ -41,22 +41,31 @@ function clampToVisible(saved, displays, sizePx) {
 }
 
 /**
- * 计算「只横向加宽/收窄、保持中心不动」的目标窗口 bounds（纯函数，便于单测）。
- * 关键不变量：height 恒为权威的 sizePx，绝不回写当前 bounds 的 height——
- * 分数 DPI 下 getBounds→setBounds 的 DIP↔像素取整误差会让 height 逐帧累积变大，
- * 而熊猫 CSS 为 width:100vh，会随窗口高度「越变越大」。拖动进度滑杆时标签宽度
- * 频繁变化，本逻辑被高频触发，累积尤为明显。
- * @param {{x:number,y:number,width:number,height:number}} cur - 当前窗口 bounds
- * @param {number} targetWidth - 目标宽度（含标签加宽）
- * @param {number} sizePx - 熊猫方形边长 = 权威窗口高度
- * @returns {{x:number,y:number,width:number,height:number}|null} 需要变更时返回新
- *   bounds；宽度与 x 都无需变化时返回 null（调用方跳过 setBounds）。
+ * 据「熊猫方形中心」这一权威真源计算目标窗口 bounds：窗口按标签留白横向加宽，
+ * 熊猫恒居中；高度恒为 sizePx。纯函数、**幂等**——同一 center+targetWidth+sizePx
+ * 反复调用得到同一结果，绝不从 getBounds() 读回值再写回。
+ *
+ * 为何真源是「中心」而非「左上角」或「当前窗口 bounds」：
+ *   1) 用当前 bounds 保持中心：从已漂移的 cur.x/y 反推再 Math.round，居中取整误差会
+ *      随标签频繁变宽单向累积——熊猫右移（macOS 整数 DPI 也可见）；回写读回的 y/height
+ *      在分数 DPI 下经 DIP↔像素往返累积——熊猫上移/变大（Windows 缩放屏可见）。
+ *   2) 用「左上角」做真源：改尺寸时 newTopLeft=round(center-px/2) 再回存为真源，奇数
+ *      尺寸令中心落在 .5、Math.round 有半整数偏置，逐次累积——改尺寸时熊猫走位。
+ * 中心可为小数、且**改尺寸/改标签宽都不重算它**，故任何场景都零累积。中心仅在用户
+ * 移动窗口（dragEnd）时更新一次。
+ *
+ * @param {{x:number,y:number}} center - 熊猫方形中心（权威真源，可为小数）
+ * @param {number} targetWidth - 目标窗口宽度（含标签加宽）
+ * @param {number} sizePx - 熊猫方形边长 = 窗口高度
+ * @returns {{x:number,y:number,width:number,height:number}}
  */
-function horizontalResizeBounds(cur, targetWidth, sizePx) {
-  const cx = cur.x + Math.round(cur.width / 2);
-  const x = Math.round(cx - targetWidth / 2);
-  if (cur.width === targetWidth && cur.x === x) return null;
-  return { x, y: cur.y, width: targetWidth, height: sizePx };
+function petWindowBounds(center, targetWidth, sizePx) {
+  return {
+    x: Math.round(center.x - targetWidth / 2),
+    y: Math.round(center.y - sizePx / 2),
+    width: targetWidth,
+    height: sizePx,
+  };
 }
 
-module.exports = { clampToVisible, horizontalResizeBounds };
+module.exports = { clampToVisible, petWindowBounds };
