@@ -116,6 +116,10 @@ function createRecolorOverlay(video, canvas) {
       canvas.width = w;
       canvas.height = h;
     }
+    // 必须先清空：drawImage 对视频透明区是 source-over、不覆盖，若不清空，上一帧改色后的
+    // 绿色像素会残留在本帧视频透明处（动画移动后），再被绿色相过滤保留 → 绿/黑重影。
+    // （非绿目标的残留会被色相过滤擦除，所以历史上只有绿色耗材可见此重影。）
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const re = recolorImageData(frame, color);

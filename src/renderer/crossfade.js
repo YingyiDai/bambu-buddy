@@ -19,9 +19,13 @@ function createVideoController(layers, opts = {}) {
   const setT = opts.setTimeout || setTimeout;
   const clearT = opts.clearTimeout || clearTimeout;
   const onError = typeof opts.onError === 'function' ? opts.onError : null;
+  // 每层实际装载的文件变化时回调 (layerIndex, file)。耗材改色 overlay 据此跟随
+  // 「各层真正显示的视频」，而非最新请求的 state（后者因防抖+淡入而滞后）。
+  const onLayerChange = typeof opts.onLayerChange === 'function' ? opts.onLayerChange : null;
 
   let activeIndex = 0;
   let displayedFile = null; // 当前 active 层实际显示的文件
+  const layerFiles = new Array(layers.length).fill(null); // 各层当前装载的文件
   let targetFile = null;    // 最新「已显示或正在切入」的目标文件（用于去重）
   let pending = null;       // 进行中的切换：{ teardown }
   let cleanupTimer = null;  // 切换完成后延迟清理「旧 outgoing」src 的定时器句柄
@@ -45,7 +49,8 @@ function createVideoController(layers, opts = {}) {
     // 若让陈旧 cleanup 触发会把正在加载的入场层 src 抹掉 → 视频卡死、与标签不同步。
     if (cleanupTimer != null) { clearT(cleanupTimer); cleanupTimer = null; }
 
-    const incoming = layers[1 - activeIndex];
+    const incomingIndex = 1 - activeIndex;
+    const incoming = layers[incomingIndex];
     const outgoing = layers[activeIndex];
 
     const teardown = () => {
@@ -81,6 +86,11 @@ function createVideoController(layers, opts = {}) {
     pending = { teardown };
     incoming.src = base + file;
     incoming.load();
+    // 入场层已装载新文件：立即通知（其 CSS 尚透明、淡入中，overlay 提前配好色即可）。
+    // 出场层的 layerFiles 保持不变，直到它被下次 to() 复用为入场层——这样它在淡出期间
+    // 仍按旧文件着色，不会因 state 提前变化而露出原始绿。
+    layerFiles[incomingIndex] = file;
+    if (onLayerChange) onLayerChange(incomingIndex, file);
   }
 
   // 对外入口：尾沿防抖，突发内只调度一次、用最后一帧目标，不可被饿死。
@@ -95,6 +105,7 @@ function createVideoController(layers, opts = {}) {
 
   return {
     request,
+    getLayerFile: (i) => layerFiles[i],
     // 测试/调试用
     getActiveIndex: () => activeIndex,
     getDisplayedFile: () => displayedFile,

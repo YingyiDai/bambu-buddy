@@ -6,7 +6,7 @@
 //   - 白/黑目标色同样成立（白→保留明暗的灰白，黑→深色）。
 const test = require('node:test');
 const assert = require('node:assert');
-const { recolorImageData } = require('../src/renderer/recolor');
+const { recolorImageData, createRecolorOverlay } = require('../src/renderer/recolor');
 
 // 造一个 1xN 的 ImageData 形状对象（Node 无 ImageData 构造器）
 function makeImage(pixels) {
@@ -77,4 +77,49 @@ test('不修改源数据（写入独立输出缓冲）', () => {
   const before = Array.from(img.data);
   recolorImageData(img, '#f95959');
   assert.deepEqual(Array.from(img.data), before);
+});
+
+// ── 驱动层回归：逐帧必须先清空 canvas，否则动画移动后上一帧的绿色改色像素残留在
+//    视频透明区，被下一帧的绿色过滤再次保留 → 熊猫绿色周围出现绿/黑重影（仅绿色目标可见，
+//    因为非绿残留会被色相过滤擦除）。见真机复现。 ──
+function makeMockCanvasVideo(w, h) {
+  const buf = new Uint8ClampedArray(w * h * 4); // 模拟 canvas 像素缓冲
+  const ctx = {
+    // source-over：视频不透明处覆盖，透明处保留原缓冲（正是残留重影的来源）
+    drawImage(video) {
+      const f = video.frame;
+      for (let i = 0; i < buf.length; i += 4) {
+        const sa = f[i + 3] / 255;
+        if (sa === 0) continue; // 透明源 → 目标不变（残留！）
+        for (let k = 0; k < 3; k++) buf[i + k] = Math.round(f[i + k] * sa + buf[i + k] * (1 - sa));
+        buf[i + 3] = Math.round(f[i + 3] + buf[i + 3] * (1 - sa));
+      }
+    },
+    clearRect() { buf.fill(0); },
+    getImageData() { return { data: new Uint8ClampedArray(buf), width: w, height: h }; },
+    putImageData(img) { buf.set(img.data); },
+  };
+  const canvas = { width: w, height: h, clientWidth: 100, clientHeight: 100, getContext: () => ctx };
+  let cb = null;
+  const video = {
+    videoWidth: w, videoHeight: h, frame: new Uint8ClampedArray(w * h * 4),
+    play() {}, requestVideoFrameCallback(fn) { cb = fn; return 1; }, cancelVideoFrameCallback() { cb = null; },
+  };
+  return { canvas, video, buf, tickFrame: () => { const f = cb; cb = null; if (f) f(); } };
+}
+
+test('逐帧清空 canvas：动画移动后不残留上一帧绿色改色像素（黑/绿重影回归）', () => {
+  const { canvas, video, buf, tickFrame } = makeMockCanvasVideo(2, 1);
+  const ov = createRecolorOverlay(video, canvas);
+  ov.setColor('#3fa02a'); // 非原始绿目标
+
+  // 帧1：像素0=竹子绿（不透明），像素1=背景（透明）
+  video.frame.set([128, 174, 59, 255, 0, 0, 0, 0]);
+  tickFrame();
+  assert.ok(buf[3] > 0, '帧1 竹子像素应被改色（不透明）');
+
+  // 帧2：竹子移走 → 像素0 变成背景（视频透明）
+  video.frame.set([0, 0, 0, 0, 0, 0, 0, 0]);
+  tickFrame();
+  assert.equal(buf[3], 0, '帧2 竹子移走后该处不应残留改色像素（否则即绿色重影）');
 });

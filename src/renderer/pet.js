@@ -4,14 +4,19 @@ const petEl = document.getElementById('pet');
 const labelEl = document.getElementById('label');
 const layers = [document.getElementById('videoA'), document.getElementById('videoB')];
 
-// 视频切换由并发安全、防抖不可饿死的控制器统一负责（见 crossfade.js）。
-const video = createVideoController(layers, { base: ANIM_BASE });
-
 // 耗材改色 overlay：每个视频层各配一个（见 recolor.js / index.html 的 video+canvas 配对）。
 const overlays = [
   createRecolorOverlay(layers[0], document.getElementById('overlayA')),
   createRecolorOverlay(layers[1], document.getElementById('overlayB')),
 ];
+
+// 视频切换由并发安全、防抖不可饿死的控制器统一负责（见 crossfade.js）。
+// onLayerChange：某层装载新视频时，据该层的文件配置它自己的 overlay —— 这样改色跟随
+// 「各层实际显示的视频」，切换时机与视频完全一致（不会因 state 提前变化而露出原始绿）。
+const video = createVideoController(layers, {
+  base: ANIM_BASE,
+  onLayerChange: (idx, file) => setOverlayForLayer(idx, file),
+});
 
 // Locale
 let localeStrings = {};
@@ -71,16 +76,22 @@ function applyState(state) {
   // 标签同步刷新；视频经控制器切换（去重 + 尾沿防抖 + 并发安全）。
   renderLabel();
   video.request(state.videoFile);
-  applyFilamentColor();
+  refreshOverlays();
 }
 
-// 耗材改色总闸：开关开启 + 打印中动画 + 已知耗材色才生效，否则清空 overlay 露出原始绿。
-function applyFilamentColor() {
+// 给某个视频层的 overlay 定色：仅当「跟随开关开 + 该层是打印动画 + 已知耗材色」时着色，
+// 否则清空（露出原始素材）。file 用该层实际装载的视频，保证改色与视频显示严格同步。
+function setOverlayForLayer(idx, file) {
   const s = lastPetState;
   const on = matchFilamentColor && s && s.filamentColor
-    && typeof s.videoFile === 'string' && s.videoFile.startsWith('printing_');
-  const color = on ? s.filamentColor : null;
-  overlays.forEach((o) => o.setColor(color));
+    && typeof file === 'string' && file.startsWith('printing_');
+  overlays[idx].setColor(on ? s.filamentColor : null);
+}
+
+// 按各层当前装载的文件刷新两个 overlay。用于耗材色/开关变化（视频未切换）时就地生效；
+// 视频切换的时机由 onLayerChange 单独驱动。
+function refreshOverlays() {
+  for (let i = 0; i < layers.length; i++) setOverlayForLayer(i, video.getLayerFile(i));
 }
 
 // Locale 更新 → 立即重绘标签
@@ -102,7 +113,7 @@ window.pet.onPrefs((prefs) => {
   if (prefs.showTime != null) showTime = prefs.showTime;
   if (prefs.matchFilamentColor != null) matchFilamentColor = prefs.matchFilamentColor;
   renderLabel();
-  applyFilamentColor(); // 开关变化就地生效，无需等下一帧状态
+  refreshOverlays(); // 开关变化就地生效，无需等下一帧状态
 });
 
 // 初始状态
