@@ -52,7 +52,7 @@ function netGetRaw(host, path) {
     request.end();
   });
 }
-const { clampToVisible, horizontalResizeBounds } = require('./core/window-position');
+const { clampToVisible, petWindowBounds } = require('./core/window-position');
 
 const store = new Store();
 
@@ -146,10 +146,13 @@ function createWindow() {
     x = workArea.x + workArea.width - sizePx - 40;
     y = workArea.y + workArea.height - sizePx - 40;
   }
+  // 记下熊猫方形中心为权威真源（applyWinWidth 据此算窗口 bounds，见 petCenter 注释）。
+  petCenter = { x: x + sizePx / 2, y: y + sizePx / 2 };
 
   // 初始宽度同样走 targetWinWidth（启动时 labelPx=0，即 max(sizePx, 宽度下限)）；
   // x 按「熊猫方形居中」反推窗口左缘，保证熊猫落在记忆位置上。
   const winW = targetWinWidth();
+  // 【allow-direct-setBounds：sanctioned exception ①】构造用一次性权威值，非 getBounds 回写。
   win = new BrowserWindow({
     width: winW,
     height: sizePx,
@@ -189,6 +192,13 @@ function createWindow() {
 // 渲染层上报的标签实际像素宽度：窗口据此加宽以完整显示长标签（不缩字号、不截断）。
 let labelPx = 0;
 
+// 熊猫方形**中心**的权威坐标（运行时唯一真源，可为小数）。窗口比熊猫方形宽（标签留白），
+// 故不能用窗口 bounds 反推位置——applyWinWidth 一律据此中心算 bounds，保证幂等、不因
+// getBounds↔setBounds 往返或居中取整累积（熊猫右移/上移/走位）。**只在用户移动窗口
+// （dragEnd）时更新一次**；改尺寸/改标签宽都不重算它（改尺寸溢出屏幕被夹回时例外）。
+// 持久化仍走 store('window.position')（存熊猫方形左上角，与历史口径一致）。
+let petCenter = null;
+
 // macOS 上宽度小于约 162px 的透明窗口会整窗变成不透明白底（Electron 已知缺陷，官方标记不修：
 // electron/electron#44884，Apple Silicon + 缩放显示器上必现）。实际用户反馈的阈值与 162 吻合：
 // 熊猫尺寸 <160 时空闲态（短标签、窗口不加宽）白底，打印中（长标签把窗口撑宽越过阈值）正常，
@@ -203,29 +213,41 @@ function targetWinWidth() {
   return Math.max(currentSizePx(), labelPx, MIN_WIN_WIDTH);
 }
 
-// 按 targetWinWidth 加宽/收窄窗口，保持窗口中心不动 —— 熊猫居中，故中心不动 = 熊猫不动。
+// ★ 窗口 bounds 的**唯一常规写入口**（choke point）。凡「熊猫应待在原地、仅尺寸/标签
+// 宽变化」的场景都必须走这里，绝不在别处直接 win.setBounds。全程据权威源真相
+// （petCenter + currentSizePx + labelPx）计算，从不回写 getBounds() 读回值 —— 这是杜绝
+// 「熊猫越变越大 / 右移 / 上移 / 走位」这类 DIP↔像素 & 居中取整累积缺陷再次出现的结构性保证。
+// 仅两处允许直接 setBounds：① 窗口构造（new BrowserWindow，一次性权威值）；
+// ② 拖拽跟随光标的 dragTimer（写光标绝对位置 + 起始锁定的固定宽高，不累积）。
+// 见 test/window-position.test.js 的「源码防线」用例——新增 setBounds 调用会使其失败。
 function applyWinWidth() {
-  if (!win || win.isDestroyed()) return;
-  // height 恒为权威 currentSizePx()（见 horizontalResizeBounds 注释）——不可回写
-  // b.height，否则分数 DPI 取整误差会让熊猫在标签频繁变宽时（如拖进度滑杆）越变越大。
-  const next = horizontalResizeBounds(win.getBounds(), targetWinWidth(), currentSizePx());
-  if (next) win.setBounds(next);
+  if (!win || win.isDestroyed() || !petCenter) return;
+  // 拖拽中窗口 bounds 由 dragTimer 每帧独占跟随光标，此时中心尚未落定（dragEnd 才更新），
+  // 若在此据陈旧中心 setBounds 会把窗口拽回拖拽前的位置。拖拽结束会再 applyWinWidth 收敛。
+  if (dragOffset) return;
+  // 一律据权威中心算 bounds（幂等、不累积，见 petWindowBounds 注释）：熊猫恒居中、
+  // 高度恒为 sizePx——彻底消除拖进度滑杆/拖尺寸时熊猫右移/上移/变大/走位。
+  const next = petWindowBounds(petCenter, targetWinWidth(), currentSizePx());
+  const b = win.getBounds();
+  if (b.x === next.x && b.y === next.y && b.width === next.width && b.height === next.height) return;
+  win.setBounds(next);
 }
 
 // 无极调整宠物窗口大小（80–400px），保持中心不动，持久化。
 function setPetSizePx(px) {
   px = Math.max(80, Math.min(400, Math.round(px)));
   store.set('sizePx', px);
-  if (!win || win.isDestroyed()) return;
-  const b = win.getBounds();
-  const cx = b.x + Math.round(b.width / 2), cy = b.y + Math.round(b.height / 2);
-  // 先把「熊猫方形」保持中心不动、夹回可见范围（两侧透明留白允许溢出屏幕，不参与夹取）。
-  const desired = { x: Math.round(cx - px / 2), y: Math.round(cy - px / 2) };
-  const pet = clampToVisible(desired, screen.getAllDisplays(), px) || desired;
-  const w = targetWinWidth(); // sizePx 已在上面写入 store，此处即 max(px, labelPx, 宽度下限)
-  win.setBounds({ x: Math.round(pet.x - (w - px) / 2), y: pet.y, width: w, height: px });
-  // 记忆熊猫方形左上角（与历史存储口径一致：正方形、margin=0），与 dragEnd 保持一致。
-  store.set('window.position', { x: pet.x, y: pet.y });
+  if (!win || win.isDestroyed() || !petCenter) return;
+  // 保持熊猫中心不动——中心是权威真源、**改尺寸不重算它**，故连续拖尺寸滑杆零累积。
+  // 仅当放大后熊猫方形溢出屏幕、被夹回可见范围时，中心才随之平移（更新真源、且收敛不发散）。
+  const desiredTopLeft = { x: Math.round(petCenter.x - px / 2), y: Math.round(petCenter.y - px / 2) };
+  const petTopLeft = clampToVisible(desiredTopLeft, screen.getAllDisplays(), px) || desiredTopLeft;
+  if (petTopLeft.x !== desiredTopLeft.x || petTopLeft.y !== desiredTopLeft.y) {
+    petCenter = { x: petTopLeft.x + px / 2, y: petTopLeft.y + px / 2 };
+  }
+  // 记忆熊猫方形左上角（历史口径），再经唯一入口 applyWinWidth 幂等落定窗口 bounds。
+  store.set('window.position', petTopLeft);
+  applyWinWidth();
   rebuildTray();
 }
 
@@ -982,8 +1004,10 @@ ipcMain.on('pet:dragStart', () => {
   const cursor = screen.getCursorScreenPoint();
   const [wx, wy] = win.getPosition();
   dragOffset = { dx: cursor.x - wx, dy: cursor.y - wy };
+  // 【allow-direct-setBounds：sanctioned exception ②】拖拽跟随光标。
   // 拖拽全程锁定为当前尺寸：分数 DPI 缩放下反复 setPosition 会因 DIP↔像素取整误差
   // 让窗口逐帧变大（熊猫随之被放大），每帧用 setBounds 显式回写固定宽高即可杜绝累积。
+  // 写的是「光标绝对位置 + 起始锁定的固定宽高」，不回写 getBounds()，故不累积。
   // 宽度锁定为当前窗口宽（含标签加宽的部分），避免拖拽时窗口回落成方形、标签被截断。
   const size = currentSizePx();
   const width = win.getBounds().width;
@@ -1003,10 +1027,15 @@ ipcMain.on('pet:dragEnd', () => {
   if (dragTimer) { clearInterval(dragTimer); dragTimer = null; }
   dragOffset = null;
   if (win && !win.isDestroyed()) {
-    // 存熊猫方形左上角（由窗口中心反推），与 setPetSizePx 口径一致：窗口两侧透明留白不计入。
+    // 拖拽落定：据最终窗口 bounds 一次性算出熊猫方形中心作为新权威真源（单次读取、不循环，
+    // 故不累积）。熊猫居中于窗口，窗口中心即熊猫中心；窗口高 == sizePx，故熊猫中心 y = 顶 + 半高。
     const b = win.getBounds();
-    const cx = b.x + Math.round(b.width / 2);
-    store.set('window.position', { x: Math.round(cx - currentSizePx() / 2), y: b.y });
+    const px = currentSizePx();
+    petCenter = { x: b.x + b.width / 2, y: b.y + px / 2 };
+    // 持久化熊猫方形左上角（历史口径：正方形、margin=0，窗口两侧透明留白不计入）。
+    store.set('window.position', { x: Math.round(petCenter.x - px / 2), y: b.y });
+    // 拖拽期间窗口宽度被冻结（dragTimer 用起始宽），此处据新中心把宽度收敛回当前标签目标。
+    applyWinWidth();
   }
 });
 
