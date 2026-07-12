@@ -2,7 +2,7 @@
 // 必须夹回可见范围或回落 null，避免桌宠生成在不可见区域。
 const test = require('node:test');
 const assert = require('node:assert');
-const { clampToVisible } = require('../src/core/window-position');
+const { clampToVisible, horizontalResizeBounds } = require('../src/core/window-position');
 
 const PRIMARY = { workArea: { x: 0, y: 0, width: 1920, height: 1080 } };
 const SECONDARY = { workArea: { x: 1920, y: 0, width: 1920, height: 1080 } };
@@ -36,5 +36,31 @@ test('多显示器：夹到重叠最多的那个显示器，不被拉回主屏',
   assert.deepStrictEqual(
     clampToVisible({ x: 3800, y: 500 }, [PRIMARY, SECONDARY], 220),
     { x: 3620, y: 500 },
+  );
+});
+
+// ── horizontalResizeBounds：只横向变化、高度恒为权威 sizePx ──
+
+test('回归：高度恒为 sizePx，绝不继承已漂移的当前高度（拖进度滑杆熊猫越变越大）', () => {
+  // 模拟分数 DPI 下 setBounds 取整误差：当前 bounds 的 height 已从 220 漂到 223。
+  // 若回写 b.height，误差会逐帧累积；必须写回权威 sizePx=220。
+  const drifted = { x: 100, y: 100, width: 220, height: 223 };
+  const next = horizontalResizeBounds(drifted, 300, 220);
+  assert.strictEqual(next.height, 220, 'height 必须回到 sizePx，而非漂移后的 223');
+});
+
+test('横向加宽保持中心不动', () => {
+  // 中心 = 100 + 220/2 = 210；宽变 300 → x = 210 - 150 = 60
+  assert.deepStrictEqual(
+    horizontalResizeBounds({ x: 100, y: 100, width: 220, height: 220 }, 300, 220),
+    { x: 60, y: 100, width: 300, height: 220 },
+  );
+});
+
+test('宽度与 x 都无需变化 → 返回 null（跳过 setBounds）', () => {
+  // 当前已是目标宽度且中心对齐 → x 不变 → null
+  assert.strictEqual(
+    horizontalResizeBounds({ x: 60, y: 100, width: 300, height: 220 }, 300, 220),
+    null,
   );
 });
