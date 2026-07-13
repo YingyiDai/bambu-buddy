@@ -154,17 +154,16 @@
         </div>
 
         <div class="section-rows">
-          <div class="row">
-            <div class="row-text">
+          <div class="row row-stack">
+            <div class="row-head">
               <span class="row-label" data-i18n="about.currentVersion">当前版本</span>
-              <!-- 检查结果 / 下载进度 / 重启安装等提醒都内联在本行标签下方，行高自适应撑开；
-                   放页面底部会超出视口高度、不滚动看不见。 -->
-              <span id="updateStatus" class="update-status hidden"></span>
+              <div class="row-control">
+                <span class="row-val" id="aboutCurrentVersion">v0.1.0</span>
+                <button id="checkUpdateBtn" class="btn" data-i18n="settings.checkUpdate">检查更新</button>
+              </div>
             </div>
-            <div class="row-control">
-              <span class="row-val" id="aboutCurrentVersion">v0.1.0</span>
-              <button id="checkUpdateBtn" class="btn" data-i18n="settings.checkUpdate">检查更新</button>
-            </div>
+            <!-- 检查结果 / 下载进度 / 重启安装等提醒独占一整行宽度，避免英文文案挤在按钮旁边被迫换行。 -->
+            <span id="updateStatus" class="update-status hidden"></span>
           </div>
           <div class="row">
             <div class="row-text">
