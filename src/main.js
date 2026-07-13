@@ -196,15 +196,17 @@ function createWindow() {
 
 // ── 全屏时自动隐藏熊猫（方案1 + 方案3）──
 // macOS：靠主窗口 setVisibleOnAllWorkspaces 的 visibleOnFullScreen:false 覆盖「原生全屏 Space」，
-//         无需检测（见 createWindow）。
-// Windows：fullscreen-watch 轮询前台全屏态，进入全屏 win.hide()、退出 win.show()。
+//         无需检测（见 createWindow），且按 Space/显示器天然隔离。
+// Windows：fullscreen-watch 轮询「熊猫所在显示器」上是否有前台全屏应用（把熊猫窗口句柄
+//         交给它比对显示器），仅同屏全屏才 win.hide()、退出 win.show()——多显示器下
+//         A 屏全屏不影响 B 屏上的熊猫。
 // 只恢复「我们自己因全屏而隐的」窗口（hiddenByFullscreen 标记），不与其它显隐逻辑打架。
 let hiddenByFullscreen = false;
 
-function onFullscreenChange(isFullscreen) {
+function onFullscreenChange(shouldHide) {
   if (!win || win.isDestroyed()) return;
   if (!store.get('hideOnFullscreen', true)) return; // 双保险：开关已关时不动窗口
-  if (isFullscreen) {
+  if (shouldHide) {
     if (win.isVisible()) { win.hide(); hiddenByFullscreen = true; }
   } else if (hiddenByFullscreen) {
     win.show();
@@ -218,7 +220,10 @@ function applyHideOnFullscreen(enabled) {
     win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: !enabled });
   }
   if (enabled) {
-    fullscreenWatch.start(onFullscreenChange);
+    fullscreenWatch.start(onFullscreenChange, {
+      // 熊猫窗口句柄：轮询侧据此算熊猫在哪块显示器（隐藏中的窗口仍保有位置，照常可算）
+      getPetHwnd: () => (win && !win.isDestroyed()) ? win.getNativeWindowHandle() : null,
+    });
   } else {
     fullscreenWatch.stop();
     if (hiddenByFullscreen && win && !win.isDestroyed()) { win.show(); hiddenByFullscreen = false; }
