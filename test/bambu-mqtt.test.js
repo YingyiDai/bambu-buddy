@@ -4,6 +4,7 @@
 const test = require('node:test');
 const assert = require('node:assert');
 const { BambuMQTTBase, classifyLanProbe } = require('../src/core/bambu-mqtt');
+const { resolveFilamentColor } = require('../src/core/filament-color');
 
 // 造一帧 device/<serial>/report 的 payload，并返回该帧解析出的 report。
 function feed(base, print) {
@@ -42,6 +43,68 @@ test('未取消的真正失败不会被误标记为取消', () => {
   feed(base, { command: 'push_status', gcode_state: 'RUNNING', mc_percent: 40 });
   const r = feed(base, { gcode_state: 'FAILED', hms: [{ code: 131184 }] });
   assert.ok(!r.print_canceled, '无取消事件时不应带 print_canceled');
+});
+
+// ── ams / vt_tray 增量深合并 ──
+// 用户反馈：打印同一卷白色料，熊猫颜色每隔几分钟白↔绿来回跳（无换料）。
+// 根因：真机增量帧的 print.ams 常只带部分字段（如仅 { version }），顶层浅合并会让
+// 残缺 ams 整体覆盖完整快照 → tray_now/tray_color 丢失 → 颜色解析为 null → 闪回原始绿；
+// 下一帧完整推送又恢复白色。深合并后已知颜色须在残缺帧间保持稳定。
+
+// 完整 pushall 快照：AMS 0 号槽装白色料，正在使用（tray_now = 0*4+0 = 0）
+const FULL_AMS = {
+  tray_now: '0',
+  ams: [{ id: '0', tray: [{ id: '0', tray_color: 'FFFFFFFF', tray_type: 'PLA' }] }],
+};
+
+test('残缺 ams 增量帧（仅 version）不应冲掉已知耗材颜色', () => {
+  const base = new BambuMQTTBase();
+  let r = feed(base, { command: 'push_status', gcode_state: 'RUNNING', ams: FULL_AMS });
+  assert.equal(resolveFilamentColor(r), '#ffffff');
+  // 增量帧：ams 只带 version（真机常见），浅合并会把 tray_now/tray 全部冲掉
+  r = feed(base, { mc_percent: 56, ams: { version: 5 } });
+  assert.equal(resolveFilamentColor(r), '#ffffff', '颜色不应因残缺 ams 帧丢失');
+  assert.equal(r.ams.version, 5, '增量字段应正常更新');
+});
+
+test('tray 条目只带部分字段时，未提及字段（含颜色）保留', () => {
+  const base = new BambuMQTTBase();
+  feed(base, { ams: FULL_AMS });
+  // 增量帧只更新该槽的剩余量，不带 tray_color
+  const r = feed(base, { ams: { ams: [{ id: '0', tray: [{ id: '0', remain: 80 }] }] } });
+  assert.equal(resolveFilamentColor(r), '#ffffff');
+  assert.equal(r.ams.ams[0].tray[0].remain, 80);
+  assert.equal(r.ams.ams[0].tray[0].tray_type, 'PLA');
+});
+
+test('tray 条目只剩 id = 该槽已退料，旧颜色整条清除（对齐 pybambu）', () => {
+  const base = new BambuMQTTBase();
+  feed(base, { ams: FULL_AMS });
+  const r = feed(base, { ams: { ams: [{ id: '0', tray: [{ id: '0' }] }] } });
+  assert.equal(resolveFilamentColor(r), null, '空槽不应残留旧 tray_color');
+});
+
+test('vt_tray（外挂料盘）增量帧同样深合并', () => {
+  const base = new BambuMQTTBase();
+  feed(base, { ams: { tray_now: '254' }, vt_tray: { tray_color: '00FF00FF', tray_type: 'PETG' } });
+  const r = feed(base, { vt_tray: { remain: 42 } });
+  assert.equal(resolveFilamentColor(r), '#00ff00', '外挂料盘颜色不应因增量帧丢失');
+  assert.equal(r.vt_tray.remain, 42);
+});
+
+test('换到另一槽时颜色正常切换（深合并不阻碍真实变化）', () => {
+  const base = new BambuMQTTBase();
+  feed(base, {
+    ams: {
+      tray_now: '0',
+      ams: [{ id: '0', tray: [
+        { id: '0', tray_color: 'FFFFFFFF' },
+        { id: '1', tray_color: 'FF0000FF' },
+      ] }],
+    },
+  });
+  const r = feed(base, { ams: { tray_now: '1' } });
+  assert.equal(resolveFilamentColor(r), '#ff0000');
 });
 
 // ── LAN 探活结果分类（classifyLanProbe）──

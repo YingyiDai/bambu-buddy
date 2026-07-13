@@ -33,6 +33,51 @@ function classifyLanProbe({ gotConnect, error }) {
   return 'timeout';
 }
 
+// ── ams / vt_tray 增量深合并 ──
+// 真机常规推送是增量 diff：print.ams 往往只带变化的字段（如仅 { version } 或不含
+// tray_color 的 tray 条目），并非完整快照。顶层浅合并（{ ..._latest, ...print }）会让
+// 这类残缺 ams 整体覆盖已合并的完整快照，tray_now / tray_color 随之丢失，
+// resolveFilamentColor 返回 null → 渲染层清掉改色 overlay，打印中的熊猫闪回原始绿；
+// 下一帧完整推送（或定时 pushall）到达后又恢复耗材色 —— 表现为「打印同一卷料，
+// 颜色每隔几分钟白↔绿来回跳」。故 ams / vt_tray 子树需字段级深合并：
+// 对象递归合并，ams.ams / tray 等对象数组按 id 逐条合并。
+
+function isPlainObject(v) {
+  return v != null && typeof v === 'object' && !Array.isArray(v);
+}
+
+/**
+ * 按 id 合并对象数组：patch 条目覆盖同 id 旧条目的对应字段，patch 未提及的旧条目保留。
+ * 特例（对齐 pybambu AMSTray.print_update）：patch 条目只有 id 一个键 = 「该槽已空」，
+ * 整条替换旧条目而非合并，避免退料后残留旧 tray_color。
+ * 任一侧存在无 id 条目时不做按 id 合并，整体以 patch 为准（语义未知，宁可不猜）。
+ */
+function mergeArrayById(prev, patch) {
+  const hasId = (e) => isPlainObject(e) && e.id != null;
+  if (!prev.every(hasId) || !patch.every(hasId)) return patch;
+  const out = prev.slice();
+  for (const entry of patch) {
+    const i = out.findIndex((e) => String(e.id) === String(entry.id));
+    const emptied = Object.keys(entry).length === 1;
+    if (i === -1) out.push(entry);
+    else out[i] = emptied ? entry : deepMergePatch(out[i], entry);
+  }
+  return out;
+}
+
+/** 递归合并：对象递归、对象数组按 id 合并、其余以 patch 为准。 */
+function deepMergePatch(prev, patch) {
+  if (!isPlainObject(prev) || !isPlainObject(patch)) return patch;
+  const out = { ...prev };
+  for (const [k, v] of Object.entries(patch)) {
+    const p = out[k];
+    if (isPlainObject(p) && isPlainObject(v)) out[k] = deepMergePatch(p, v);
+    else if (Array.isArray(p) && Array.isArray(v)) out[k] = mergeArrayById(p, v);
+    else out[k] = v;
+  }
+  return out;
+}
+
 /**
  * 共享基类：连 MQTT、订阅 device/<serial>/report、维护合并后的 print 状态并回调。
  */
@@ -114,8 +159,16 @@ class BambuMQTTBase {
       console.log('[bambu-mqtt] print:', JSON.stringify(print));
     }
 
-    // 报文为增量更新，合并进最新状态
-    this._latest = { ...this._latest, ...print, connected: true };
+    // 报文为增量更新，合并进最新状态。ams / vt_tray 是嵌套子树且增量帧常只带部分字段，
+    // 需深合并保住 tray_now / tray_color 等已知值（否则耗材颜色会周期性丢失，见上方注释）。
+    const prev = this._latest;
+    this._latest = { ...prev, ...print, connected: true };
+    if (isPlainObject(print.ams)) {
+      this._latest.ams = deepMergePatch(prev.ams, print.ams);
+    }
+    if (isPlainObject(print.vt_tray)) {
+      this._latest.vt_tray = deepMergePatch(prev.vt_tray, print.vt_tray);
+    }
 
     // 「本次终止是否为用户取消」的持久标记。取消事件是瞬时的（只在某一帧带 command=print_canceled），
     // 但取消后 gcode_state=FAILED 会一直残留到下次开印。若不持久记住「这是取消而非故障」，熊猫会
