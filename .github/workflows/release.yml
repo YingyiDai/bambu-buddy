@@ -60,11 +60,14 @@ jobs:
           name: mac-dist
           # zip + latest-mac.yml + blockmap 是应用内自动更新（electron-updater）的依赖：
           # 老版本应用读 latest-mac.yml 找到 zip 下载安装。缺了它们应用内更新即失效。
+          # dmg.blockmap 排除：mac 更新只走 zip，dmg 的增量索引用不上（构建侧已
+          # writeUpdateInfo:false 不再生成，这里兜底），少一个资产让 Release 页更清爽。
           path: |
             dist/*.dmg
             dist/*.zip
             dist/*.blockmap
             dist/latest-mac.yml
+            !dist/*.dmg.blockmap
           if-no-files-found: error
 
   build-win:
@@ -108,8 +111,9 @@ jobs:
           # Release 不存在则创建（带自动生成说明；已存在则跳过，保留手写说明）
           gh release create "$TAG" --repo "$REPO" --title "Bambu Buddy $TAG" --generate-notes || true
           # 上传/覆盖 mac + win 安装包，以及应用内自动更新所需的 zip / latest*.yml / blockmap
+          # （dmg.blockmap 除外：mac 更新只走 zip，用不上）
           find artifacts -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.zip' \
-            -o -name '*.yml' -o -name '*.blockmap' \) -print0 \
+            -o -name '*.yml' -o -name '*.blockmap' \) ! -name '*.dmg.blockmap' -print0 \
             | xargs -0 gh release upload "$TAG" --repo "$REPO" --clobber
           echo "=== $TAG 资产 ==="
           gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name'
