@@ -21,7 +21,7 @@ const STRINGS = {
     'label.remainTime': '剩余{time}',
     // 预计完成时刻（本机时区，如「完成 14:30」），由渲染层用 remainMins + 本机时间算出。
     'label.finishTime': '完成 {time}',
-    'label.changingFilament': '换料',
+    'label.changingFilament': '换料中',
     'label.paused': '用户暂停',
     'label.paused.generic': '已暂停',
     'label.paused.runout': '暂停（耗材用尽）',
@@ -45,7 +45,7 @@ const STRINGS = {
     'label.stage.1': '自动热床调平',
     'label.stage.2': '预加热热床',
     'label.stage.3': '振动补偿',
-    'label.stage.4': '换料',
+    'label.stage.4': '换料中',
     'label.stage.5': 'M400暂停',
     'label.stage.6': '暂停（耗材用尽）',
     'label.stage.7': '加热喷嘴',
