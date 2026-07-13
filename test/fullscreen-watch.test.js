@@ -5,7 +5,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 
 const { _internals } = require('../src/core/fullscreen-watch');
-const { rectCoversMonitor, decodeHwnd, decideHide, eqPtr } = _internals;
+const { rectCoversMonitor, decodeHwnd, decideHide, eqPtr, anyWindowCoversDisplay } = _internals;
 
 // 两块并排的 1920x1080 显示器：A 在左，B 在右
 const MON_A_RECT = { left: 0, top: 0, right: 1920, bottom: 1080 };
@@ -71,6 +71,42 @@ test('rectCoversMonitor：恰好等于显示器矩形算覆盖，差 1px 不算'
   assert.equal(rectCoversMonitor(MON_A_RECT, MON_A_RECT), true);
   assert.equal(rectCoversMonitor({ left: 1, top: 0, right: 1920, bottom: 1080 }, MON_A_RECT), false);
   assert.equal(rectCoversMonitor({ left: 0, top: 0, right: 1919, bottom: 1080 }, MON_A_RECT), false);
+});
+
+// ── macOS 侧（CGWindowList 枚举 → 纯判定）──
+// 枚举结果为 [{pid, rect}]。判定「有没有非自身窗口盖住熊猫所在屏」，不看图层：菜单栏(24)/
+// Control Center(25) 等系统窗虽在列，但细条状盖不住整屏；演示型全屏可能在高图层，照样能抓。
+const OWN_PID = 4242;
+const R = (l, t, r, b) => ({ left: l, top: t, right: r, bottom: b });
+const MENUBAR = { pid: 426, rect: R(0, 0, 1920, 33) };   // 全宽但仅 33px 高
+const PANDA = { pid: OWN_PID, rect: R(100, 100, 355, 355) }; // 自身，须排除
+
+test('mac：某 app 全屏盖满熊猫所在屏 → 隐藏（哪怕菜单栏/熊猫也在列）', () => {
+  const wins = [PANDA, MENUBAR, { pid: 900, rect: { ...MON_A_RECT } }];
+  assert.equal(anyWindowCoversDisplay(wins, OWN_PID, MON_A_RECT), true);
+});
+
+test('mac：全屏在 A 屏、熊猫在 B 屏 → 不隐藏（多显示器隔离）', () => {
+  const wins = [{ pid: 900, rect: { ...MON_A_RECT } }];
+  assert.equal(anyWindowCoversDisplay(wins, OWN_PID, MON_B_RECT), false);
+});
+
+test('mac：桌面态（只有菜单栏/熊猫，无覆盖窗口）→ 不隐藏', () => {
+  assert.equal(anyWindowCoversDisplay([PANDA, MENUBAR], OWN_PID, MON_A_RECT), false);
+});
+
+test('mac：最大化窗口让出菜单栏(top=33) → 不算全屏 → 不隐藏（真机 Arc 实测形态）', () => {
+  const maximized = { pid: 713, rect: R(0, 33, 1920, 1080) };
+  assert.equal(anyWindowCoversDisplay([maximized], OWN_PID, MON_A_RECT), false);
+});
+
+test('mac：自身进程即便有盖满屏的窗口也须排除（不自我误判）', () => {
+  const wins = [{ pid: OWN_PID, rect: { ...MON_A_RECT } }];
+  assert.equal(anyWindowCoversDisplay(wins, OWN_PID, MON_A_RECT), false);
+});
+
+test('mac：取不到熊猫所在屏矩形 → 不隐藏（安全降级）', () => {
+  assert.equal(anyWindowCoversDisplay([{ pid: 900, rect: { ...MON_A_RECT } }], OWN_PID, null), false);
 });
 
 test('decodeHwnd：8 字节（x64）与 4 字节（ia32）句柄 Buffer 均可解码', () => {

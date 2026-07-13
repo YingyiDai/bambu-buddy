@@ -14,17 +14,31 @@
 // 熊猫会重新出现在游戏画面之上；重新聚焦游戏后 1.5s 内再次隐藏。独占全屏失焦本就会退出
 // 全屏，不受影响。
 //
-// 仅 Windows 生效（macOS 由主窗口的 visibleOnFullScreen:false 覆盖原生全屏 Space，且按
-// Space/显示器天然隔离，无需检测）。koffi 懒加载并 try/catch 兜底：任何平台/加载/调用失败
-// 都安全降级为「永不判为全屏」，绝不影响主流程。out 参数一律传 Buffer 按字节解码（RECT =
-// 4×int32，MONITORINFO = cbSize + 2×RECT + dwFlags），不依赖 koffi 的 struct 编解码。
+// macOS 侧（同样需要主动检测）：主窗口的 visibleOnFullScreen:false 在本 app 里失效——熊猫被
+// setAlwaysOnTop(screen-saver) 顶到 FullScreenAuxiliary 层，连原生全屏 Space 都盖不住；而
+// Preview 幻灯片、视频元素全屏等「演示型全屏」压根不新建 Space，被动方案本就管不着。所以
+// macOS 也走轮询：CGWindowListCopyWindowInfo 取「最前面的普通层窗口」，其矩形盖住熊猫所在
+// 显示器即隐藏。只跟熊猫那块屏的矩形比，别的屏全屏天然不触发（多显示器隔离，同 Windows）。
+//
+// koffi 懒加载并 try/catch 兜底：任何平台/加载/调用失败都安全降级为「永不判为全屏」，绝不
+// 影响主流程。Windows out 参数一律传 Buffer 按字节解码（RECT = 4×int32，MONITORINFO =
+// cbSize + 2×RECT + dwFlags）；macOS 同样手工解码 CFNumber(int32)/CGRect(4×double)，不依赖
+// koffi 的 struct 编解码。CGWindowList 的 bounds 与 Electron Display.bounds 同为「点、左上原
+// 点、主屏 (0,0)」坐标系，可直接比对。
 
 const POLL_MS = 1500; // 全屏进/出不是低延迟场景，1.5s 足够；单次几个系统调用开销可忽略。
 
 const MONITOR_DEFAULTTONEAREST = 2;
 const CLASSNAME_CHARS = 64; // Progman / WorkerW 远短于此，够用
 
+// macOS / CoreGraphics 常量
+const CG_ONSCREEN_ONLY = 1;   // kCGWindowListOptionOnScreenOnly
+const CG_EXCLUDE_DESKTOP = 16; // kCGWindowListExcludeDesktopElements
+const CF_UTF8 = 0x08000100;   // kCFStringEncodingUTF8
+const CF_NUMBER_SINT32 = 3;   // kCFNumberSInt32Type
+
 let native = null;      // 懒加载的 user32 绑定；加载失败为 false（区别于「未尝试」的 null）
+let macNative = null;   // 懒加载的 CoreGraphics/CoreFoundation 绑定；加载失败为 false
 let timer = null;
 let lastHide = false;
 
@@ -46,6 +60,34 @@ function loadNative() {
     };
   } catch (e) {
     console.warn('[fullscreen-watch] koffi 加载失败，全屏自动隐藏在本机不可用：', e && e.message);
+    return null;
+  }
+}
+
+// 懒加载 koffi 并绑定 CoreGraphics/CoreFoundation（macOS）。失败返回 null → 功能降级。
+// 字典键就用它们自己的名字：CGWindowList 的键 kCGWindow* 其 CFString 内容即字面量，故直接
+// 用 CFStringCreateWithCString 造出来，无需读取框架导出的符号。两个键一次造好复用整个生命周期。
+function loadMacNative() {
+  try {
+    const koffi = require('koffi');
+    const CG = koffi.load('/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics');
+    const CF = koffi.load('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation');
+    const b = {
+      CGWindowListCopyWindowInfo: CG.func('CGWindowListCopyWindowInfo', 'void *', ['uint32', 'uint32']),
+      CGRectMakeWithDictionaryRepresentation: CG.func('CGRectMakeWithDictionaryRepresentation', 'bool', ['void *', 'void *']),
+      CFArrayGetCount: CF.func('CFArrayGetCount', 'long', ['void *']),
+      CFArrayGetValueAtIndex: CF.func('CFArrayGetValueAtIndex', 'void *', ['void *', 'long']),
+      CFDictionaryGetValue: CF.func('CFDictionaryGetValue', 'void *', ['void *', 'void *']),
+      CFNumberGetValue: CF.func('CFNumberGetValue', 'bool', ['void *', 'int', 'void *']),
+      CFStringCreateWithCString: CF.func('CFStringCreateWithCString', 'void *', ['void *', 'str', 'uint32']),
+      CFRelease: CF.func('CFRelease', 'void', ['void *']),
+    };
+    b.keyBounds = b.CFStringCreateWithCString(null, 'kCGWindowBounds', CF_UTF8);
+    b.keyPID = b.CFStringCreateWithCString(null, 'kCGWindowOwnerPID', CF_UTF8);
+    if (!b.keyBounds || !b.keyPID) return null;
+    return b;
+  } catch (e) {
+    console.warn('[fullscreen-watch] CoreGraphics 加载失败，全屏自动隐藏在本机不可用：', e && e.message);
     return null;
   }
 }
@@ -79,6 +121,22 @@ function decideHide(snap) {
   if (!rectCoversMonitor(snap.winRect, snap.monRect)) return false;   // 前台没全屏
   if (snap.petMon == null) return true;  // 拿不到熊猫所在显示器 → 保守沿用旧的全局隐藏行为
   return eqPtr(snap.fgMon, snap.petMon); // 只有全屏发生在熊猫那块屏上才隐藏
+}
+
+// macOS 判定：屏上是否存在盖住熊猫所在显示器的「非自身」窗口（= 有 app 在这块屏全屏）。
+// 关键是**不看图层**：原生全屏在 0 层，而 Preview 幻灯片 / 视频元素全屏等「演示型全屏」常在
+// 更高图层——按图层过滤反而会漏掉正是要抓的场景。菜单栏(24)/Control Center(25)/Dock 等系统
+// 窗虽也在列，但它们是细条状、盖不住整屏（rectCoversMonitor 要求 top<=0 且盖满四边），最大化
+// 窗口因让出菜单栏(top=菜单栏高)同样不算——都天然为 false。只跟熊猫那块屏的矩形比，别屏全屏
+// 不会盖住此矩形 → 多显示器天然隔离。排除自身 pid（熊猫窗在 screen-saver 层、设置窗等）。
+// windows: [{ pid, rect }]，rect 为 {left,top,right,bottom} 或 null。取不到熊猫屏矩形则不隐藏。
+function anyWindowCoversDisplay(windows, ownPid, petDisplayRect) {
+  if (!petDisplayRect) return false;
+  for (const w of windows) {
+    if (ownPid != null && w.pid === ownPid) continue;
+    if (w.rect && rectCoversMonitor(w.rect, petDisplayRect)) return true;
+  }
+  return false;
 }
 
 // ── 原生调用包装（各自 try/catch，失败返回 null 交由 decideHide 兜底） ──
@@ -136,20 +194,80 @@ function pollOnce(getPetHwnd) {
   return decideHide(snap);
 }
 
+// ── macOS 原生调用包装（各自 try/catch，失败向「不隐藏」降级） ──
+
+// 取字典里某 CFNumber 键的 int32 值（layer / pid）。
+function cfInt(b, dict, key) {
+  const v = b.CFDictionaryGetValue(dict, key);
+  if (!v) return null;
+  const buf = Buffer.alloc(4);
+  if (!b.CFNumberGetValue(v, CF_NUMBER_SINT32, buf)) return null;
+  return buf.readInt32LE(0);
+}
+
+// 取窗口 bounds（kCGWindowBounds 是 {X,Y,Width,Height} 字典）→ {left,top,right,bottom}。
+function cfRect(b, dict) {
+  const bd = b.CFDictionaryGetValue(dict, b.keyBounds);
+  if (!bd) return null;
+  const out = Buffer.alloc(32); // CGRect = 4 × double（x, y, width, height）
+  if (!b.CGRectMakeWithDictionaryRepresentation(bd, out)) return null;
+  const x = out.readDoubleLE(0), y = out.readDoubleLE(8);
+  const w = out.readDoubleLE(16), h = out.readDoubleLE(24);
+  return { left: x, top: y, right: x + w, bottom: y + h };
+}
+
+// 枚举当前 Space 屏上的窗口，解析出 [{pid, rect}]（不看图层，见 anyWindowCoversDisplay）。
+// OnScreenOnly 只含当前 Space，故别的 Space 的全屏 app 不会被误算。任何失败返回 []。
+function enumWindows(b) {
+  const arr = b.CGWindowListCopyWindowInfo(CG_ONSCREEN_ONLY | CG_EXCLUDE_DESKTOP, 0);
+  if (!arr) return [];
+  try {
+    const n = Number(b.CFArrayGetCount(arr));
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      const dict = b.CFArrayGetValueAtIndex(arr, i);
+      if (!dict) continue;
+      out.push({ pid: cfInt(b, dict, b.keyPID), rect: cfRect(b, dict) });
+    }
+    return out;
+  } finally {
+    b.CFRelease(arr); // Copy 出来的数组归我们所有，必须释放（键在加载期常驻，不在此释放）
+  }
+}
+
+// 单次轮询（macOS）：枚举 → 是否有非自身窗口盖住熊猫所在屏。失败向「不隐藏」降级。
+function pollOnceMac(getPetDisplayRect) {
+  const petRect = getPetDisplayRect ? getPetDisplayRect() : null;
+  if (!petRect) return false;
+  return anyWindowCoversDisplay(enumWindows(macNative), process.pid, petRect);
+}
+
 // 开始轮询。onChange(shouldHide) 仅在判定翻转时回调一次。
-// opts.getPetHwnd：() => Buffer|null，返回熊猫窗口的 getNativeWindowHandle()——
-// 用于把「全屏发生在哪块显示器」与「熊猫在哪块显示器」比对；不传则退化为全局隐藏（旧行为）。
-// 返回是否成功启动（非 Windows / 加载失败 → false，此时功能静默降级）。
+// opts.getPetHwnd（Windows）：() => Buffer|null，熊猫窗口的 getNativeWindowHandle()，用于比对
+//   「全屏在哪块屏」与「熊猫在哪块屏」；不传则退化为全局隐藏。
+// opts.getPetDisplayRect（macOS）：() => {left,top,right,bottom}|null，熊猫所在显示器的矩形
+//   （点坐标，同 CGWindowList），前台窗口盖住它才隐藏；不传则永不隐藏。
+// 返回是否成功启动（不支持的平台 / 加载失败 → false，此时功能静默降级）。
 function start(onChange, opts) {
-  if (process.platform !== 'win32') return false; // macOS 由 visibleOnFullScreen:false 覆盖
-  if (timer) return true;                          // 已在运行
-  if (native == null) native = loadNative() || false;
-  if (!native) return false;
-  const getPetHwnd = opts && opts.getPetHwnd;
+  if (timer) return true; // 已在运行
+  let poll;
+  if (process.platform === 'win32') {
+    if (native == null) native = loadNative() || false;
+    if (!native) return false;
+    const getPetHwnd = opts && opts.getPetHwnd;
+    poll = () => pollOnce(getPetHwnd);
+  } else if (process.platform === 'darwin') {
+    if (macNative == null) macNative = loadMacNative() || false;
+    if (!macNative) return false;
+    const getPetDisplayRect = opts && opts.getPetDisplayRect;
+    poll = () => pollOnceMac(getPetDisplayRect);
+  } else {
+    return false; // 其它平台不支持
+  }
   lastHide = false;
   timer = setInterval(() => {
     let hide;
-    try { hide = pollOnce(getPetHwnd); } catch (_) { return; } // 单次失败跳过本轮
+    try { hide = poll(); } catch (_) { return; } // 单次失败跳过本轮
     if (hide === lastHide) return;
     lastHide = hide;
     try { onChange(hide); } catch (_) { /* 回调异常不影响轮询 */ }
@@ -163,4 +281,7 @@ function stop() {
   lastHide = false;
 }
 
-module.exports = { start, stop, _internals: { rectCoversMonitor, decodeHwnd, decideHide, eqPtr } };
+module.exports = {
+  start, stop,
+  _internals: { rectCoversMonitor, decodeHwnd, decideHide, eqPtr, anyWindowCoversDisplay },
+};
