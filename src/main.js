@@ -608,13 +608,19 @@ function buildMenuTemplate() {
     { label: t(locale, 'tray.settings'),
       click: () => createSettingsWindow('printers') },
     {
-      // 自动检查若发现新版本，这条菜单项常驻显示成「● 有新版本 vX.Y.Z」做安静提示（不弹系统通知）。
-      label: pendingUpdate
-        ? t(locale, 'tray.updateAvailable', { version: pendingUpdate.version })
-        : t(locale, 'tray.checkUpdate'),
-      // 托盘菜单点击后会立即关闭，若在此直接发网络请求，弹结果前的几秒没有任何反馈，像卡死。
-      // 改为打开设置的「关于」页并自动触发页内的检查更新按钮 —— 用户能立刻看到「检查中…」状态与结果。
-      click: () => createSettingsWindow('about', { autoCheckUpdate: true }),
+      // 更新提示的三态（不弹系统通知，全在这条菜单项上安静完成）：
+      //   无新版本 → 「检查更新…」；发现新版本（后台下载中/失败）→ 「新版本 vX ⬆️」；
+      //   已下载就绪 → 「重启并更新到 vX」，点击直接装完重启，一步完成。
+      label: updatePhase === 'downloaded'
+        ? t(locale, 'tray.updateReady', { version: updateVersion })
+        : pendingUpdate
+          ? t(locale, 'tray.updateAvailable', { version: pendingUpdate.version })
+          : t(locale, 'tray.checkUpdate'),
+      // 未就绪时点击不直接发网络请求（托盘菜单关闭后几秒无反馈像卡死），
+      // 而是打开设置的「关于」页并自动触发页内检查 —— 用户能立刻看到「检查中…」状态与结果。
+      click: updatePhase === 'downloaded'
+        ? () => autoUpdater.quitAndInstall()
+        : () => createSettingsWindow('about', { autoCheckUpdate: true }),
     },
     { type: 'separator' },
     {
@@ -709,13 +715,19 @@ async function runAutoUpdateCheck() {
     if (r.error || !r.hasUpdate) return;
     pendingUpdate = { version: r.latestVersion, url: r.releaseUrl };
     rebuildTray();
+    // 发现新版本即后台静默下载（主流桌面应用策略），就绪后托盘项变「重启并更新」。
+    // 失败不打扰：返回值忽略，托盘保持「新版本 ⬆️」，用户仍可走关于页手动路径。
+    await startUpdateDownload();
   } catch { /* 自动检查静默失败，下次再试 */ }
 }
 
-// ---- 应用内自动更新（下载 + 重启安装）----
+// ---- 应用内自动更新（后台下载 + 重启安装）----
 // 「有没有新版本」的检测仍走 core/updater（GitHub API + 系统代理，见 runAutoUpdateCheck / app:checkUpdate）；
-// electron-updater 只负责用户在关于页确认后的下载与安装：读取 Release 附带的 latest*.yml、
-// 校验 sha512、下载安装包（同样走 Electron net → 尊重系统代理），完成后重启安装。
+// electron-updater 负责下载与安装：读取 Release 附带的 latest*.yml、校验 sha512、
+// 下载安装包（同样走 Electron net → 尊重系统代理），完成后重启安装。
+// 下载时机采用主流桌面应用（Chrome / VS Code / Claude Code）的策略：自动检查发现新版本
+// 即后台静默下载，就绪后托盘常驻项变「重启并更新」，用户一步完成；后台下载失败静默，
+// 托盘退回「新版本 ⬆️」提示，由用户走关于页手动下载/发布页兜底。
 // 仅打包后的应用可用（开发模式无安装形态，关于页不展示下载入口）；
 // macOS 依赖 CI 的 Developer ID 签名 + zip 产物，Windows 未签名亦可静默更新。
 let updatePhase = 'idle'; // idle | downloading | downloaded
@@ -728,7 +740,7 @@ function pushUpdateState(payload) {
 
 function setupAutoUpdater() {
   if (!app.isPackaged) return;
-  autoUpdater.autoDownload = false; // 下载须经用户在关于页确认，不后台偷跑流量
+  autoUpdater.autoDownload = false; // 下载统一由 startUpdateDownload 显式发起（自动检查后/手动点击），便于状态管理
   autoUpdater.autoInstallOnAppQuit = true; // 已下载但没点「重启安装」→ 退出时静默完成安装
   autoUpdater.on('download-progress', (p) => {
     updatePercent = Math.round(p.percent || 0);
@@ -738,6 +750,7 @@ function setupAutoUpdater() {
     updatePhase = 'downloaded';
     updateVersion = info.version;
     pushUpdateState({ phase: 'downloaded', version: info.version });
+    rebuildTray(); // 托盘常驻项升级为「重启并更新到 vX」
   });
   // 必须挂 error 监听：electron-updater 以 EventEmitter 抛错，无监听会变成未捕获异常。
   autoUpdater.on('error', (e) => {
@@ -746,21 +759,15 @@ function setupAutoUpdater() {
   });
 }
 
-ipcMain.handle('update:getState', () => ({
-  supported: app.isPackaged,
-  phase: updatePhase,
-  percent: updatePercent,
-  version: updateVersion,
-}));
-
-ipcMain.handle('update:download', async () => {
+// 发起一次后台下载（幂等：下载中/已下载只重推状态不重复发起）。
+// 自动路径（runAutoUpdateCheck）忽略返回值——失败静默；手动路径（update:download）把返回值给关于页展示。
+async function startUpdateDownload() {
   if (!app.isPackaged) return { ok: false, reason: 'unsupported' };
-  // 已在下载/已下载：不重复发起，把当前状态重推一次（设置窗可能刚重开）。
   if (updatePhase === 'downloading') { pushUpdateState({ phase: 'downloading', percent: updatePercent }); return { ok: true }; }
   if (updatePhase === 'downloaded') { pushUpdateState({ phase: 'downloaded', version: updateVersion }); return { ok: true }; }
   try {
     // electron-updater 要求先 checkForUpdates 再 downloadUpdate。它读的是最新 Release 的
-    // latest*.yml；老版本 Release 没有该文件时这里会抛错，前端回退展示「查看发布页」手动下载。
+    // latest*.yml；老版本 Release 没有该文件时这里会抛错，关于页回退展示「查看发布页」手动下载。
     const r = await autoUpdater.checkForUpdates();
     const latest = r && r.updateInfo && r.updateInfo.version;
     if (!latest || compareSemver(app.getVersion(), latest) >= 0) return { ok: false, reason: 'noUpdate' };
@@ -774,7 +781,16 @@ ipcMain.handle('update:download', async () => {
   } catch (e) {
     return { ok: false, reason: 'error', message: humanizeError(e && e.message ? e.message : String(e)) };
   }
-});
+}
+
+ipcMain.handle('update:getState', () => ({
+  supported: app.isPackaged,
+  phase: updatePhase,
+  percent: updatePercent,
+  version: updateVersion,
+}));
+
+ipcMain.handle('update:download', () => startUpdateDownload());
 
 ipcMain.handle('update:install', () => {
   if (updatePhase !== 'downloaded') return { ok: false };
