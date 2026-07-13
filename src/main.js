@@ -17,6 +17,7 @@ const { checkForUpdates } = require('./core/updater');
 const errorCodes = require('./core/bambu-error-codes');
 const fs = require('fs');
 const registry = require('./core/printer-registry');
+const fullscreenWatch = require('./core/fullscreen-watch');
 
 // 走 Electron net 的底层 GET：net 会尊重系统代理（macOS 网络设置 / Clash 系统代理等），
 // 因此在需要代理才能访问 GitHub 的网络里（如中国大陆），检查更新也能连上 api.github.com。
@@ -173,7 +174,10 @@ function createWindow() {
   });
 
   win.setAlwaysOnTop(true, 'screen-saver');
-  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
+  // visibleOnFullScreen 跟随「全屏时自动隐藏」开关：开启（默认）时置 false，macOS 上熊猫
+  // 就不会跟进别的 app 的原生全屏 Space —— 无需任何检测即自动让开（方案1）。
+  // 关闭开关则置 true，恢复「浮在全屏之上」的旧行为。Windows 侧另由 fullscreen-watch 处理。
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: !store.get('hideOnFullscreen', true) });
 
   // 默认点击穿透，鼠标进入实体像素时由渲染层 IPC 关闭（§5.1）
   win.setIgnoreMouseEvents(true, { forward: true });
@@ -187,6 +191,37 @@ function createWindow() {
     pushPetPrefs();
   });
   // 位置记忆在 pet:dragEnd 时保存（§5.3），避免拖拽过程中频繁写盘。
+}
+
+// ── 全屏时自动隐藏熊猫（方案1 + 方案3）──
+// macOS：靠主窗口 setVisibleOnAllWorkspaces 的 visibleOnFullScreen:false 覆盖「原生全屏 Space」，
+//         无需检测（见 createWindow）。
+// Windows：fullscreen-watch 轮询前台全屏态，进入全屏 win.hide()、退出 win.show()。
+// 只恢复「我们自己因全屏而隐的」窗口（hiddenByFullscreen 标记），不与其它显隐逻辑打架。
+let hiddenByFullscreen = false;
+
+function onFullscreenChange(isFullscreen) {
+  if (!win || win.isDestroyed()) return;
+  if (!store.get('hideOnFullscreen', true)) return; // 双保险：开关已关时不动窗口
+  if (isFullscreen) {
+    if (win.isVisible()) { win.hide(); hiddenByFullscreen = true; }
+  } else if (hiddenByFullscreen) {
+    win.show();
+    hiddenByFullscreen = false;
+  }
+}
+
+// 按开关启停：macOS 更新 Space 可见性；Windows 启停轮询；关闭时若正隐着立即恢复显示。
+function applyHideOnFullscreen(enabled) {
+  if (win && !win.isDestroyed()) {
+    win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: !enabled });
+  }
+  if (enabled) {
+    fullscreenWatch.start(onFullscreenChange);
+  } else {
+    fullscreenWatch.stop();
+    if (hiddenByFullscreen && win && !win.isDestroyed()) { win.show(); hiddenByFullscreen = false; }
+  }
 }
 
 // 渲染层上报的标签实际像素宽度：窗口据此加宽以完整显示长标签（不缩字号、不截断）。
@@ -602,6 +637,16 @@ function buildMenuTemplate() {
       click: (mi) => {
         store.set('showInDock', mi.checked);
         applyDockVisibility(mi.checked);
+      },
+    },
+    {
+      // 进入全屏应用（游戏 / 全屏视频 / 演示）时自动隐藏熊猫，退出全屏再出现。
+      label: t(locale, 'tray.hideOnFullscreen'),
+      type: 'checkbox',
+      checked: store.get('hideOnFullscreen', true),
+      click: (mi) => {
+        store.set('hideOnFullscreen', mi.checked);
+        applyHideOnFullscreen(mi.checked);
       },
     },
     { type: 'separator' },
@@ -1164,6 +1209,8 @@ app.whenReady().then(() => {
   // 根据用户偏好决定是否在程序坞（macOS）/任务栏（Windows）显示。
   // 需在 createWindow 之后：Windows 分支要操作宠物窗口的任务栏可见性。
   applyDockVisibility(store.get('showInDock', true));
+  // 全屏时自动隐藏：默认开启。Windows 启动轮询；macOS 已在 createWindow 设好 Space 可见性。
+  applyHideOnFullscreen(store.get('hideOnFullscreen', true));
   if (store.get('showInMenuBar', true)) createTray();
   buildDataSource();
   refreshCloudPrinters();
