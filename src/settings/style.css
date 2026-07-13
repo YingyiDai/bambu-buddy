@@ -529,10 +529,14 @@ select {
 .section[data-section="about"] .row { min-height: 52px; padding-top: 6px; padding-bottom: 6px; }
 .section[data-section="about"] .row-control .btn { padding: 5px 12px; }
 .about-desc { margin: 0 auto; max-width: 540px; font-size: 13px; color: var(--text-dim); line-height: 1.6; white-space: nowrap; }
-.update-status { font-size: 12px; margin: 0 0 16px; padding: 9px 12px; border-radius: var(--radius-sm); }
-.update-status.uptodate  { color: var(--status-online); background: var(--brand-weak); }
-.update-status.available { color: var(--brand); background: var(--brand-weak); }
-.update-status.error     { color: var(--danger); background: var(--danger-weak); }
-.update-status .release-link { color: var(--brand); text-decoration: underline; cursor: pointer; }
+/* 更新提醒内联在「当前版本」行的标签下方（形态同 .row-desc，仅换状态色）；
+   行高由内容自然撑开（.row 无固定高度），不再是页面底部独立横幅（会超出视口看不见）。 */
+.update-status { display: block; font-size: 11px; line-height: 1.4; margin-top: 3px; }
+.update-status.uptodate  { color: var(--status-online); }
+.update-status.available { color: var(--brand); }
+.update-status.error     { color: var(--danger); }
+.update-status .release-link,
+.update-status .download-link,
+.update-status .install-link { color: var(--brand); text-decoration: underline; cursor: pointer; }
 .about-author-link { color: var(--brand); text-decoration: none; cursor: pointer; font-weight: 500; font-size: 13px; }
 .about-author-link:hover { text-decoration: underline; text-underline-offset: 2px; }

@@ -116,10 +116,10 @@ let liveNotifyTimer = null; // MQTT 实时状态 → 设置窗重绘的防抖定
 let playPercent = 0; // 把玩页打印进度（滑杆位置，0–100）
 let pendingUpdate = null; // 自动检查发现的新版本 { version, url }，供托盘菜单常驻高亮
 
-// 自动检查更新的节奏：启动后延迟一次（给网络/系统代理就绪时间），之后每天复查一次。
-// 个人项目更新不频繁，无需更密的轮询。
+// 自动检查更新的节奏：启动后延迟一次（给网络/系统代理就绪时间），之后每 6 小时复查一次。
+// 复查同时也是后台下载失败的自动重试点（见 runAutoUpdateCheck → startUpdateDownload）。
 const AUTO_UPDATE_STARTUP_DELAY_MS = 8000;
-const AUTO_UPDATE_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const AUTO_UPDATE_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 function currentSizePx() {
   return store.get('sizePx', 220);
