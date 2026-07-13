@@ -157,6 +157,9 @@
           <div class="row">
             <div class="row-text">
               <span class="row-label" data-i18n="about.currentVersion">当前版本</span>
+              <!-- 检查结果 / 下载进度 / 重启安装等提醒都内联在本行标签下方，行高自适应撑开；
+                   放页面底部会超出视口高度、不滚动看不见。 -->
+              <span id="updateStatus" class="update-status hidden"></span>
             </div>
             <div class="row-control">
               <span class="row-val" id="aboutCurrentVersion">v0.1.0</span>
@@ -174,7 +177,6 @@
             <div class="row-control"><a id="aboutAuthor" class="about-author-link" href="#">—</a></div>
           </div>
         </div>
-        <p id="updateStatus" class="update-status hidden"></p>
       </section>
 
     </main>
