@@ -117,3 +117,28 @@ jobs:
             | xargs -0 gh release upload "$TAG" --repo "$REPO" --clobber
           echo "=== $TAG 资产 ==="
           gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name'
+      - name: 在说明顶部注入「下载」引导（幂等）
+        # 资产列表混着 yml/zip/blockmap（自动更新依赖），普通用户分不清该下哪个。
+        # 在说明最前面固定给 dmg/exe 两个安装包的直链。幂等：说明里已有该节就跳过，
+        # 故补建/重跑不会重复注入，也不覆盖手写说明里已存在的引导。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ env.TAG_NAME }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          VER="${TAG#v}"                                   # 文件名用不带 v 的版本号
+          BASE="https://github.com/$REPO/releases/download/$TAG"
+          BODY=$(gh release view "$TAG" --repo "$REPO" --json body --jq '.body // ""')
+          if printf '%s' "$BODY" | grep -qF '## 📥 下载'; then
+            echo "下载引导已存在，跳过"; exit 0
+          fi
+          {
+            printf '## 📥 下载\n\n'
+            printf -- '- **macOS（Apple Silicon）**：[Bambu.Buddy-%s-macOS-arm64.dmg](%s/Bambu.Buddy-%s-macOS-arm64.dmg)\n' "$VER" "$BASE" "$VER"
+            printf -- '- **Windows（x64）**：[Bambu.Buddy-%s-Windows-x64.Setup.exe](%s/Bambu.Buddy-%s-Windows-x64.Setup.exe)\n\n' "$VER" "$BASE" "$VER"
+            printf '> 资产列表中的其余文件（`latest*.yml` / `*.zip` / `*.blockmap`）为应用内自动更新所需，普通用户无需理会。\n\n'
+            printf -- '---\n\n'
+            printf '%s' "$BODY"
+          } | gh release edit "$TAG" --repo "$REPO" --notes-file -
+          echo "已注入下载引导"
