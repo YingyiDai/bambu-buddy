@@ -55,9 +55,12 @@ const CONFIRM_ICON = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none
 
 // 型号 → 照片：归一化型号字符串后匹配 assets/printer 下的文件名。
 // 顺序敏感：更具体的关键字（a1mini / x1carbon）必须排在宽泛的（a1 / x1）之前。
+// 兜底：型号缺失/未识别（多见于本地打印机——绑定表单不填型号）时统一用 X1C 照片，
+// 避免退化成系统 emoji（Windows 上是超大卡通打印机，且不居中）。
+const FALLBACK_PRINTER_IMG = '../../assets/printer/X1C.png';
 function printerImage(model) {
   const norm = String(model || '').toLowerCase().replace(/bambu\s*lab/g, '').replace(/[^a-z0-9]/g, '');
-  if (!norm) return null;
+  if (!norm) return FALLBACK_PRINTER_IMG;
   const table = [
     ['x1carbon', 'X1C'], ['x1c', 'X1C'], ['x1e', 'X1E'], ['x1', 'X1C'],
     ['p1s', 'P1S'], ['p2s', 'P2S'],
@@ -65,7 +68,7 @@ function printerImage(model) {
     ['h2d', 'H2D'], ['h2s', 'H2S'], ['h2c', 'h2c'], ['x2d', 'X2D'],
   ];
   for (const [k, img] of table) if (norm.includes(k)) return '../../assets/printer/' + img + '.png';
-  return null;
+  return FALLBACK_PRINTER_IMG;
 }
 // 连接状态类别（快照）——与「是否当前」无关。
 function connCls(p) {
@@ -181,10 +184,9 @@ function buildPrinterCard(p) {
       '<div class="pcard-actions"></div>' +
     '</div>' +
     '<div class="pcard-pop"></div>';
-  const img = printerImage(p.model);
-  card.querySelector('.pcard-pop').innerHTML = img
-    ? '<img class="pcard-img" src="' + img + '" alt="" draggable="false" />'
-    : '<div class="pcard-img pcard-img-fallback">🖨️</div>';
+  const img = printerImage(p.model); // 恒有值：未识别型号回退到 X1C 照片
+  card.querySelector('.pcard-pop').innerHTML =
+    '<img class="pcard-img" src="' + img + '" alt="" draggable="false" />';
   return card;
 }
 

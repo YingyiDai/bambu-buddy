@@ -344,7 +344,6 @@ select {
   transform: translate(var(--px), var(--py)) scale(1.58);
   filter: drop-shadow(0 16px 16px rgba(0, 0, 0, 0.26));
 }
-.pcard-img-fallback { font-size: 72px; opacity: 0.5; }
 .pcard-body { padding: 12px 14px 6px; flex: 1; min-width: 0; }
 .pcard-namerow { display: flex; align-items: center; gap: 4px; }
 .pcard-namerow .pcard-name { flex: 1; min-width: 0; }
