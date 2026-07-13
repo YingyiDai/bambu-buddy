@@ -7,8 +7,9 @@
 #      可选 ref（构建用的 commit，默认即 tag；补建旧版时可填 main）
 #
 # 产物命名（见 package.json build.artifactName）：
-#   macOS arm64 → Bambu.Buddy-<ver>-arm64.dmg（ad-hoc 签名）
-#   Windows x64 → Bambu.Buddy.Setup.<ver>.exe（未签名）
+#   macOS arm64 → Bambu.Buddy-<ver>-macOS-arm64.dmg / .zip（Developer ID 签名 + 公证）
+#   Windows x64 → Bambu.Buddy-<ver>-Windows-x64.Setup.exe（未签名）
+# 另有应用内自动更新所需的 latest-mac.yml / latest.yml / *.blockmap（见 RELEASING.md「产物」）。
 
 name: release
 
@@ -57,7 +58,13 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: mac-dist
-          path: dist/*.dmg
+          # zip + latest-mac.yml + blockmap 是应用内自动更新（electron-updater）的依赖：
+          # 老版本应用读 latest-mac.yml 找到 zip 下载安装。缺了它们应用内更新即失效。
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.blockmap
+            dist/latest-mac.yml
           if-no-files-found: error
 
   build-win:
@@ -75,7 +82,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: win-dist
-          path: dist/*.exe
+          # latest.yml + blockmap 是应用内自动更新（electron-updater）的依赖，同 mac 说明。
+          path: |
+            dist/*.exe
+            dist/*.blockmap
+            dist/latest.yml
           if-no-files-found: error
 
   release:
@@ -96,8 +107,9 @@ jobs:
           set -e
           # Release 不存在则创建（带自动生成说明；已存在则跳过，保留手写说明）
           gh release create "$TAG" --repo "$REPO" --title "Bambu Buddy $TAG" --generate-notes || true
-          # 上传/覆盖 mac + win 安装包
-          find artifacts -type f \( -name '*.dmg' -o -name '*.exe' \) -print0 \
+          # 上传/覆盖 mac + win 安装包，以及应用内自动更新所需的 zip / latest*.yml / blockmap
+          find artifacts -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.zip' \
+            -o -name '*.yml' -o -name '*.blockmap' \) -print0 \
             | xargs -0 gh release upload "$TAG" --repo "$REPO" --clobber
           echo "=== $TAG 资产 ==="
           gh release view "$TAG" --repo "$REPO" --json assets --jq '.assets[].name'

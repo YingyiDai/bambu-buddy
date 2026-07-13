@@ -584,8 +584,44 @@ async function loadAbout() {
   if (!updateChecking) {
     el('updateStatus').classList.add('hidden');
     el('checkUpdateBtn').textContent = t('settings.checkUpdate'); el('checkUpdateBtn').disabled = false;
+    // 设置窗关闭期间下载仍在主进程进行：重开关于页时恢复「下载中/已下载」展示。
+    const upd = await window.bambu.getUpdateState();
+    if (upd.phase !== 'idle') renderUpdateState(upd);
   }
 }
+
+// ── 应用内更新（下载 + 重启安装）──
+// 最近一次检查得到的发布页链接：下载失败回退「查看发布页」手动下载时用。
+let lastReleaseUrl = null;
+
+function releaseLinkHtml() {
+  return '<a href="#" class="release-link">' + t('settings.viewRelease') + '</a>';
+}
+function bindReleaseLink(container) {
+  const a = container.querySelector('.release-link');
+  if (a) a.addEventListener('click', (e) => { e.preventDefault(); if (lastReleaseUrl) window.bambu.openExternal(lastReleaseUrl); });
+}
+
+// 渲染主进程推送/查询到的下载状态：下载中（进度）→ 已下载（重启安装）→ 失败（回退手动下载）。
+function renderUpdateState(st) {
+  if (!st || st.phase === 'idle') return;
+  const status = el('updateStatus');
+  status.classList.remove('hidden');
+  if (st.phase === 'downloading') {
+    status.className = 'update-status available';
+    status.textContent = t('settings.downloadingUpdate', { percent: st.percent || 0 });
+  } else if (st.phase === 'downloaded') {
+    status.className = 'update-status available';
+    status.innerHTML = t('settings.updateDownloadedHtml', { version: st.version || '' })
+      + ' · <a href="#" class="install-link">' + t('settings.restartToInstall') + '</a>';
+    status.querySelector('.install-link').addEventListener('click', (e) => { e.preventDefault(); window.bambu.installUpdate(); });
+  } else if (st.phase === 'error') {
+    status.className = 'update-status error';
+    status.innerHTML = escapeHtml(t('settings.updateDownloadError', { message: st.message || '' })) + ' · ' + releaseLinkHtml();
+    bindReleaseLink(status);
+  }
+}
+window.bambu.onUpdateState(renderUpdateState);
 
 async function runUpdateCheck() {
   if (updateChecking) return;              // 防重入
@@ -597,9 +633,25 @@ async function runUpdateCheck() {
   status.classList.remove('hidden');
   if (result.error) { status.className = 'update-status error'; status.textContent = result.error; }
   else if (result.hasUpdate) {
-    status.className = 'update-status available';
-    status.innerHTML = t('settings.updateAvailableHtml', { version: result.latestVersion }) + ' · <a href="#" class="release-link">' + t('settings.viewRelease') + '</a>';
-    status.querySelector('.release-link').addEventListener('click', (e) => { e.preventDefault(); window.bambu.openExternal(result.releaseUrl); });
+    lastReleaseUrl = result.releaseUrl;
+    const upd = await window.bambu.getUpdateState();
+    if (upd.phase !== 'idle') {
+      // 已有一次下载在进行/完成（比如托盘再次触发检查）：直接展示该状态，不重复给下载入口。
+      renderUpdateState(upd);
+    } else {
+      status.className = 'update-status available';
+      // 打包应用给「下载更新」应用内更新入口；开发模式只保留「查看发布页」。
+      const dl = upd.supported ? '<a href="#" class="download-link">' + t('settings.downloadUpdate') + '</a> · ' : '';
+      status.innerHTML = t('settings.updateAvailableHtml', { version: result.latestVersion }) + ' · ' + dl + releaseLinkHtml();
+      const d = status.querySelector('.download-link');
+      if (d) d.addEventListener('click', async (e) => {
+        e.preventDefault();
+        const r = await window.bambu.downloadUpdate();
+        // 状态推送（下载中/失败）由 onUpdateState 渲染；这里只兜「发起即失败」且无推送的情形。
+        if (!r.ok) renderUpdateState({ phase: 'error', message: r.message || t('settings.updateError') });
+      });
+      bindReleaseLink(status);
+    }
   } else { status.className = 'update-status uptodate'; status.textContent = t('settings.upToDate'); }
   btn.disabled = false; btn.textContent = t('settings.checkUpdate');
   updateChecking = false;

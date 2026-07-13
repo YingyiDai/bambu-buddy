@@ -13,7 +13,8 @@ const { MockDataSource } = require('./core/mock');
 const { BambuCloudDataSource, BambuLanDataSource, classifyLanProbe } = require('./core/bambu-mqtt');
 const bambuAuth = require('./core/bambu-auth');
 const { t, STRINGS } = require('./config/locales');
-const { checkForUpdates } = require('./core/updater');
+const { checkForUpdates, compareSemver, humanizeError } = require('./core/updater');
+const { autoUpdater } = require('electron-updater');
 const errorCodes = require('./core/bambu-error-codes');
 const fs = require('fs');
 const registry = require('./core/printer-registry');
@@ -711,6 +712,76 @@ async function runAutoUpdateCheck() {
   } catch { /* 自动检查静默失败，下次再试 */ }
 }
 
+// ---- 应用内自动更新（下载 + 重启安装）----
+// 「有没有新版本」的检测仍走 core/updater（GitHub API + 系统代理，见 runAutoUpdateCheck / app:checkUpdate）；
+// electron-updater 只负责用户在关于页确认后的下载与安装：读取 Release 附带的 latest*.yml、
+// 校验 sha512、下载安装包（同样走 Electron net → 尊重系统代理），完成后重启安装。
+// 仅打包后的应用可用（开发模式无安装形态，关于页不展示下载入口）；
+// macOS 依赖 CI 的 Developer ID 签名 + zip 产物，Windows 未签名亦可静默更新。
+let updatePhase = 'idle'; // idle | downloading | downloaded
+let updatePercent = 0; // 最近一次下载进度（设置窗重开时恢复展示用）
+let updateVersion = null; // 已下载/下载中的目标版本号
+
+function pushUpdateState(payload) {
+  if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('update:state', payload);
+}
+
+function setupAutoUpdater() {
+  if (!app.isPackaged) return;
+  autoUpdater.autoDownload = false; // 下载须经用户在关于页确认，不后台偷跑流量
+  autoUpdater.autoInstallOnAppQuit = true; // 已下载但没点「重启安装」→ 退出时静默完成安装
+  autoUpdater.on('download-progress', (p) => {
+    updatePercent = Math.round(p.percent || 0);
+    pushUpdateState({ phase: 'downloading', percent: updatePercent });
+  });
+  autoUpdater.on('update-downloaded', (info) => {
+    updatePhase = 'downloaded';
+    updateVersion = info.version;
+    pushUpdateState({ phase: 'downloaded', version: info.version });
+  });
+  // 必须挂 error 监听：electron-updater 以 EventEmitter 抛错，无监听会变成未捕获异常。
+  autoUpdater.on('error', (e) => {
+    if (updatePhase === 'downloading') { updatePhase = 'idle'; updatePercent = 0; }
+    pushUpdateState({ phase: 'error', message: humanizeError(e && e.message ? e.message : String(e)) });
+  });
+}
+
+ipcMain.handle('update:getState', () => ({
+  supported: app.isPackaged,
+  phase: updatePhase,
+  percent: updatePercent,
+  version: updateVersion,
+}));
+
+ipcMain.handle('update:download', async () => {
+  if (!app.isPackaged) return { ok: false, reason: 'unsupported' };
+  // 已在下载/已下载：不重复发起，把当前状态重推一次（设置窗可能刚重开）。
+  if (updatePhase === 'downloading') { pushUpdateState({ phase: 'downloading', percent: updatePercent }); return { ok: true }; }
+  if (updatePhase === 'downloaded') { pushUpdateState({ phase: 'downloaded', version: updateVersion }); return { ok: true }; }
+  try {
+    // electron-updater 要求先 checkForUpdates 再 downloadUpdate。它读的是最新 Release 的
+    // latest*.yml；老版本 Release 没有该文件时这里会抛错，前端回退展示「查看发布页」手动下载。
+    const r = await autoUpdater.checkForUpdates();
+    const latest = r && r.updateInfo && r.updateInfo.version;
+    if (!latest || compareSemver(app.getVersion(), latest) >= 0) return { ok: false, reason: 'noUpdate' };
+    updatePhase = 'downloading';
+    updatePercent = 0;
+    updateVersion = latest;
+    pushUpdateState({ phase: 'downloading', percent: 0 });
+    // 失败经由上面的 error 监听推给设置窗；这里兜掉 rejection 防未处理异常。
+    autoUpdater.downloadUpdate().catch(() => { /* 已由 error 事件处理 */ });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: 'error', message: humanizeError(e && e.message ? e.message : String(e)) };
+  }
+});
+
+ipcMain.handle('update:install', () => {
+  if (updatePhase !== 'downloaded') return { ok: false };
+  autoUpdater.quitAndInstall();
+  return { ok: true };
+});
+
 // ---- Bambu 连接设置窗 ----
 function createSettingsWindow(section = 'printers', opts = {}) {
   const { autoCheckUpdate = false } = opts;
@@ -1219,6 +1290,8 @@ app.whenReady().then(() => {
   // 自动检查更新：启动后延迟一次，之后每天复查一次（发现新版本仅在托盘菜单常驻高亮）。
   setTimeout(runAutoUpdateCheck, AUTO_UPDATE_STARTUP_DELAY_MS);
   setInterval(runAutoUpdateCheck, AUTO_UPDATE_INTERVAL_MS);
+  // 应用内更新（下载 + 重启安装）事件接线；开发模式内部直接跳过。
+  setupAutoUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();

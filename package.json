@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "electron-store": "^8.2.0",
+    "electron-updater": "^6.8.9",
     "koffi": "^3.1.1",
     "mqtt": "^5.10.1"
   },
@@ -43,7 +44,10 @@
     ],
     "mac": {
       "category": "public.app-category.utilities",
-      "target": "dmg",
+      "target": [
+        "dmg",
+        "zip"
+      ],
       "artifactName": "Bambu.Buddy-${version}-macOS-${arch}.${ext}",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
@@ -65,6 +69,9 @@
       "allowToChangeInstallationDirectory": true
     },
     "afterSign": "build/adhoc-sign.js",
-    "afterAllArtifactBuild": "build/notarize-dmg.js"
+    "afterAllArtifactBuild": "build/notarize-dmg.js",
+    "publish": {
+      "provider": "github"
+    }
   }
 }
