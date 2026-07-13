@@ -178,25 +178,36 @@ function insideHotzone(px, py) {
 }
 
 // 交互（点击穿透、光标、拖拽）
+// 核心：窗口默认点击穿透（main.js 启动即 setIgnoreMouseEvents(true,{forward:true})，故穿透
+// 态下仍收到转发的 mousemove）。只有指针落在顶部抓手区（insideHotzone）时才关闭穿透、
+// 响应拖动/右键；离开抓手立即恢复穿透。这样熊猫身体不再遮挡下层工具的点击。
+const grabHandleEl = document.getElementById('grabHandle');
 let dragging = false;
 let cursorInHotzone = false;
+let lastInteractive = false; // 去重：仅在穿透态变化时发 IPC，避免每帧 mousemove 刷屏
+
+function applyInteractive(on) {
+  if (on === lastInteractive) return;
+  lastInteractive = on;
+  window.pet.setInteractive(on);
+}
 
 function updateCursor(e) {
   const inZone = insideHotzone(e.offsetX, e.offsetY);
   if (inZone === cursorInHotzone) return;
   cursorInHotzone = inZone;
-  if (dragging) return; // 拖拽中不切换光标
+  grabHandleEl.classList.toggle('show', inZone); // 抓手提示随命中区淡入/淡出
+  if (dragging) return; // 拖拽中不切换光标/穿透（拖出抓手也保持可交互，靠 dragTimer 跟随光标）
+  applyInteractive(inZone); // 进入抓手→关闭穿透可交互；离开→恢复穿透，点击落到下层
   petEl.style.cursor = inZone ? 'grab' : 'default';
 }
 
-petEl.addEventListener('mouseenter', (e) => {
-  window.pet.setInteractive(true);
-  updateCursor(e);
-});
+petEl.addEventListener('mouseenter', updateCursor);
 petEl.addEventListener('mousemove', updateCursor);
 petEl.addEventListener('mouseleave', () => {
   cursorInHotzone = false;
-  if (!dragging) window.pet.setInteractive(false);
+  grabHandleEl.classList.remove('show');
+  if (!dragging) { applyInteractive(false); petEl.style.cursor = 'default'; }
 });
 
 petEl.addEventListener('mousedown', (e) => {
@@ -210,9 +221,15 @@ petEl.addEventListener('mousedown', (e) => {
 window.addEventListener('mouseup', () => {
   if (!dragging) return;
   dragging = false;
+  // 拖拽落定：据当前是否仍在抓手区恢复光标与穿透态
   petEl.style.cursor = cursorInHotzone ? 'grab' : 'default';
+  applyInteractive(cursorInHotzone);
   window.pet.dragEnd();
 });
-petEl.addEventListener('contextmenu', (e) => { e.preventDefault(); window.pet.showMenu(); });
+petEl.addEventListener('contextmenu', (e) => {
+  if (!insideHotzone(e.offsetX, e.offsetY)) return; // 抓手外的右键让它穿透到下层
+  e.preventDefault();
+  window.pet.showMenu();
+});
 
 video.request('idle.webm');

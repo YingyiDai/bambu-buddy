@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "electron-store": "^8.2.0",
+    "koffi": "^3.1.1",
     "mqtt": "^5.10.1"
   },
   "devDependencies": {
@@ -35,6 +36,10 @@
       "assets/image/**",
       "!assets/source/**",
       "!assets/icon/AppIcon.win.png"
+    ],
+    "asarUnpack": [
+      "**/node_modules/koffi/**",
+      "**/node_modules/@koromix/**"
     ],
     "mac": {
       "category": "public.app-category.utilities",
