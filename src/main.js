@@ -203,14 +203,28 @@ function createWindow() {
 // 只恢复「我们自己因全屏而隐的」窗口（hiddenByFullscreen 标记），不与其它显隐逻辑打架。
 let hiddenByFullscreen = false;
 
+// 用户从托盘「显示熊猫」手动隐藏的意图（仅内存，不持久化——每次启动都默认显示）。
+// 窗口可见 = 用户想显示 且 未被全屏自动隐藏；两者独立，互不覆盖。
+let userHidPanda = false;
+
 function onFullscreenChange(shouldHide) {
   if (!win || win.isDestroyed()) return;
   if (!store.get('hideOnFullscreen', true)) return; // 双保险：开关已关时不动窗口
   if (shouldHide) {
     if (win.isVisible()) { win.hide(); hiddenByFullscreen = true; }
   } else if (hiddenByFullscreen) {
-    win.show();
     hiddenByFullscreen = false;
+    if (!userHidPanda) win.show(); // 用户主动隐藏的熊猫，退出全屏也不自作主张地恢复
+  }
+}
+
+// 托盘「显示熊猫」开关：只反映用户意图，隐藏中的全屏（hiddenByFullscreen）不被它当作可显。
+function applyPetUserVisibility() {
+  if (!win || win.isDestroyed()) return;
+  if (userHidPanda) {
+    if (win.isVisible()) win.hide();
+  } else if (!hiddenByFullscreen && !win.isVisible()) {
+    win.show(); // 全屏正压着时不弹出，交给 onFullscreenChange 在退出全屏时恢复
   }
 }
 
@@ -655,6 +669,17 @@ function buildMenuTemplate() {
       click: (mi) => {
         store.set('showInDock', mi.checked);
         applyDockVisibility(mi.checked);
+      },
+    },
+    { type: 'separator' },
+    {
+      // 临时显示/隐藏熊猫，不必退出整个应用。文字随当前状态翻转（显示中→「隐藏熊猫」）。
+      // 点击后 rebuildTray() 让托盘菜单也刷新，与熊猫右键菜单（每次弹出重建）保持同步。
+      label: t(locale, userHidPanda ? 'tray.showPanda' : 'tray.hidePanda'),
+      click: () => {
+        userHidPanda = !userHidPanda;
+        applyPetUserVisibility();
+        rebuildTray();
       },
     },
     {
