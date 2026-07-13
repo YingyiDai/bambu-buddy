@@ -4,7 +4,7 @@ const test = require('node:test');
 const assert = require('node:assert');
 const fs = require('node:fs');
 const path = require('node:path');
-const { clampToVisible, petWindowBounds } = require('../src/core/window-position');
+const { clampToVisible, petWindowBounds, quantizeWinWidth } = require('../src/core/window-position');
 
 const PRIMARY = { workArea: { x: 0, y: 0, width: 1920, height: 1080 } };
 const SECONDARY = { workArea: { x: 1920, y: 0, width: 1920, height: 1080 } };
@@ -85,6 +85,39 @@ test('幂等：同一 center+width+sizePx 反复调用得完全相同结果', ()
     petWindowBounds(center, 313, 220),
     petWindowBounds(center, 313, 220),
   );
+});
+
+// ── quantizeWinWidth：标签加宽量化到台阶，消除自动播放时熊猫抖动 ──
+
+test('标签窄于熊猫方形：宽度恒为 base，不受标签像素抖动影响', () => {
+  const base = 220;
+  for (const px of [0, 100, 180, 219, 220]) {
+    assert.strictEqual(quantizeWinWidth(px, base, 40), base);
+  }
+});
+
+test('回归：同一台阶内的标签宽反复变化 → 目标宽不变（不触发 setBounds、熊猫不抖）', () => {
+  const base = 220;
+  const step = 40;
+  // 剩余时间/进度快速变化时标签像素在 [221,260] 台阶内来回抖，量化后目标宽恒为 260。
+  let last = null;
+  for (const px of [221, 235, 228, 259, 240, 260, 233]) {
+    const w = quantizeWinWidth(px, base, step);
+    assert.strictEqual(w, 260, '同台阶内目标宽恒定');
+    if (last != null) assert.strictEqual(w, last, '相邻两次相同 → applyWinWidth 不会 setBounds');
+    last = w;
+  }
+});
+
+test('跨台阶才加宽一步，且台阶必不截断标签（结果 ≥ 标签宽）', () => {
+  const base = 220;
+  const step = 40;
+  assert.strictEqual(quantizeWinWidth(221, base, step), 260);
+  assert.strictEqual(quantizeWinWidth(260, base, step), 260);
+  assert.strictEqual(quantizeWinWidth(261, base, step), 300);
+  for (const px of [221, 250, 261, 305, 340]) {
+    assert.ok(quantizeWinWidth(px, base, step) >= px, '目标宽 ≥ 标签宽，标签不被截断');
+  }
 });
 
 // ── 源码防线：结构性杜绝「熊猫越变越大 / 右移 / 上移 / 走位」这类累积缺陷复发 ──

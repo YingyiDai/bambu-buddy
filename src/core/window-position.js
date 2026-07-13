@@ -68,4 +68,21 @@ function petWindowBounds(center, targetWidth, sizePx) {
   };
 }
 
-module.exports = { clampToVisible, petWindowBounds };
+/**
+ * 目标窗口宽度：标签比熊猫方形（base）宽时，把「加宽量」量化到 step 台阶；否则就用 base。
+ * 纯函数、单调台阶。为何量化：探索模式自动播放里剩余时间/进度变化很快，标签像素宽随之
+ * 逐像素抖动；若窗口逐像素跟随，熊猫（居中于窗口）会因每次 setBounds 的重绘时序露出一帧
+ * 位移，观感就是「熊猫一直在跳」。量化后同一台阶内的标签变化得到相同宽度 —— applyWinWidth
+ * 里 bounds 相等便直接返回、根本不 setBounds，只有跨台阶才加宽一次，抖动几乎消失。
+ * 结果落在 [max(base,labelPx), labelPx+step)，故标签必不被截断；多出的透明留白点击穿透。
+ * @param {number} labelPx - 渲染层量出的标签实际像素宽（含留白）
+ * @param {number} base - 宽度下限 = max(熊猫方形 sizePx, 透明窗口安全下限)
+ * @param {number} step - 量化台阶像素
+ * @returns {number} 目标窗口宽度
+ */
+function quantizeWinWidth(labelPx, base, step) {
+  if (!(labelPx > base)) return base;
+  return base + Math.ceil((labelPx - base) / step) * step;
+}
+
+module.exports = { clampToVisible, petWindowBounds, quantizeWinWidth };

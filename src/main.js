@@ -52,7 +52,7 @@ function netGetRaw(host, path) {
     request.end();
   });
 }
-const { clampToVisible, petWindowBounds } = require('./core/window-position');
+const { clampToVisible, petWindowBounds, quantizeWinWidth } = require('./core/window-position');
 
 const store = new Store();
 
@@ -206,11 +206,15 @@ let petCenter = null;
 // 两侧多出的透明留白与「标签加宽」共用同一机制 —— 点击穿透，不影响交互/热区/位置记忆。
 const MIN_WIN_WIDTH = 170;
 
-// 目标窗口宽度：至少容纳熊猫方形（sizePx），标签更宽时按标签宽，且不低于透明窗口安全下限。
-// 窗口只在**水平**方向加宽；高度恒为 sizePx。两侧多出的透明留白点击穿透、可溢出屏幕边缘，
-// 熊猫始终居中方形（CSS width:100vh），故窗口变宽不改变熊猫位置/大小/热区。
+// 标签比熊猫方形还宽时，窗口加宽量量化到该台阶（见 quantizeWinWidth 注释：消除自动播放
+// 时剩余时间快速变化导致的熊猫抖动）。
+const LABEL_WIDTH_STEP = 40;
+
+// 目标窗口宽度：至少容纳熊猫方形（sizePx），标签更宽时按标签宽（量化到台阶），且不低于
+// 透明窗口安全下限。窗口只在**水平**方向加宽；高度恒为 sizePx。两侧多出的透明留白点击
+// 穿透、可溢出屏幕边缘，熊猫始终居中方形（CSS width:100vh），故窗口变宽不改变熊猫位置/大小/热区。
 function targetWinWidth() {
-  return Math.max(currentSizePx(), labelPx, MIN_WIN_WIDTH);
+  return quantizeWinWidth(labelPx, Math.max(currentSizePx(), MIN_WIN_WIDTH), LABEL_WIDTH_STEP);
 }
 
 // ★ 窗口 bounds 的**唯一常规写入口**（choke point）。凡「熊猫应待在原地、仅尺寸/标签
@@ -1041,11 +1045,35 @@ ipcMain.on('pet:dragEnd', () => {
 });
 
 // 渲染层量出标签实际宽度 → 按需加宽窗口（保持中心不动，熊猫不移动）。
+// 变宽立即生效（长标签要能完整显示，否则截断）；变窄延迟落定（滞回）。为何滞回、为何要
+// 「久」：探索模式自动播放里剩余时间/完成时间/进度会同时快速跳变，标签宽度既可能在某个
+// 台阶边界±抖动（量化后目标宽 260↔300 反复拉锯），也会在「打印中 ↔ 换料中」之间来回切
+// （宽↔窄）。只要一次变宽在延时窗口内到来，就撤销待收窄、窗口维持在近期较宽值——熊猫不动。
+// 因此延时必须 **大于数据推送/自动播放的刷新间隔**（自动播放 1.5s/帧、真机 MQTT 约 1s/帧），
+// 这样相邻两帧间的抖动/短暂换料插帧都会被下一帧的变宽吃掉，绝不触发收窄；只有标签真正稳定
+// 地变短（如打印结束回到空闲）超过该时长，才收窄一次落定。取 2000ms 留足余量。
+const LABEL_SHRINK_DELAY_MS = 2000;
+let labelShrinkTimer = null;
 ipcMain.on('pet:labelWidth', (_e, px) => {
   const v = Math.max(0, Math.round(Number(px) || 0));
-  if (v === labelPx) return;
-  labelPx = v;
-  applyWinWidth();
+  if (v > labelPx) {
+    // 变宽：取消待收窄，立即加宽
+    if (labelShrinkTimer) { clearTimeout(labelShrinkTimer); labelShrinkTimer = null; }
+    labelPx = v;
+    applyWinWidth();
+  } else if (v < labelPx) {
+    // 变窄：重置延时；快速抖动期间不断被推后，故不会反复收窄
+    if (labelShrinkTimer) clearTimeout(labelShrinkTimer);
+    labelShrinkTimer = setTimeout(() => {
+      labelShrinkTimer = null;
+      labelPx = v;
+      applyWinWidth();
+    }, LABEL_SHRINK_DELAY_MS);
+  } else if (labelShrinkTimer) {
+    // 标签稳定回到当前宽度：撤销待收窄
+    clearTimeout(labelShrinkTimer);
+    labelShrinkTimer = null;
+  }
 });
 
 // ---- 偏好设置 IPC ----
