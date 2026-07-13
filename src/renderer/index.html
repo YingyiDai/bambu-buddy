@@ -8,8 +8,10 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <!-- 熊猫容器：实体像素区域，鼠标进入时关闭点击穿透并允许拖窗 -->
+  <!-- 熊猫容器：默认点击穿透；仅指针落在顶部抓手区时关闭穿透，响应拖动/右键 -->
   <div id="pet" class="pet">
+    <!-- 抓手提示：指针进入抓手区时淡入，告诉用户「从这里拖动/右键」。非交互，点击穿透 -->
+    <div id="grabHandle" class="grab-handle"></div>
     <!-- 两个叠放的 video 做交叉淡入淡出（§8）。
          每个 video 后紧跟一个 overlay canvas（耗材改色层，见 recolor.js）：
          CSS 兄弟选择器让 canvas 跟随所属 video 的 .active 同步淡入淡出，crossfade.js 零改动 -->
