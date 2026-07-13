@@ -48,7 +48,7 @@
         "dmg",
         "zip"
       ],
-      "artifactName": "Bambu.Buddy-${version}-macOS-${arch}.${ext}",
+      "artifactName": "Bambu.Buddy-update-macOS-${arch}-${version}.${ext}",
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
@@ -57,6 +57,10 @@
       "extendInfo": {
         "LSUIElement": true
       }
+    },
+    "dmg": {
+      "artifactName": "Bambu.Buddy-${version}-macOS-${arch}.${ext}",
+      "writeUpdateInfo": false
     },
     "win": {
       "target": "nsis",

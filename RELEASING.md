@@ -38,6 +38,10 @@
    gh release edit v0.1.3 --notes-file <说明文件.md>   # 或在 Release 页面手动编辑
    ```
 
+> **发版说明下载引导规则**：说明**顶部固定放「📥 下载」一节**，直链本版 dmg 与
+> Setup.exe，并注明「其余文件为应用内自动更新所需，普通用户无需理会」。资产列表
+> 里混着 yml/zip/blockmap（自动更新依赖，见「产物」一节），没有引导用户不知道下哪个。
+>
 > **发版说明完整性规则**：一次发版通常打包多次改动（多个 PR + 若干直提 main 的提交）。
 > 发版说明必须涵盖本次区间内的**所有**改动，逐一列出、不遗漏。不要直接照搬 `--generate-notes`
 > 的结果——它漏掉直提 main 的部分（v0.1.13 就因此只写了一个 PR、漏了「区分用户取消与打印失败」）。
@@ -60,17 +64,23 @@ gh workflow run release.yml -f tag=v0.1.2 -f ref=main
 
 ## 产物
 
-| 平台 | 产物 | 签名 |
+| 平台 | 产物 | 用途 / 签名 |
 |---|---|---|
-| macOS（Apple Silicon） | `Bambu.Buddy-<ver>-macOS-arm64.dmg` + `.zip` | Developer ID 正式签名 + 公证（CI 自动） |
-| Windows（x64） | `Bambu.Buddy-<ver>-Windows-x64.Setup.exe` | 未签名 |
+| macOS（Apple Silicon） | `Bambu.Buddy-<ver>-macOS-arm64.dmg` | 用户手动下载；Developer ID 正式签名 + 公证（CI 自动） |
+| macOS（Apple Silicon） | `Bambu.Buddy-update-macOS-arm64-<ver>.zip` | 应用内自动更新专用（Squirrel.Mac 要求 zip）；同签名 |
+| Windows（x64） | `Bambu.Buddy-<ver>-Windows-x64.Setup.exe` | 手动下载 + 自动更新共用；未签名 |
 
-> **应用内自动更新依赖的资产（勿删）**：每个 Release 除安装包外还会带
-> `latest-mac.yml` / `latest.yml` / `*.zip` / `*.blockmap`。老版本应用的「下载更新」
-> （electron-updater）靠读取**最新 Release** 里的 `latest*.yml` 找到对应安装包并校验
-> sha512 —— mac 端下载的是 zip（Squirrel.Mac 要求），dmg 仍是给用户手动下载的；
-> blockmap 用于增量下载。手动整理 Release 资产时这些文件必须保留，否则应用内更新失效
+> **应用内自动更新依赖的资产（勿删）**：每个 Release 除 dmg/exe 外还带
+> `latest-mac.yml` / `latest.yml`（版本清单：文件名 + sha512）、update zip、
+> `*.blockmap`（增量下载索引）。老版本应用的自动更新靠读取**最新 Release** 里的
+> `latest*.yml` 找到安装包并校验，手动整理资产时删了它们自动更新即失效
 > （用户只能回退「查看发布页」手动下载）。
+>
+> **资产命名兼顾列表排序**：GitHub 资产列表按文件名字母序排、不可自定义。update zip
+> 特意命名为 `Bambu.Buddy-update-...`（`u` 排在版本号 `0` 之后），让两个安装包始终
+> 排在列表最前。dmg 不生成 blockmap（`dmg.writeUpdateInfo:false`，mac 更新只走 zip
+> 用不上），CI 上传也排除 `*.dmg.blockmap` 兜底。发版说明顶部固定放两个安装包的
+> 直链下载引导（见下方发版说明规则）。
 
 > 文件名里带 `macOS` / `Windows`（以及 `arm64` / `x64` 架构），下载时一眼就能分清是哪个平台。
 
