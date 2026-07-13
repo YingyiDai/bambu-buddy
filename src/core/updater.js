@@ -140,4 +140,4 @@ function humanizeError(msg) {
   return msg;
 }
 
-module.exports = { checkForUpdates, compareSemver };
+module.exports = { checkForUpdates, compareSemver, humanizeError };

@@ -42,6 +42,12 @@ contextBridge.exposeInMainWorld('bambu', {
   checkForUpdates: () => ipcRenderer.invoke('app:checkUpdate'),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
 
+  // 应用内更新：下载 / 重启安装 / 状态（进度经 update:state 推送）
+  getUpdateState: () => ipcRenderer.invoke('update:getState'),
+  downloadUpdate: () => ipcRenderer.invoke('update:download'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  onUpdateState: (cb) => ipcRenderer.on('update:state', (_e, st) => cb(st)),
+
   // 主进程推送的后台错误（如 token 过期）
   onError: (cb) => ipcRenderer.on('bambu:error', (_e, msg) => cb(msg)),
 
