@@ -194,12 +194,12 @@ function createWindow() {
   // 位置记忆在 pet:dragEnd 时保存（§5.3），避免拖拽过程中频繁写盘。
 }
 
-// ── 全屏时自动隐藏熊猫（方案1 + 方案3）──
-// macOS：靠主窗口 setVisibleOnAllWorkspaces 的 visibleOnFullScreen:false 覆盖「原生全屏 Space」，
-//         无需检测（见 createWindow），且按 Space/显示器天然隔离。
-// Windows：fullscreen-watch 轮询「熊猫所在显示器」上是否有前台全屏应用（把熊猫窗口句柄
-//         交给它比对显示器），仅同屏全屏才 win.hide()、退出 win.show()——多显示器下
-//         A 屏全屏不影响 B 屏上的熊猫。
+// ── 全屏时自动隐藏熊猫（主动检测）──
+// macOS & Windows 都靠 fullscreen-watch 轮询「熊猫所在显示器」上是否有前台全屏应用，仅同屏
+//   全屏才 win.hide()、退出 win.show()——多显示器下 A 屏全屏不影响 B 屏上的熊猫。
+//   · Windows：把熊猫窗口句柄交给它算所在显示器（getPetHwnd）。
+//   · macOS：把熊猫所在显示器矩形交给它（getPetDisplayRect）。被动的 visibleOnFullScreen:false
+//     在本 app 里被 screen-saver 顶层顶掉、且管不着演示型全屏，故 macOS 也需主动检测。
 // 只恢复「我们自己因全屏而隐的」窗口（hiddenByFullscreen 标记），不与其它显隐逻辑打架。
 let hiddenByFullscreen = false;
 
@@ -221,8 +221,14 @@ function applyHideOnFullscreen(enabled) {
   }
   if (enabled) {
     fullscreenWatch.start(onFullscreenChange, {
-      // 熊猫窗口句柄：轮询侧据此算熊猫在哪块显示器（隐藏中的窗口仍保有位置，照常可算）
+      // Windows：熊猫窗口句柄，轮询侧据此算熊猫在哪块显示器（隐藏中的窗口仍保有位置，照常可算）
       getPetHwnd: () => (win && !win.isDestroyed()) ? win.getNativeWindowHandle() : null,
+      // macOS：熊猫所在显示器的矩形（点坐标，同 CGWindowList bounds），前台窗口盖住它才隐藏
+      getPetDisplayRect: () => {
+        if (!win || win.isDestroyed()) return null;
+        const b = screen.getDisplayMatching(win.getBounds()).bounds; // {x,y,width,height}，左上原点
+        return { left: b.x, top: b.y, right: b.x + b.width, bottom: b.y + b.height };
+      },
     });
   } else {
     fullscreenWatch.stop();
