@@ -11,15 +11,16 @@ html, body {
   user-select: none;
   cursor: default;
 
-  /* 交互抓手区：顶部居中的一小条圆角矩形。熊猫身体其余部分一律点击穿透——只有指针落在
-     这一小条抓手上，窗口才关闭穿透、响应「按住拖动」与「右键菜单」。这样常驻右下角时
-     身体不再遮挡下层工具的点击，需要移动/取菜单时才抓这一小条。insideHotzone() 据这些
-     变量判定命中，故调区域只改这里、无需改 JS。 */
-  --hotzone-left: 33%;          /* 抓手宽约 34%，居中 */
-  --hotzone-right: 33%;
-  --hotzone-top: 6%;            /* 贴近头顶，高约 20% */
-  --hotzone-bottom: 74%;
-  --hotzone-radius: 40%;        /* 圆角半径，相对于热区宽度 */
+  /* 交互命中区：覆盖熊猫身体的居中圆角矩形（基于帧分析的非透明区域边界），对应
+     clawd-on-desk 的身体 hitBox 思路——拖动的是熊猫本身，不是某个抓手。窗口默认点击
+     穿透，只有指针落在熊猫身体上才关闭穿透、响应「按住拖动」与「右键菜单」；身体外的
+     透明边距（含标签两侧留白）一律穿透到下层。insideHotzone() 据这些变量判定命中，
+     故调区域只改这里、无需改 JS。 */
+  --hotzone-left: 20%;
+  --hotzone-right: 20%;
+  --hotzone-top: 28%;
+  --hotzone-bottom: 5%;
+  --hotzone-radius: 20%;        /* 圆角半径，相对于热区宽度 */
 }
 
 /* 熊猫容器：实体像素区域，可拖动窗口（§5.1）。
@@ -34,27 +35,6 @@ html, body {
   transform: translateX(-50%);
   width: 100vh;             /* = 窗口高 = sizePx，熊猫恒为居中方形 */
   /* cursor 由 pet.js 根据热区动态设置 */
-}
-
-/* 交互抓手提示：命中区变小后，用户需要知道「抓哪里」才能拖动/右键。顶部居中一条半透明
-   小 pill，默认隐藏，指针进入抓手区（pet.js 据 insideHotzone 加 .show）时淡入。
-   pointer-events:none —— 命中判定仍走 insideHotzone 几何，不靠 DOM，故它不参与拦截。 */
-.grab-handle {
-  position: absolute;
-  top: 7%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 22%;
-  height: 5px;
-  border-radius: 999px;
-  background: rgba(245, 245, 247, 0.55);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-  opacity: 0;
-  transition: opacity 200ms ease;
-  pointer-events: none;
-}
-.grab-handle.show {
-  opacity: 1;
 }
 
 /* 两个叠放视频层，绝对定位重合，靠 opacity 做交叉淡入 */

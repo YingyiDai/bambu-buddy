@@ -135,7 +135,7 @@ window.pet.onPrefs((prefs) => {
 // 初始状态
 window.pet.onState(applyState);
 
-// —— 热区命中判断：居中圆角矩形 ——
+// —— 命中判断：覆盖熊猫身体的居中圆角矩形（拖动熊猫本身，见 style.css --hotzone-*） ——
 const hotzoneCS = getComputedStyle(document.documentElement);
 
 function insideHotzone(px, py) {
@@ -179,9 +179,9 @@ function insideHotzone(px, py) {
 
 // 交互（点击穿透、光标、拖拽）
 // 核心：窗口默认点击穿透（main.js 启动即 setIgnoreMouseEvents(true,{forward:true})，故穿透
-// 态下仍收到转发的 mousemove）。只有指针落在顶部抓手区（insideHotzone）时才关闭穿透、
-// 响应拖动/右键；离开抓手立即恢复穿透。这样熊猫身体不再遮挡下层工具的点击。
-const grabHandleEl = document.getElementById('grabHandle');
+// 态下仍收到转发的 mousemove）。只有指针落在熊猫身体（insideHotzone，身体轮廓的圆角矩形）
+// 上时才关闭穿透、可按住拖动/右键；离开身体立即恢复穿透，窗口的透明边距不遮挡下层点击。
+// 与 clawd-on-desk 一致：拖动的是熊猫本身，命中区即身体 hitBox。
 let dragging = false;
 let cursorInHotzone = false;
 let lastInteractive = false; // 去重：仅在穿透态变化时发 IPC，避免每帧 mousemove 刷屏
@@ -196,9 +196,8 @@ function updateCursor(e) {
   const inZone = insideHotzone(e.offsetX, e.offsetY);
   if (inZone === cursorInHotzone) return;
   cursorInHotzone = inZone;
-  grabHandleEl.classList.toggle('show', inZone); // 抓手提示随命中区淡入/淡出
-  if (dragging) return; // 拖拽中不切换光标/穿透（拖出抓手也保持可交互，靠 dragTimer 跟随光标）
-  applyInteractive(inZone); // 进入抓手→关闭穿透可交互；离开→恢复穿透，点击落到下层
+  if (dragging) return; // 拖拽中不切换光标/穿透（拖出身体也保持可交互，靠 dragTimer 跟随光标）
+  applyInteractive(inZone); // 进入身体→关闭穿透可交互；离开→恢复穿透，点击落到下层
   petEl.style.cursor = inZone ? 'grab' : 'default';
 }
 
@@ -206,7 +205,6 @@ petEl.addEventListener('mouseenter', updateCursor);
 petEl.addEventListener('mousemove', updateCursor);
 petEl.addEventListener('mouseleave', () => {
   cursorInHotzone = false;
-  grabHandleEl.classList.remove('show');
   if (!dragging) { applyInteractive(false); petEl.style.cursor = 'default'; }
 });
 
@@ -221,13 +219,13 @@ petEl.addEventListener('mousedown', (e) => {
 window.addEventListener('mouseup', () => {
   if (!dragging) return;
   dragging = false;
-  // 拖拽落定：据当前是否仍在抓手区恢复光标与穿透态
+  // 拖拽落定：据当前是否仍在熊猫身体上恢复光标与穿透态
   petEl.style.cursor = cursorInHotzone ? 'grab' : 'default';
   applyInteractive(cursorInHotzone);
   window.pet.dragEnd();
 });
 petEl.addEventListener('contextmenu', (e) => {
-  if (!insideHotzone(e.offsetX, e.offsetY)) return; // 抓手外的右键让它穿透到下层
+  if (!insideHotzone(e.offsetX, e.offsetY)) return; // 身体外的右键让它穿透到下层
   e.preventDefault();
   window.pet.showMenu();
 });
