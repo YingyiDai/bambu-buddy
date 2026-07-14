@@ -183,6 +183,9 @@ function createWindow() {
   // 默认点击穿透，鼠标进入实体像素时由渲染层 IPC 关闭（§5.1）
   win.setIgnoreMouseEvents(true, { forward: true });
 
+  // 窗口销毁后清空引用，避免留下「已销毁但非 null」的悬空引用（对齐 settingsWin 的 closed 处理）。
+  win.on('closed', () => { win = null; });
+
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
   // 渲染层加载完成后，补发最近一次状态（数据源可能在窗口 ready 前已 emit）
