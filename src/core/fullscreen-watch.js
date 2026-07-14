@@ -100,9 +100,20 @@ function eqPtr(a, b) {
   return BigInt(a) === BigInt(b);
 }
 
-// 窗口矩形是否完整覆盖显示器矩形（= 该窗口在这块屏上全屏）
+// 全屏判定容差：真·全屏窗口在**缩放显示器**上常因逻辑↔物理像素取整、隐形边框等，比显示器
+// 矩形短几个像素（WPS 放映、浏览器 F11 全屏等演示型全屏即如此），严格「盖满」会把它们漏判成
+// 非全屏。故允许每条边最多内缩 tol 像素仍算全屏。tol 取显示器较短边的 1.5%、上限 16px——
+// 远小于任务栏高度（≥40px），最大化窗口底部让出任务栏的 ~40px 缺口不会被容差吃掉，仍判非全屏。
+function coverTolerance(m) {
+  const mw = m.right - m.left, mh = m.bottom - m.top;
+  return Math.min(16, Math.round(Math.min(mw, mh) * 0.015));
+}
+
+// 窗口矩形是否（在容差内）覆盖显示器矩形（= 该窗口在这块屏上全屏）
 function rectCoversMonitor(w, m) {
-  return w.left <= m.left && w.top <= m.top && w.right >= m.right && w.bottom >= m.bottom;
+  const t = coverTolerance(m);
+  return w.left <= m.left + t && w.top <= m.top + t
+      && w.right >= m.right - t && w.bottom >= m.bottom - t;
 }
 
 // win.getNativeWindowHandle() 的 Buffer → HWND 数值（x64 为 8 字节，ia32 为 4 字节）
