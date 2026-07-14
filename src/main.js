@@ -130,7 +130,7 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (win) { win.show(); win.focus(); }
+    if (win && !win.isDestroyed()) { win.show(); win.focus(); }
   });
 }
 
