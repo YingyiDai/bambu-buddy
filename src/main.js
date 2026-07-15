@@ -393,7 +393,7 @@ function applyReport(report) {
   if (store.get('dataSource', 'mock') === 'live') {
     const serial = store.get('activePrinterSerial');
     const completion = applyCompletionState(
-      report, lastState, completionRecord(serial), Date.now(), store.get('locale', 'zh-CN'),
+      report, lastState, completionRecord(serial), Date.now(),
     );
     saveCompletionRecord(serial, completion.record);
     lastState = completion.state;

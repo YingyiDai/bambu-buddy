@@ -1,5 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
+const { execFileSync } = require('node:child_process');
 const {
   SUCCESS_DISPLAY_MS,
   FINISHED_MEMORY_MS,
@@ -11,8 +12,8 @@ const { STRINGS } = require('../src/config/locales');
 
 const START = new Date(2025, 0, 1, 14, 30).getTime();
 
-function apply(report, record, now = START, locale = 'zh-CN') {
-  return applyCompletionState(report, resolveState(report), record, now, locale);
+function apply(report, record, now = START) {
+  return applyCompletionState(report, resolveState(report), record, now);
 }
 
 test('首次收到 FINISH 时记录完成时间并保持成功动画 20 分钟', () => {
@@ -29,19 +30,16 @@ test('首次收到 FINISH 时记录完成时间并保持成功动画 20 分钟',
   assert.equal(beforeBoundary.state.labelKey, 'label.finished');
 });
 
-test('完成 20 分钟后切为空闲动画并显示本地化完成时间', () => {
+test('完成 20 分钟后切为空闲动画并显示系统本地时间', () => {
   const record = { finishedAt: START, taskId: 'job-1' };
   const report = { connected: true, gcode_state: 'FINISH', subtask_id: 'job-1' };
+  const result = apply(report, record, START + SUCCESS_DISPLAY_MS);
 
-  const zh = apply(report, record, START + SUCCESS_DISPLAY_MS, 'zh-CN');
-  assert.equal(zh.state.stateKey, 'idle');
-  assert.equal(zh.state.videoFile, 'idle.webm');
-  assert.equal(zh.state.labelKey, 'label.finishedAt');
-  assert.deepStrictEqual(zh.state.labelParams, { time: '14:30' });
-  assert.equal(zh.nextUpdateAt, START + FINISHED_MEMORY_MS);
-
-  const en = apply(report, record, START + SUCCESS_DISPLAY_MS, 'en');
-  assert.deepStrictEqual(en.state.labelParams, { time: '2:30 PM' });
+  assert.equal(result.state.stateKey, 'idle');
+  assert.equal(result.state.videoFile, 'idle.webm');
+  assert.equal(result.state.labelKey, 'label.finishedAt');
+  assert.deepStrictEqual(result.state.labelParams, { time: formatFinishedTime(START) });
+  assert.equal(result.nextUpdateAt, START + FINISHED_MEMORY_MS);
 });
 
 test('完成记录在打印机转为 IDLE 后仍显示到 24 小时', () => {
@@ -84,11 +82,22 @@ test('不同任务完成时会创建新的 20 分钟成功状态', () => {
   assert.equal(result.nextUpdateAt, nextFinish + SUCCESS_DISPLAY_MS);
 });
 
-test('完成文案与时间格式符合中英文产品文案', () => {
+test('完成文案符合中英文产品文案', () => {
   assert.equal(STRINGS['zh-CN']['label.finished'], '打印成功');
   assert.equal(STRINGS.en['label.finished'], 'Print successful');
   assert.equal(STRINGS['zh-CN']['label.finishedAt'], '完成于 {time}');
   assert.equal(STRINGS.en['label.finishedAt'], 'Finished at {time}');
-  assert.equal(formatFinishedTime(START, 'zh-CN'), '14:30');
-  assert.equal(formatFinishedTime(START, 'en'), '2:30 PM');
+});
+
+test('完成时刻使用系统 locale，并与预计完成时刻保持两位小时格式', () => {
+  const modulePath = require.resolve('../src/core/completion-state');
+  const script = `
+    const { formatFinishedTime } = require(${JSON.stringify(modulePath)});
+    process.stdout.write(formatFinishedTime(Date.UTC(2025, 0, 1, 14, 30), 'zh-CN'));
+  `;
+  const output = execFileSync(process.execPath, ['-e', script], {
+    encoding: 'utf8',
+    env: { ...process.env, LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8', TZ: 'UTC' },
+  });
+  assert.equal(output, '02:30 PM');
 });

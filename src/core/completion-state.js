@@ -21,9 +21,9 @@ function normalizeRecord(record) {
   };
 }
 
-function formatFinishedTime(timestamp, locale) {
-  return new Date(timestamp).toLocaleTimeString(locale, {
-    hour: 'numeric',
+function formatFinishedTime(timestamp) {
+  return new Date(timestamp).toLocaleTimeString(undefined, {
+    hour: '2-digit',
     minute: '2-digit',
   });
 }
@@ -48,7 +48,7 @@ function makeIdleState(state, labelKey = 'label.idle', labelParams = {}) {
   };
 }
 
-function applyCompletionState(report, state, savedRecord, now = Date.now(), locale = 'zh-CN') {
+function applyCompletionState(report, state, savedRecord, now = Date.now()) {
   const gcode = report && report.gcode_state;
   let record = normalizeRecord(savedRecord);
 
@@ -78,7 +78,7 @@ function applyCompletionState(report, state, savedRecord, now = Date.now(), loca
   if (age < FINISHED_MEMORY_MS) {
     return {
       state: makeIdleState(state, 'label.finishedAt', {
-        time: formatFinishedTime(record.finishedAt, locale),
+        time: formatFinishedTime(record.finishedAt),
       }),
       record,
       nextUpdateAt: record.finishedAt + FINISHED_MEMORY_MS,
