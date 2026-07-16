@@ -76,15 +76,21 @@ test('迁移：旧单台 bambuLan → bambuLanPrinters[]', () => {
   assert.ok(del.includes('bambuLan'));
 });
 
-test('迁移：dataSource cloud/lan → live；activePrinter 键改名', () => {
+test('迁移：dataSource cloud/lan → live；两代 active 键一律删除（多台常驻后无「当前」概念）', () => {
   const { set, del } = computeMigration({ dataSource: 'cloud', bambuActivePrinter: 'S9' });
   assert.equal(set.dataSource, 'live');
-  assert.equal(set.activePrinterSerial, 'S9');
+  assert.equal(set.activePrinterSerial, undefined);
   assert.ok(del.includes('bambuActivePrinter'));
 });
 
+test('迁移：残留的 activePrinterSerial 被删除', () => {
+  const { set, del } = computeMigration({ dataSource: 'live', activePrinterSerial: 'X' });
+  assert.deepEqual(set, {});
+  assert.ok(del.includes('activePrinterSerial'));
+});
+
 test('迁移幂等：已是新结构则无操作', () => {
-  const { set, del } = computeMigration({ dataSource: 'live', bambuLanPrinters: [], activePrinterSerial: 'X' });
+  const { set, del } = computeMigration({ dataSource: 'live', bambuLanPrinters: [] });
   assert.deepEqual(set, {});
   assert.deepEqual(del, []);
 });

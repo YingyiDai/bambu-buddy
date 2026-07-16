@@ -57,10 +57,9 @@ function computeMigration(s = {}) {
     }];
     del.push('bambuLan');
   }
-  if (s.bambuActivePrinter && !s.activePrinterSerial) {
-    set.activePrinterSerial = s.bambuActivePrinter;
-    del.push('bambuActivePrinter');
-  }
+  // 全部打印机常驻连接后不再有「当前打印机」概念：新旧两代 active 键都直接删除。
+  if (s.bambuActivePrinter !== undefined) del.push('bambuActivePrinter');
+  if (s.activePrinterSerial !== undefined) del.push('activePrinterSerial');
   if (s.dataSource === 'cloud' || s.dataSource === 'lan') {
     set.dataSource = 'live';
   }
