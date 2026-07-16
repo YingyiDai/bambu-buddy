@@ -51,9 +51,8 @@ contextBridge.exposeInMainWorld('bambu', {
   // 主进程推送的后台错误（如 token 过期）
   onError: (cb) => ipcRenderer.on('bambu:error', (_e, msg) => cb(msg)),
 
-  // 统一打印机列表管理
+  // 统一打印机列表管理（全部台常驻连接，printer:list 逐台带实时遥测）
   listPrinters: () => ipcRenderer.invoke('printer:list'),
-  setActivePrinter: (serial) => ipcRenderer.invoke('printer:setActive', serial),
   addLanPrinter: (host, accessCode, serial, name) =>
     ipcRenderer.invoke('printer:addLan', host, accessCode, serial, name),
   removeLanPrinter: (serial) => ipcRenderer.invoke('printer:removeLan', serial),

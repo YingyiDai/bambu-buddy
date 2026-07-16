@@ -1133,10 +1133,6 @@ ipcMain.handle('printer:list', () => {
   return { printers: getUnified(), telemetry };
 });
 
-// 过渡桩：全部台常驻连接后已无「当前打印机」概念。设置窗旧「设为当前」按钮仍会调用
-// 此通道（下一提交随卡片 UI 一并移除），先保留空实现避免 invoke 报错。
-ipcMain.handle('printer:setActive', () => ({ ok: true }));
-
 ipcMain.handle('printer:addLan', async (_e, host, accessCode, serial, name) => {
   const test = await testLanConnection(host, accessCode, serial);
   if (!test.ok) return test;

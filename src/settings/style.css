@@ -304,7 +304,6 @@ select {
   transition: box-shadow .42s ease, border-color .2s ease;
 }
 .pcard.is-active .pcard-frame { box-shadow: 0 22px 54px rgba(0, 0, 0, 0.22); }
-.pcard.is-current .pcard-frame { border-color: var(--brand); }
 
 /* 居中卡顶部的绿色聚光（破框照片背后的光晕） */
 .pcard.is-active::before {
@@ -392,20 +391,11 @@ select {
 .pcard-actions { display: flex; gap: 6px; padding: 8px 14px 16px; }
 .pcard-actions .btn { flex: 1; min-width: 0; white-space: nowrap; }
 .pcard-actions.empty { display: none; }
-/* 按钮做成「白底描边」按钮，与灰底胶囊明显区分；主操作「设为当前」用品牌绿强调 */
+/* 按钮做成「白底描边」按钮，与灰底胶囊明显区分 */
 .pcard-actions .btn { padding: 6px 6px; font-size: 11.5px; background: var(--panel); border: 1px solid var(--border); color: var(--text); }
 .pcard-actions .btn:hover { border-color: var(--brand); color: var(--brand); }
-.pcard-actions .pc-act-use { background: var(--brand-weak); border-color: color-mix(in srgb, var(--brand) 45%, transparent); color: var(--brand); font-weight: 600; }
-.pcard-actions .pc-act-use:hover { background: var(--brand); border-color: var(--brand); color: #fff; }
 .pcard-actions .btn-danger { background: var(--danger-weak); border-color: color-mix(in srgb, var(--danger) 32%, transparent); color: var(--danger); }
 .pcard-actions .btn-danger:hover { background: var(--danger); border-color: var(--danger); color: #fff; }
-/* 「已是当前」：被动状态标识（非按钮）——虚线 + 灰字 + 对勾，明确不可点击 */
-.pcard-actions .pc-current {
-  flex: 1; min-width: 0; display: flex; align-items: center; justify-content: center;
-  padding: 6px 6px; font-size: 11.5px; font-weight: 600; color: var(--text-faint);
-  background: var(--field-bg); border: 1px dashed var(--border); border-radius: var(--radius-sm);
-  cursor: default; white-space: nowrap;
-}
 
 /* 工具卡（账号 / 添加本地打印机）：用 .pcard-frame 卡面 + 可滚动内容 */
 .util-inner { height: 100%; padding: 12px 16px 14px; overflow-y: auto; display: flex; flex-direction: column; }
