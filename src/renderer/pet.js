@@ -52,36 +52,55 @@ function fmtFinishClock(remainMins) {
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
-// 拼单行标签，紧凑平级：主体是状态本身（打印中时即「打印中 {p}%」）；打印中且开关开启时，
+// 拼一行标签文案，紧凑平级：主体是状态本身（打印中时即「打印中 {p}%」）；打印中且开关开启时，
 // 用统一的「 · 」把层数段、剩余时间段平级追加，例：
 //   中文 打印中 50% · 100/200 · 剩余45m    英文 Printing 50% · 100/200 · 45m left
 // 「剩余」只贴在时间段上（层数是当前/总层，不属于「剩余」）。层数段在渲染层直接拼 {layer}/{total}；
-// 时间段由 label.remainTime 定文案。标签恒为一行、不向上生长盖住熊猫。
+// 时间段由 label.remainTime 定文案。多打印机时行首带打印机名前缀（line.name）。
 // 数据由 resolveState 放进 labelParams（remain 已是 locale 无关的紧凑 token），切 locale / 切开关都能就地重绘。
-function renderLabel() {
-  if (!lastPetState) return;
-  const p = lastPetState.labelParams || {};
-  const parts = [t(currentLocale, lastPetState.labelKey, p)];
+function lineText(line) {
+  const p = line.labelParams || {};
+  const parts = [t(currentLocale, line.labelKey, p)];
   if (showLayer && p.layer != null && p.total != null) parts.push(`${p.layer}/${p.total}`);
   if (showTime && p.remain != null) parts.push(t(currentLocale, 'label.remainTime', { time: p.remain }));
   if (showFinishTime && p.remainMins != null) {
     const clock = fmtFinishClock(p.remainMins);
     if (clock) parts.push(t(currentLocale, 'label.finishTime', { time: clock }));
   }
-  labelEl.textContent = parts.join(' · ');
-  reportLabelWidth();
+  const text = parts.join(' · ');
+  return line.name ? `${line.name} · ${text}` : text;
 }
 
-// 量出标签实际像素宽度，上报主进程按需加宽窗口 —— 这样长标签能完整显示，
-// 既不缩小用户设定的字号，也不截断成「…」。隐藏标签时上报 0，窗口回落到熊猫本身宽度。
-// +14px：给 pill 两侧留一点呼吸空隙（与 CSS max-width 的 12px 边距配合，确保不触发 ellipsis）。
+// 渲染标签：每台打印机一行（state.lines，见 core/attention.js），单台时一行且不带名字
+// —— 与单打印机时代观感一致。无 lines（过渡兼容）时回落用顶层 labelKey 拼单行。
+function renderLabel() {
+  if (!lastPetState) return;
+  const lines = Array.isArray(lastPetState.lines) && lastPetState.lines.length > 0
+    ? lastPetState.lines
+    : [{ name: null, labelKey: lastPetState.labelKey, labelParams: lastPetState.labelParams }];
+  labelEl.textContent = '';
+  labelEl.classList.toggle('multi', lines.length > 1);
+  for (const line of lines) {
+    const div = document.createElement('div');
+    div.className = 'label-line';
+    div.textContent = lineText(line);
+    labelEl.appendChild(div);
+  }
+  reportLabelSize();
+}
+
+// 量出标签实际像素尺寸，上报主进程按需加宽/向下加高窗口 —— 长标签完整显示、多行放得下，
+// 既不缩小用户设定的字号，也不截断成「…」。隐藏标签时上报 0，窗口回落到熊猫本身尺寸。
+// 宽度 +14px：给 pill 两侧留一点呼吸空隙（与 CSS max-width 的 12px 边距配合，确保不触发 ellipsis）。
 const LABEL_WIN_MARGIN = 14;
-function reportLabelWidth() {
+function reportLabelSize() {
   const hidden = labelEl.classList.contains('hidden');
-  // requestAnimationFrame：等本次文本改动完成布局后再量，scrollWidth 才是真实内容宽
+  // requestAnimationFrame：等本次文本改动完成布局后再量，scrollWidth/offsetHeight 才是真实尺寸
   requestAnimationFrame(() => {
-    const w = hidden ? 0 : Math.ceil(labelEl.scrollWidth) + LABEL_WIN_MARGIN;
-    window.pet.setLabelWidth(w);
+    window.pet.setLabelSize({
+      w: hidden ? 0 : Math.ceil(labelEl.scrollWidth) + LABEL_WIN_MARGIN,
+      h: hidden ? 0 : Math.ceil(labelEl.offsetHeight),
+    });
   });
 }
 
@@ -118,6 +137,11 @@ window.pet.onLocale((locale, strings) => {
 
 // 偏好更新
 window.pet.onPrefs((prefs) => {
+  if (prefs.sizePx != null) {
+    // 熊猫方形边长（--pet-px）：窗口可因多行标签比方形更高，100vh 不再恒等于边长，
+    // 熊猫几何（.pet 宽高、标签带位置）都以此变量为准。
+    document.documentElement.style.setProperty('--pet-px', prefs.sizePx + 'px');
+  }
   if (prefs.labelFontSize != null) {
     labelEl.style.setProperty('--label-font-size', prefs.labelFontSize + 'px');
   }

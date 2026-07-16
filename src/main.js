@@ -171,7 +171,7 @@ function createWindow() {
   // 记下熊猫方形中心为权威真源（applyWinWidth 据此算窗口 bounds，见 petCenter 注释）。
   petCenter = { x: x + sizePx / 2, y: y + sizePx / 2 };
 
-  // 初始宽度同样走 targetWinWidth（启动时 labelPx=0，即 max(sizePx, 宽度下限)）；
+  // 初始宽度同样走 targetWinWidth（启动时 labelSize.w=0，即 max(sizePx, 宽度下限)）；
   // x 按「熊猫方形居中」反推窗口左缘，保证熊猫落在记忆位置上。
   const winW = targetWinWidth();
   // 【allow-direct-setBounds：sanctioned exception ①】构造用一次性权威值，非 getBounds 回写。
@@ -274,8 +274,9 @@ function applyHideOnFullscreen(enabled) {
   }
 }
 
-// 渲染层上报的标签实际像素宽度：窗口据此加宽以完整显示长标签（不缩字号、不截断）。
-let labelPx = 0;
+// 渲染层上报的标签实际像素尺寸：窗口据宽度加宽以完整显示长标签（不缩字号、不截断），
+// 据高度向下加高以容纳多行标签（多台打印机每台一行，见 core/attention.js）。
+const labelSize = { w: 0, h: 0 };
 
 // 熊猫方形**中心**的权威坐标（运行时唯一真源，可为小数）。窗口比熊猫方形宽（标签留白），
 // 故不能用窗口 bounds 反推位置——applyWinWidth 一律据此中心算 bounds，保证幂等、不因
@@ -296,15 +297,23 @@ const MIN_WIN_WIDTH = 170;
 const LABEL_WIDTH_STEP = 40;
 
 // 目标窗口宽度：至少容纳熊猫方形（sizePx），标签更宽时按标签宽（量化到台阶），且不低于
-// 透明窗口安全下限。窗口只在**水平**方向加宽；高度恒为 sizePx。两侧多出的透明留白点击
-// 穿透、可溢出屏幕边缘，熊猫始终居中方形（CSS width:100vh），故窗口变宽不改变熊猫位置/大小/热区。
+// 透明窗口安全下限。两侧多出的透明留白点击穿透、可溢出屏幕边缘，熊猫始终居中方形
+//（CSS width:--pet-px），故窗口变宽不改变熊猫位置/大小/热区。
 function targetWinWidth() {
-  return quantizeWinWidth(labelPx, Math.max(currentSizePx(), MIN_WIN_WIDTH), LABEL_WIDTH_STEP);
+  return quantizeWinWidth(labelSize.w, Math.max(currentSizePx(), MIN_WIN_WIDTH), LABEL_WIDTH_STEP);
+}
+
+// 窗口预留给标签带的高度是 34px（.pet 的 bottom 内缩）里去掉 8px 间距后的 26px。
+// 单行默认字号的标签 ≈25px 恰好放下（extraHeight=0，窗口高恒为 sizePx——与单台时代
+// 完全一致）；多行/大字号超出的部分向下加高窗口，熊猫方形顶部锚定纹丝不动。
+const LABEL_BASE_PX = 26;
+function targetExtraHeight() {
+  return Math.max(0, labelSize.h - LABEL_BASE_PX);
 }
 
 // ★ 窗口 bounds 的**唯一常规写入口**（choke point）。凡「熊猫应待在原地、仅尺寸/标签
-// 宽变化」的场景都必须走这里，绝不在别处直接 win.setBounds。全程据权威源真相
-// （petCenter + currentSizePx + labelPx）计算，从不回写 getBounds() 读回值 —— 这是杜绝
+// 尺寸变化」的场景都必须走这里，绝不在别处直接 win.setBounds。全程据权威源真相
+// （petCenter + currentSizePx + labelSize）计算，从不回写 getBounds() 读回值 —— 这是杜绝
 // 「熊猫越变越大 / 右移 / 上移 / 走位」这类 DIP↔像素 & 居中取整累积缺陷再次出现的结构性保证。
 // 仅两处允许直接 setBounds：① 窗口构造（new BrowserWindow，一次性权威值）；
 // ② 拖拽跟随光标的 dragTimer（写光标绝对位置 + 起始锁定的固定宽高，不累积）。
@@ -315,8 +324,8 @@ function applyWinWidth() {
   // 若在此据陈旧中心 setBounds 会把窗口拽回拖拽前的位置。拖拽结束会再 applyWinWidth 收敛。
   if (dragOffset) return;
   // 一律据权威中心算 bounds（幂等、不累积，见 petWindowBounds 注释）：熊猫恒居中、
-  // 高度恒为 sizePx——彻底消除拖进度滑杆/拖尺寸时熊猫右移/上移/变大/走位。
-  const next = petWindowBounds(petCenter, targetWinWidth(), currentSizePx());
+  // 多行标签只向下加高——彻底消除拖进度滑杆/拖尺寸时熊猫右移/上移/变大/走位。
+  const next = petWindowBounds(petCenter, targetWinWidth(), currentSizePx(), targetExtraHeight());
   const b = win.getBounds();
   if (b.x === next.x && b.y === next.y && b.width === next.width && b.height === next.height) return;
   win.setBounds(next);
@@ -818,6 +827,9 @@ function pushLocale() {
 function pushPetPrefs() {
   if (win && !win.isDestroyed()) {
     win.webContents.send('pet:prefs', {
+      // 渲染层几何需要 sizePx（CSS 变量 --pet-px）：窗口可因多行标签比熊猫方形更高，
+      // 100vh 不再恒等于熊猫边长，熊猫方形必须用显式像素锁定。
+      sizePx: currentSizePx(),
       labelFontSize: store.get('labelFontSize', 12),
       showLabel: store.get('showLabel', true),
       showLayer: store.get('showLayer', false),
@@ -1274,9 +1286,11 @@ ipcMain.on('pet:dragStart', () => {
   // 拖拽全程锁定为当前尺寸：分数 DPI 缩放下反复 setPosition 会因 DIP↔像素取整误差
   // 让窗口逐帧变大（熊猫随之被放大），每帧用 setBounds 显式回写固定宽高即可杜绝累积。
   // 写的是「光标绝对位置 + 起始锁定的固定宽高」，不回写 getBounds()，故不累积。
-  // 宽度锁定为当前窗口宽（含标签加宽的部分），避免拖拽时窗口回落成方形、标签被截断。
-  const size = currentSizePx();
-  const width = win.getBounds().width;
+  // 宽高都锁定为起始值（含标签加宽/多行标签加高的部分），避免拖拽时窗口回落、
+  // 标签被截断或多行标签突然缩没。起始值一次性读取、拖拽期间恒定，不构成读回累积。
+  const startBounds = win.getBounds();
+  const width = startBounds.width;
+  const height = startBounds.height;
   if (dragTimer) clearInterval(dragTimer);
   dragTimer = setInterval(() => {
     if (!win || win.isDestroyed() || !dragOffset) return;
@@ -1285,7 +1299,7 @@ ipcMain.on('pet:dragStart', () => {
       x: Math.round(p.x - dragOffset.dx),
       y: Math.round(p.y - dragOffset.dy),
       width,
-      height: size,
+      height,
     });
   }, 16);
 });
@@ -1305,36 +1319,42 @@ ipcMain.on('pet:dragEnd', () => {
   }
 });
 
-// 渲染层量出标签实际宽度 → 按需加宽窗口（保持中心不动，熊猫不移动）。
-// 变宽立即生效（长标签要能完整显示，否则截断）；变窄延迟落定（滞回）。为何滞回、为何要
-// 「久」：探索模式自动播放里剩余时间/完成时间/进度会同时快速跳变，标签宽度既可能在某个
-// 台阶边界±抖动（量化后目标宽 260↔300 反复拉锯），也会在「打印中 ↔ 换料中」之间来回切
-// （宽↔窄）。只要一次变宽在延时窗口内到来，就撤销待收窄、窗口维持在近期较宽值——熊猫不动。
+// 渲染层量出标签实际宽高 → 按需加宽/向下加高窗口（保持中心不动，熊猫不移动）。
+// 变大立即生效（长标签要完整显示、多出的行要能放下）；变小延迟落定（滞回）。为何滞回、
+// 为何要「久」：探索模式自动播放里剩余时间/完成时间/进度会同时快速跳变，标签宽度既可能在
+// 某个台阶边界±抖动（量化后目标宽 260↔300 反复拉锯），也会在「打印中 ↔ 换料中」之间来回切
+// （宽↔窄）；多台时某台瞬时掉线/重连也会让行数±1 抖动。只要一次变大在延时窗口内到来，就
+// 撤销待收缩、窗口维持在近期较大值——熊猫不动。
 // 因此延时必须 **大于数据推送/自动播放的刷新间隔**（自动播放 1.5s/帧、真机 MQTT 约 1s/帧），
-// 这样相邻两帧间的抖动/短暂换料插帧都会被下一帧的变宽吃掉，绝不触发收窄；只有标签真正稳定
-// 地变短（如打印结束回到空闲）超过该时长，才收窄一次落定。取 2000ms 留足余量。
+// 这样相邻两帧间的抖动/短暂换料插帧都会被下一帧的变大吃掉，绝不触发收缩；只有标签真正稳定
+// 地变小（如打印结束回到空闲）超过该时长，才收缩一次落定。取 2000ms 留足余量。
+// 宽高各自独立滞回：一次状态变化可能同时「某行变宽 + 行数变少」，两维不能互相绑架。
 const LABEL_SHRINK_DELAY_MS = 2000;
-let labelShrinkTimer = null;
-ipcMain.on('pet:labelWidth', (_e, px) => {
-  const v = Math.max(0, Math.round(Number(px) || 0));
-  if (v > labelPx) {
-    // 变宽：取消待收窄，立即加宽
-    if (labelShrinkTimer) { clearTimeout(labelShrinkTimer); labelShrinkTimer = null; }
-    labelPx = v;
+const labelShrinkTimers = { w: null, h: null };
+function applyLabelDim(dim, raw) {
+  const v = Math.max(0, Math.round(Number(raw) || 0));
+  if (v > labelSize[dim]) {
+    // 变大：取消待收缩，立即生效
+    if (labelShrinkTimers[dim]) { clearTimeout(labelShrinkTimers[dim]); labelShrinkTimers[dim] = null; }
+    labelSize[dim] = v;
     applyWinWidth();
-  } else if (v < labelPx) {
-    // 变窄：重置延时；快速抖动期间不断被推后，故不会反复收窄
-    if (labelShrinkTimer) clearTimeout(labelShrinkTimer);
-    labelShrinkTimer = setTimeout(() => {
-      labelShrinkTimer = null;
-      labelPx = v;
+  } else if (v < labelSize[dim]) {
+    // 变小：重置延时；快速抖动期间不断被推后，故不会反复收缩
+    if (labelShrinkTimers[dim]) clearTimeout(labelShrinkTimers[dim]);
+    labelShrinkTimers[dim] = setTimeout(() => {
+      labelShrinkTimers[dim] = null;
+      labelSize[dim] = v;
       applyWinWidth();
     }, LABEL_SHRINK_DELAY_MS);
-  } else if (labelShrinkTimer) {
-    // 标签稳定回到当前宽度：撤销待收窄
-    clearTimeout(labelShrinkTimer);
-    labelShrinkTimer = null;
+  } else if (labelShrinkTimers[dim]) {
+    // 标签稳定回到当前尺寸：撤销待收缩
+    clearTimeout(labelShrinkTimers[dim]);
+    labelShrinkTimers[dim] = null;
   }
+}
+ipcMain.on('pet:labelSize', (_e, size) => {
+  applyLabelDim('w', size && size.w);
+  applyLabelDim('h', size && size.h);
 });
 
 // ---- 偏好设置 IPC ----
@@ -1355,7 +1375,7 @@ ipcMain.handle('pref:getAll', () => ({
 ipcMain.handle('pref:set', (_e, key, value) => {
   store.set(key, value);
   if (key === 'sizePx') setPetSizePx(value);
-  if (key === 'labelFontSize' || key === 'showLabel' || key === 'showLayer' || key === 'showTime' || key === 'showFinishTime' || key === 'matchFilamentColor') pushPetPrefs();
+  if (key === 'sizePx' || key === 'labelFontSize' || key === 'showLabel' || key === 'showLayer' || key === 'showTime' || key === 'showFinishTime' || key === 'matchFilamentColor') pushPetPrefs();
   if (key === 'locale') {
     pushLocale();
     // 各台按新语言重解析（失败大类文案等依赖 locale 对应的码表 key）

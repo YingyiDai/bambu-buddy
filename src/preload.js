@@ -3,7 +3,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('pet', {
-  // 主进程推送的状态：{ stateKey, videoFile, labelKey, labelParams }
+  // 主进程推送的状态：{ stateKey, videoFile, labelKey, labelParams, lines }
+  // lines：多打印机逐台标签行 [{ serial, name, stateKey, labelKey, labelParams }]（可为空）
   onState: (cb) => {
     ipcRenderer.on('pet:state', (_e, state) => cb(state));
   },
@@ -19,8 +20,8 @@ contextBridge.exposeInMainWorld('pet', {
   setInteractive: (interactive) => {
     ipcRenderer.send('pet:setInteractive', !!interactive);
   },
-  // 上报标签实际像素宽度 → 主进程按需加宽窗口，长标签完整显示
-  setLabelWidth: (px) => ipcRenderer.send('pet:labelWidth', px),
+  // 上报标签实际像素尺寸 {w,h} → 主进程按需加宽（长标签完整显示）/向下加高（多行标签）
+  setLabelSize: (size) => ipcRenderer.send('pet:labelSize', size),
   // 手动拖拽：开始跟随光标 / 结束
   dragStart: () => ipcRenderer.send('pet:dragStart'),
   dragEnd: () => ipcRenderer.send('pet:dragEnd'),

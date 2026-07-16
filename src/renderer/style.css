@@ -24,16 +24,18 @@ html, body {
 }
 
 /* 熊猫容器：实体像素区域，可拖动窗口（§5.1）。
-   窗口可能比熊猫更宽 —— 主进程按标签实际宽度加宽窗口（见 main.js applyWinWidth），
-   好让长标签完整显示而不缩字号/截断。这里用「视口高度 = 窗口高 = sizePx」把熊猫
-   锁成居中的方形：窗口再宽，熊猫也居中不变形，热区/交互判定（基于 petEl 尺寸）不受影响。 */
+   窗口可能比熊猫更宽/更高 —— 主进程按标签实际尺寸加宽（长标签完整显示而不缩字号/截断）、
+   向下加高（多打印机每台一行标签，见 main.js applyWinWidth）。熊猫方形用 --pet-px
+   （主进程经 pet:prefs 下发的 sizePx）锁定：窗口再宽再高，熊猫都顶部锚定、水平居中、
+   不变形，热区/交互判定（基于 petEl 尺寸）不受影响。
+   100vh 兜底仅覆盖 prefs 尚未到达的启动瞬间——此时窗口高恰为 sizePx，二者等价。 */
 .pet {
   position: absolute;
   top: 0;
-  bottom: 34px;             /* 给下方 label 留空间（含 +8px 间距） */
+  height: calc(var(--pet-px, 100vh) - 34px);  /* 方形内给下方 label 留 34px 带（含 +8px 间距） */
   left: 50%;
   transform: translateX(-50%);
-  width: 100vh;             /* = 窗口高 = sizePx，熊猫恒为居中方形 */
+  width: var(--pet-px, 100vh);
   /* cursor 由 pet.js 根据热区动态设置 */
 }
 
@@ -60,11 +62,13 @@ video.layer.active + canvas.overlay {
   opacity: 1;
 }
 
-/* 状态文本 pill（§8.1）：半透明深色底 + 浅色字 + 轻阴影，浮在任意壁纸上可读 */
+/* 状态文本 pill（§8.1）：半透明深色底 + 浅色字 + 轻阴影，浮在任意壁纸上可读。
+   顶部锚定在熊猫方形下沿（--pet-px - 34px 处）：多打印机时每台一行、pill 向下生长，
+   主进程据 pet:labelSize 上报把窗口向下加高——绝不向上生长盖住熊猫。 */
 .status-pill {
   position: absolute;
   left: 50%;
-  bottom: 8px;
+  top: calc(var(--pet-px, 100vh) - 34px);
   transform: translateX(-50%);
   /* 窗口宽度由主进程按本标签实际宽度加宽（pet.js 量好后上报），故这里只需不超出窗口即可，
      正常情况整条标签完整显示、不截断、不改用户字号。ellipsis 仅作窗口无法再加宽（极端超长）时的兜底。 */
@@ -77,14 +81,23 @@ video.layer.active + canvas.overlay {
   color: #f5f5f7;
   background: rgba(20, 20, 22, 0.62);
   border-radius: 999px;
-  white-space: nowrap;      /* 标签恒为一行：层数 / 剩余时间用「 · 」横向拼接，不向上生长盖住熊猫 */
-  overflow: hidden;
-  text-overflow: ellipsis;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
   pointer-events: none;     /* 非交互、点击穿透 */
   transition: opacity 300ms ease;
+}
+
+/* 多行时药丸圆角收敛为圆角矩形（999px 在两行以上观感怪异） */
+.status-pill.multi {
+  border-radius: 14px;
+}
+
+/* 单行标签内容：恒为一行，层数 / 剩余时间用「 · 」横向拼接，超长时省略号兜底 */
+.label-line {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Add hidden utility */
