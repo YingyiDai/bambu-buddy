@@ -87,6 +87,45 @@ test('幂等：同一 center+width+sizePx 反复调用得完全相同结果', ()
   );
 });
 
+// ── extraHeight：多行标签把窗口**向下**加高，熊猫方形（顶部锚定）纹丝不动 ──
+
+test('extraHeight 缺省为 0：所有既有调用行为不变', () => {
+  assert.deepStrictEqual(
+    petWindowBounds({ x: 210, y: 210 }, 300, 220),
+    petWindowBounds({ x: 210, y: 210 }, 300, 220, 0),
+  );
+});
+
+test('extraHeight 只向下加高：x/y/width 与不加高时完全一致', () => {
+  const center = { x: 1110, y: 610 };
+  const base = petWindowBounds(center, 300, 220);
+  const tall = petWindowBounds(center, 300, 220, 50);
+  assert.strictEqual(tall.x, base.x, 'x 不变');
+  assert.strictEqual(tall.y, base.y, 'y 不变（熊猫顶部锚定，向下长）');
+  assert.strictEqual(tall.width, base.width, 'width 不变');
+  assert.strictEqual(tall.height, base.height + 50, 'height 恰好加 extraHeight');
+});
+
+test('回归：extraHeight 反复变化（标签行数增减），熊猫中心与顶部零漂移', () => {
+  const center = { x: 1110, y: 610 };
+  const sizePx = 220;
+  let lastTop = null;
+  for (const eh of [0, 25, 50, 25, 0, 75, 0]) {
+    const b = petWindowBounds(center, 300, sizePx, eh);
+    assert.ok(Math.abs((b.x + b.width / 2) - center.x) <= 0.5, 'x 居中');
+    assert.ok(Math.abs((b.y + sizePx / 2) - center.y) <= 0.5, '熊猫方形中心 y 恒定');
+    if (lastTop != null) assert.strictEqual(b.y, lastTop, '窗口顶恒定，不因加高上移');
+    lastTop = b.y;
+  }
+});
+
+test('extraHeight 幂等：同参数反复调用得完全相同结果', () => {
+  assert.deepStrictEqual(
+    petWindowBounds({ x: 1110, y: 610 }, 313, 220, 40),
+    petWindowBounds({ x: 1110, y: 610 }, 313, 220, 40),
+  );
+});
+
 // ── quantizeWinWidth：标签加宽量化到台阶，消除自动播放时熊猫抖动 ──
 
 test('标签窄于熊猫方形：宽度恒为 base，不受标签像素抖动影响', () => {
