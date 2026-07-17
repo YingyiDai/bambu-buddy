@@ -71,18 +71,30 @@ function lineText(line) {
   return line.name ? `${line.name} · ${text}` : text;
 }
 
+// 「熊猫此刻演的是哪台」——注意力那台的状态若属需要处理类（失败/暂停/离线/登录失效），
+// 高亮竖条取红色示警，否则取竹叶绿表「正常运转」。多台并存时用户扫一眼颜色即知要不要管。
+const ERR_STATES = new Set(['failed', 'paused', 'offline', 'authExpired']);
+
 // 渲染标签：每台打印机一行（state.lines，见 core/attention.js），单台时一行且不带名字
 // —— 与单打印机时代观感一致。无 lines（过渡兼容）时回落用顶层 labelKey 拼单行。
+// 多台时给「熊猫当前表达的那台」（activeSerial）加高亮竖条，其余行压暗——让用户看得出
+// 熊猫的动画/表情说的是哪一台（否则多行长得一样、无从分辨）。
 function renderLabel() {
   if (!lastPetState) return;
   const lines = Array.isArray(lastPetState.lines) && lastPetState.lines.length > 0
     ? lastPetState.lines
     : [{ name: null, labelKey: lastPetState.labelKey, labelParams: lastPetState.labelParams }];
+  const multi = lines.length > 1;
+  const activeSerial = lastPetState.activeSerial;
   labelEl.textContent = '';
-  labelEl.classList.toggle('multi', lines.length > 1);
+  labelEl.classList.toggle('multi', multi);
   for (const line of lines) {
     const div = document.createElement('div');
     div.className = 'label-line';
+    if (multi && line.serial != null && line.serial === activeSerial) {
+      div.classList.add('active');
+      div.classList.add(ERR_STATES.has(line.stateKey) ? 'sev-err' : 'sev-ok');
+    }
     div.textContent = lineText(line);
     labelEl.appendChild(div);
   }

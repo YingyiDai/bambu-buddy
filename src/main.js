@@ -369,12 +369,13 @@ function currentPetItems() {
 }
 
 // 聚合出给宠物窗口的载荷：顶层沿用单台时代的 state 形状（视频/换色路径零改动），
-// 额外带 lines（逐台标签行）。无任何台有状态时回落「离线」（沿用旧行为）。
+// 额外带 lines（逐台标签行）与 activeSerial（熊猫当前表达的那台，渲染层据此高亮对应行）。
+// 无任何台有状态时回落「离线」（沿用旧行为）。
 function buildPetPayload() {
   const items = currentPetItems();
   const top = pickAttentionItem(items);
-  if (!top) return { ...resolveState({ connected: false }), lines: [] };
-  return { ...top.state, lines: buildLabelLines(items) };
+  if (!top) return { ...resolveState({ connected: false }), lines: [], activeSerial: null };
+  return { ...top.state, lines: buildLabelLines(items), activeSerial: top.serial };
 }
 
 // 推送聚合状态给宠物窗口。
