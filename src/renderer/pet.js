@@ -52,13 +52,13 @@ function fmtFinishClock(remainMins) {
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
-// 拼一行标签文案，紧凑平级：主体是状态本身（打印中时即「打印中 {p}%」）；打印中且开关开启时，
-// 用统一的「 · 」把层数段、剩余时间段平级追加，例：
+// 拼一行的**状态文案**（不含打印机名）：主体是状态本身（打印中时即「打印中 {p}%」）；
+// 打印中且开关开启时，用统一的「 · 」把层数段、剩余时间段平级追加，例：
 //   中文 打印中 50% · 100/200 · 剩余45m    英文 Printing 50% · 100/200 · 45m left
 // 「剩余」只贴在时间段上（层数是当前/总层，不属于「剩余」）。层数段在渲染层直接拼 {layer}/{total}；
-// 时间段由 label.remainTime 定文案。多打印机时行首带打印机名前缀（line.name）。
+// 时间段由 label.remainTime 定文案。打印机名由 renderLabel 单独渲染（带专属分隔符）。
 // 数据由 resolveState 放进 labelParams（remain 已是 locale 无关的紧凑 token），切 locale / 切开关都能就地重绘。
-function lineText(line) {
+function statusText(line) {
   const p = line.labelParams || {};
   const parts = [t(currentLocale, line.labelKey, p)];
   if (showLayer && p.layer != null && p.total != null) parts.push(`${p.layer}/${p.total}`);
@@ -67,8 +67,7 @@ function lineText(line) {
     const clock = fmtFinishClock(p.remainMins);
     if (clock) parts.push(t(currentLocale, 'label.finishTime', { time: clock }));
   }
-  const text = parts.join(' · ');
-  return line.name ? `${line.name} · ${text}` : text;
+  return parts.join(' · ');
 }
 
 // 「熊猫此刻演的是哪台」——注意力那台的状态若属需要处理类（失败/暂停/离线/登录失效），
@@ -95,7 +94,19 @@ function renderLabel() {
       div.classList.add('active');
       div.classList.add(ERR_STATES.has(line.stateKey) ? 'sev-err' : 'sev-ok');
     }
-    div.textContent = lineText(line);
+    // 打印机名与状态之间用专属分隔符（竖条），区别于状态内部用的「 · 」——
+    // 否则名字和后面的状态段全用点串起来，一眼看不出名字到哪结束。
+    if (line.name) {
+      const nameEl = document.createElement('span');
+      nameEl.className = 'label-name';
+      nameEl.textContent = line.name;
+      const sepEl = document.createElement('span');
+      sepEl.className = 'label-sep';
+      sepEl.textContent = '|';
+      div.append(nameEl, sepEl, document.createTextNode(statusText(line)));
+    } else {
+      div.textContent = statusText(line);
+    }
     labelEl.appendChild(div);
   }
   reportLabelSize();

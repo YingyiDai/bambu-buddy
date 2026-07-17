@@ -103,8 +103,8 @@ video.layer.active + canvas.overlay {
 /* 多台并存：给「熊猫当前表达的那台」（.active）加左侧短圆角竖条 + 提亮，其余行压暗——
    让用户一眼看出熊猫的动画说的是哪一台。竖条颜色按状态：正常竹叶绿 / 需处理示警红。
    仅 .multi（≥2 行）生效；单台一行无歧义，保持原药丸观感。 */
-/* 多行时文本因左槽（竖条）比右侧多缩进，左内距减 2px 补偿视觉不对称。 */
-.status-pill.multi { padding-left: 10px; }
+/* 多行时文本因左槽（竖条）比右侧多缩进，收紧左内距补偿视觉不对称。 */
+.status-pill.multi { padding-left: 2px; }
 .status-pill.multi .label-line {
   position: relative;
   padding-left: 9px;        /* 所有行留同宽左槽，文本左对齐；竖条只画在 active 行的槽里 */
@@ -127,6 +127,15 @@ video.layer.active + canvas.overlay {
 }
 .status-pill.multi .label-line.active.sev-err::before {
   background: #ff5a52;      /* 需要处理（失败 / 暂停 / 离线）= 示警红 */
+}
+
+/* 打印机名与状态之间的分隔符：细竖条、压暗，明显区别于状态段内部的「 · 」，
+   让「名字到哪结束」一眼可辨。名字段本身略提亮以强化「这是标识」。 */
+.label-name { opacity: 0.92; }
+.label-sep {
+  margin: 0 6px;
+  opacity: 0.4;
+  font-weight: 400;
 }
 
 /* Add hidden utility */
