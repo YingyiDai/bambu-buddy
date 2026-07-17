@@ -196,8 +196,6 @@ function buildPrinterCard(p) {
 // 不再有「当前打印机」概念，故去掉「设为当前 / 已是当前」按钮。
 function fillPrinterCard(card, p, srcText, live) {
   card.dataset.serial = p.serial;
-  // 「未上桌面」（hidden）的卡整体压暗 + 一个小 chip，一眼可辨其不在桌面熊猫显示。
-  card.classList.toggle('is-hidden', !!p.hidden);
   const status = pickStatus(p, live);
   card.querySelector('.pcard-frame').className = 'pcard-frame pcard-status-' + status.cls;
   card.querySelector('.pcard-body').innerHTML =
@@ -209,21 +207,18 @@ function fillPrinterCard(card, p, srcText, live) {
     '<div class="pcard-chips">' +
       '<span class="status-chip ' + status.cls + '"><span class="sdot"></span>' + escapeHtml(status.text) + '</span>' +
       sourceChip(p.source, srcText) +
-      (p.hidden ? '<span class="src-chip hidden-chip">🙈 ' + escapeHtml(t('printers.hiddenBadge')) + '</span>' : '') +
     '</div>' +
     buildStats(live) +
     '<div class="pcard-serial">' + escapeHtml(p.serial) + '</div>';
   card.querySelector('.pc-act-rename').addEventListener('click', (e) => { e.stopPropagation(); startRename(p.serial, card, p.name); });
   const actions = card.querySelector('.pcard-actions');
-  // 「在桌面显示」开关（每台一个）：关掉则该台不上桌面熊猫，但仍常驻连接、托盘/本卡照常显示状态。
+  // 桌面可见性：绿色按钮（沿用旧「设为当前」样式），文案取「动作」——当前显示→「隐藏」、
+  // 当前隐藏→「显示」，点击即切换。隐藏的台仍常驻连接，托盘/本卡照常显示状态，只是不上桌面熊猫。
   // 仅本地打印机额外保留「删除」（云端打印机由账号登录态管理，删不掉、只能隐藏）。
   actions.innerHTML =
-    '<label class="pc-desk-toggle"><span>' + escapeHtml(t('settings.showOnDesktop')) + '</span>' +
-      '<input type="checkbox" class="toggle pc-act-desk"' + (p.hidden ? '' : ' checked') + ' /></label>' +
+    '<button class="btn pc-act-use">' + escapeHtml(t(p.hidden ? 'settings.showPrinter' : 'settings.hidePrinter')) + '</button>' +
     (p.hasLan ? '<button class="btn btn-danger pc-act-remove">' + escapeHtml(t('settings.remove')) + '</button>' : '');
-  const desk = actions.querySelector('.pc-act-desk');
-  desk.addEventListener('click', (e) => e.stopPropagation());
-  desk.addEventListener('change', async (e) => { e.stopPropagation(); await window.bambu.setHidden(p.serial, !desk.checked); renderPrinters(); });
+  actions.querySelector('.pc-act-use').addEventListener('click', async (e) => { e.stopPropagation(); await window.bambu.setHidden(p.serial, !p.hidden); renderPrinters(); });
   const rm = actions.querySelector('.pc-act-remove');
   if (rm) rm.addEventListener('click', async (e) => { e.stopPropagation(); await window.bambu.removeLanPrinter(p.serial); renderPrinters(); });
 }
