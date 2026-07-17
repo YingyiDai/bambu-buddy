@@ -143,17 +143,22 @@ function renderLabel() {
 const MARQUEE_SPEED = 45;      // px/s 滚动速度
 const MARQUEE_REST = 2.2;      // s 起点停顿（每轮之间停这么久）
 const MARQUEE_ENDPAUSE = 0.9;  // s 滚到底后的停顿
+// 溢出小于该阈值不滚：几像素的微溢出去滚一圈毫无意义（观感是无谓抽动），
+// 宁可裁掉那一点点（多为半个字符的边缘）也不做无意义动画。
+const MARQUEE_MIN_OVER = 10;   // px
 let marqueeStyleEl = null;
 function applyMarquee() {
   const vps = [...labelEl.querySelectorAll('.line-vp')];
   const overs = vps.map((vp) => vp.scrollWidth - vp.clientWidth);
-  const maxOver = Math.max(0, ...overs);
+  // 只有超过阈值的行才算「需要滚」；统一周期按这些行里的最大溢出定（同步）。
+  const scrollOvers = overs.filter((o) => o >= MARQUEE_MIN_OVER);
+  const maxOver = scrollOvers.length ? Math.max(...scrollOvers) : 0;
   const tScroll = maxOver / MARQUEE_SPEED;
   const total = MARQUEE_REST + tScroll + MARQUEE_ENDPAUSE + tScroll;
   const durStr = total.toFixed(2) + 's';
   vps.forEach((vp, i) => {
     const line = vp.parentElement;
-    if (overs[i] > 1) {
+    if (overs[i] >= MARQUEE_MIN_OVER) {
       line.classList.add('scroll');
       line.style.setProperty('--dist', overs[i] + 'px');
       line.style.setProperty('--dur', durStr);
@@ -163,7 +168,7 @@ function applyMarquee() {
       line.style.removeProperty('--dur');
     }
   });
-  if (maxOver <= 1) return; // 无超宽行，无需注入动画
+  if (maxOver <= 0) return; // 无需滚动的行，不注入动画
   const a = (MARQUEE_REST / total * 100).toFixed(2);
   const b = ((MARQUEE_REST + tScroll) / total * 100).toFixed(2);
   const c = ((MARQUEE_REST + tScroll + MARQUEE_ENDPAUSE) / total * 100).toFixed(2);
