@@ -122,7 +122,7 @@ const MOCK_SERIAL = '__mock__';
 
 // 托盘状态区顶层最多展开几台的完整状态块。超出的台按「关注度」折进「其余 N 台」子菜单
 // （见 buildMenuTemplate）——账号绑很多台时（打印农场/教室）避免菜单被顶得极长、把设置/退出挤到要滚动。
-const MAX_TRAY_PRINTERS = 4;
+const MAX_TRAY_PRINTERS = 3;
 const runtimes = new Map(); // serial → { lastReport, lastState, completionTimer }
 let mockSource = null; // 仅 mock 模式非空（MockDataSource）
 const errorTables = new Map(); // "<lang>_<model>" → 解析后的官方错误码表（打印失败时查大类）
@@ -643,8 +643,9 @@ function rebuildDataSources() {
 
 // ---- 托盘（§5.2）----
 // 构建托盘菜单中的实时指标行（层数 / 剩余时间）。
-// 返回实时指标的**多条**短文本，托盘菜单里每条各占一行，避免拼成一整行把菜单顶得很宽。
-// 状态行（含百分比）在 buildMenuTemplate 单独展示，故这里从第 2 行起：层数 → 剩余时间。
+// 层数与剩余时间用「 · 」拼成**一行**返回（省高度），托盘菜单里占一行。返回数组是为兼容
+// 调用方逐条 push 的写法：有指标时是单元素数组，无指标时空数组。
+// 状态行（含百分比）在 buildMenuTemplate 单独展示，故这里只出层数 / 剩余时间。
 // 温度（喷嘴/热床）已去除：打印稳定进行时温度恒定在目标值、不可操作，属低价值信息，不再展示。
 // 托盘始终全显，不受「显示层数 / 剩余时间」开关影响（那两个开关只作用于桌面熊猫标签）。
 function getMetricsLines(locale, report) {
@@ -660,7 +661,7 @@ function getMetricsLines(locale, report) {
     const remain = fmtRemain(extractTemps(report).remainingTime);
     if (remain != null) parts.push(t(locale, 'label.remaining', { time: remain }));
   }
-  return parts;
+  return parts.length ? [parts.join(' · ')] : [];
 }
 
 function makeTrayIcon() {
