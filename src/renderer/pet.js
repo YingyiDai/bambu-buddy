@@ -78,6 +78,7 @@ const ERR_STATES = new Set(['failed', 'paused', 'offline', 'authExpired']);
 // —— 与单打印机时代观感一致。无 lines（过渡兼容）时回落用顶层 labelKey 拼单行。
 // 多台时给「熊猫当前表达的那台」（activeSerial）加高亮竖条，其余行压暗——让用户看得出
 // 熊猫的动画/表情说的是哪一台（否则多行长得一样、无从分辨）。
+let lastLabelSig = null;
 function renderLabel() {
   if (!lastPetState) return;
   const lines = Array.isArray(lastPetState.lines) && lastPetState.lines.length > 0
@@ -85,6 +86,15 @@ function renderLabel() {
     : [{ name: null, labelKey: lastPetState.labelKey, labelParams: lastPetState.labelParams }];
   const multi = lines.length > 1;
   const activeSerial = lastPetState.activeSerial;
+  // 渲染结果签名：决定标签显示的所有因素（各行名字/序列号/严重度/渲染文案 + 活动台 + locale）。
+  // 内容未变则不重建 DOM —— 否则每次状态推送（打印中约每秒）都会重建、把 marquee 动画重置到
+  // 起点，滚动永远滚不起来。相同即直接返回，保留现有 DOM 与正在进行的滚动。
+  const sig = JSON.stringify(lines.map((l) => [
+    l.name || null, l.serial || null, l.stateKey || null, statusText(l),
+    multi && l.serial != null && l.serial === activeSerial,
+  ]));
+  if (sig === lastLabelSig) return;
+  lastLabelSig = sig;
   labelEl.textContent = '';
   labelEl.classList.toggle('multi', multi);
   for (const line of lines) {
@@ -125,21 +135,26 @@ function renderLabel() {
 // 视口 .line-vp 内容超出时给 .line-inner 施加往返平移，把被裁部分滚出来看全，不截断。
 // 竖线在视口左侧的独立槽里、不在裁剪区内，故滚动内容不会与竖线重叠。
 // 需在布局落定后测量（reportLabelSize 的 rAF 里调用）。滚动距离 = 视口内容溢出量。
+// **整体同步**：所有超宽行共用同一周期（按最大溢出量定），故同时开始/停顿/返回，读起来协调
+//（各行仍各自平移自己的距离，只是节奏对齐；因同一帧统一施加，动画相位锁定不漂移）。
 function applyMarquee() {
-  for (const vp of labelEl.querySelectorAll('.line-vp')) {
+  const vps = [...labelEl.querySelectorAll('.line-vp')];
+  const overs = vps.map((vp) => vp.scrollWidth - vp.clientWidth);
+  const maxOver = Math.max(0, ...overs);
+  // 统一周期：以最长那行定速（约 40px/s）+ 两端停顿基底；短行同周期→稍慢但与长行齐步。
+  const dur = (maxOver / 40 + 3).toFixed(1) + 's';
+  vps.forEach((vp, i) => {
     const line = vp.parentElement;
-    const over = vp.scrollWidth - vp.clientWidth;
-    if (over > 1) {
+    if (overs[i] > 1) {
       line.classList.add('scroll');
-      line.style.setProperty('--dist', over + 'px');
-      // 速度约 40px/s，两端各留停顿，故时长与溢出量成正比再加基底
-      line.style.setProperty('--dur', (over / 40 + 3).toFixed(1) + 's');
+      line.style.setProperty('--dist', overs[i] + 'px');
+      line.style.setProperty('--dur', dur);
     } else {
       line.classList.remove('scroll');
       line.style.removeProperty('--dist');
       line.style.removeProperty('--dur');
     }
-  }
+  });
 }
 
 // 量出标签实际像素尺寸，上报主进程按需加宽/向下加高窗口 —— 长标签完整显示、多行放得下，
@@ -186,6 +201,7 @@ function refreshOverlays() {
 window.pet.onLocale((locale, strings) => {
   currentLocale = locale;
   localeStrings[locale] = strings;
+  lastLabelSig = null; // 强制重建（文案随语言变）
   renderLabel();
 });
 
@@ -206,6 +222,8 @@ window.pet.onPrefs((prefs) => {
   if (prefs.showTime != null) showTime = prefs.showTime;
   if (prefs.showFinishTime != null) showFinishTime = prefs.showFinishTime;
   if (prefs.matchFilamentColor != null) matchFilamentColor = prefs.matchFilamentColor;
+  // 字号 / 熊猫尺寸变会改变标签宽与滚动上限，但不改文案签名 → 强制重建以重新测量 marquee。
+  lastLabelSig = null;
   renderLabel();
   refreshOverlays(); // 开关变化就地生效，无需等下一帧状态
 });
