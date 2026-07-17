@@ -94,8 +94,11 @@ function renderLabel() {
       div.classList.add('active');
       div.classList.add(ERR_STATES.has(line.stateKey) ? 'sev-err' : 'sev-ok');
     }
-    // 行内容包一层 .line-inner：窗口宽固定为熊猫宽，超宽的行由 applyMarquee 给这层加横向
-    // 滚动（marquee）播出全部内容，既不撑宽窗口也不截断。
+    // 行内容包两层：.line-vp 是**从左侧竖线右侧开始**的裁剪视口（竖线在视口之外的左槽里，
+    // 内容永不进入其区域），.line-inner 是被裁部分做横向滚动（marquee）的内容层。窗口宽固定
+    // 为熊猫宽，超宽的行由 applyMarquee 给 inner 加往返平移，滚出全貌而不撑宽窗口、不截断。
+    const vp = document.createElement('span');
+    vp.className = 'line-vp';
     const inner = document.createElement('span');
     inner.className = 'line-inner';
     // 打印机名与状态之间用专属分隔符（竖条），区别于状态内部用的「 · 」——
@@ -111,18 +114,21 @@ function renderLabel() {
     } else {
       inner.textContent = statusText(line);
     }
-    div.appendChild(inner);
+    vp.appendChild(inner);
+    div.appendChild(vp);
     labelEl.appendChild(div);
   }
   reportLabelSize();
 }
 
 // 超宽的行做横向滚动（marquee）：窗口宽固定=熊猫宽，pill 经 CSS max-width 卡在窗口内，
-// 内容超出的行给 .line-inner 施加往返平移动画，把被裁掉的部分滚出来看全，不截断。
-// 需在布局落定后测量（reportLabelSize 的 rAF 里调用）。滚动距离 = 行内容溢出量。
+// 视口 .line-vp 内容超出时给 .line-inner 施加往返平移，把被裁部分滚出来看全，不截断。
+// 竖线在视口左侧的独立槽里、不在裁剪区内，故滚动内容不会与竖线重叠。
+// 需在布局落定后测量（reportLabelSize 的 rAF 里调用）。滚动距离 = 视口内容溢出量。
 function applyMarquee() {
-  for (const line of labelEl.querySelectorAll('.label-line')) {
-    const over = line.scrollWidth - line.clientWidth;
+  for (const vp of labelEl.querySelectorAll('.line-vp')) {
+    const line = vp.parentElement;
+    const over = vp.scrollWidth - vp.clientWidth;
     if (over > 1) {
       line.classList.add('scroll');
       line.style.setProperty('--dist', over + 'px');
