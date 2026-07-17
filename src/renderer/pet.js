@@ -30,6 +30,9 @@ let showTime = false;
 let showFinishTime = false;
 // 「跟随耗材颜色」开关（外观页，默认开）——打印中动画的绿色耗材/竹子改成当前耗材色。
 let matchFilamentColor = true;
+// 24/12 小时制：由主进程读 macOS「AppleICUForce24HourTime」下发（false=24 小时、true=12 小时、
+// undefined=跟随 locale）。Chromium 的 Intl 读不到该系统开关，必须显式传入才能跟随系统。
+let sysHour12;
 
 function t(locale, key, params) {
   const map = localeStrings[locale] || localeStrings['zh-CN'] || {};
@@ -43,13 +46,19 @@ function t(locale, key, params) {
   return template;
 }
 
-// 预计完成时刻：当前时间 + 剩余分钟。用 toLocaleTimeString（不传 locale → 取系统默认
-// locale）格式化为「时:分」，因此时区、以及 12 小时制(AM/PM) / 24 小时制的选择都跟随
-// 运行电脑的系统设置——习惯 AM/PM 的用户会看到「2:30 PM」，24 小时制则是「14:30」。
+// 把毫秒时间戳格式化为「时:分」。时区跟随系统 locale；12/24 小时制用主进程下发的 sysHour12
+// 显式指定（Chromium 的 Intl 读不到 macOS 的「24 小时制」开关，只认 locale → 需显式传入）。
+// 未下发时回落到 locale 默认：习惯 AM/PM 的用户看到「2:30 PM」，24 小时制则是「14:30」。
+function fmtClock(ms) {
+  const opts = { hour: '2-digit', minute: '2-digit' };
+  if (sysHour12 !== undefined) opts.hour12 = sysHour12;
+  return new Date(ms).toLocaleTimeString(undefined, opts);
+}
+
+// 预计完成时刻：当前时间 + 剩余分钟。
 function fmtFinishClock(remainMins) {
   if (!Number.isFinite(remainMins) || remainMins <= 0) return null;
-  const d = new Date(Date.now() + remainMins * 60000);
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+  return fmtClock(Date.now() + remainMins * 60000);
 }
 
 // 拼一行的**状态文案**（不含打印机名）：主体是状态本身（打印中时即「打印中 {p}%」）；
@@ -60,7 +69,9 @@ function fmtFinishClock(remainMins) {
 // 数据由 resolveState 放进 labelParams（remain 已是 locale 无关的紧凑 token），切 locale / 切开关都能就地重绘。
 function statusText(line) {
   const p = line.labelParams || {};
-  const parts = [t(currentLocale, line.labelKey, p)];
+  // label.finishedAt 携带原始时间戳 finishedAt，就地格式化为 {time}（跟随系统 24/12 小时）。
+  const params = p.finishedAt != null ? { ...p, time: fmtClock(p.finishedAt) } : p;
+  const parts = [t(currentLocale, line.labelKey, params)];
   if (showLayer && p.layer != null && p.total != null) parts.push(`${p.layer}/${p.total}`);
   if (showTime && p.remain != null) parts.push(t(currentLocale, 'label.remainTime', { time: p.remain }));
   if (showFinishTime && p.remainMins != null) {
@@ -242,6 +253,8 @@ window.pet.onPrefs((prefs) => {
   if (prefs.showTime != null) showTime = prefs.showTime;
   if (prefs.showFinishTime != null) showFinishTime = prefs.showFinishTime;
   if (prefs.matchFilamentColor != null) matchFilamentColor = prefs.matchFilamentColor;
+  // hour12 可正当为 undefined（跟随 locale），用 'in' 判定而非 != null。
+  if ('hour12' in prefs) sysHour12 = prefs.hour12;
   // 字号 / 熊猫尺寸变会改变标签宽与滚动上限，但不改文案签名 → 强制重建以重新测量 marquee。
   lastLabelSig = null;
   renderLabel();

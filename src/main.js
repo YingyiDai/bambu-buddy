@@ -688,10 +688,45 @@ function applyDockVisibility(visible) {
   }
 }
 
+// macOS 的「24 小时制」是 Cocoa 级设置，Node/ICU 读不到（LANG 缺省时会回落 en-US → 12 小时）。
+// 托盘在主进程渲染，需显式读取一次此设置，才能与渲染进程（Chromium 能读到系统设置）显示一致。
+// 返回 false=强制 24 小时、true=强制 12 小时、undefined=跟随 locale（非 macOS 或读取失败时）。
+let _sysHour12;
+let _sysHour12Read = false;
+function systemHour12() {
+  if (_sysHour12Read) return _sysHour12;
+  _sysHour12Read = true;
+  if (process.platform === 'darwin') {
+    try {
+      const v = require('child_process')
+        .execFileSync('defaults', ['read', '-g', 'AppleICUForce24HourTime'], { encoding: 'utf8' })
+        .trim();
+      if (v === '1') _sysHour12 = false;
+      else if (v === '0') _sysHour12 = true;
+    } catch { /* 未设置该键 → 跟随 locale */ }
+  }
+  return _sysHour12;
+}
+
+// 主进程侧「时:分」格式化（用于托盘）。尽量跟随系统的 24/12 小时选择。
+function fmtClock(ms) {
+  const opts = { hour: '2-digit', minute: '2-digit' };
+  const h12 = systemHour12();
+  if (h12 !== undefined) opts.hour12 = h12;
+  return new Date(ms).toLocaleTimeString(undefined, opts);
+}
+
+// 渲染某台状态文案：label.finishedAt 携带原始时间戳 finishedAt，就地格式化为 {time}。
+function renderStatusLabel(locale, labelKey, labelParams) {
+  const p = labelParams || {};
+  const params = p.finishedAt != null ? { ...p, time: fmtClock(p.finishedAt) } : p;
+  return t(locale, labelKey, params);
+}
+
 // 某台的托盘状态文案（未收到首帧时为「启动中…」）。
 function trayStatusLabel(locale, rt) {
   const st = rt && rt.lastState;
-  return st ? t(locale, st.labelKey, st.labelParams) : t(locale, 'tray.starting');
+  return st ? renderStatusLabel(locale, st.labelKey, st.labelParams) : t(locale, 'tray.starting');
 }
 
 // 往模板里压入某台的状态块：名字头 → 状态行 → 指标行（层数/剩余，仅打印中）。
@@ -879,6 +914,9 @@ function pushPetPrefs() {
       showTime: store.get('showTime', false),
       showFinishTime: store.get('showFinishTime', false),
       matchFilamentColor: store.get('matchFilamentColor', true),
+      // 渲染进程（Chromium）的 Intl 只认 locale（en-US → 12 小时），读不到 macOS 的
+      // 「24 小时制」开关。由主进程读出后显式下发，渲染层据此格式化完成/预计完成时刻。
+      hour12: systemHour12(),
     });
   }
 }
@@ -889,7 +927,7 @@ function rebuildTray() {
   const locale = store.get('locale', 'zh-CN');
   // tooltip 用聚合后的「最需要关注」台的状态（与熊猫演的一致）
   const top = pickAttentionItem(currentPetItems());
-  const statusLabel = top ? t(locale, top.state.labelKey, top.state.labelParams) : t(locale, 'tray.starting');
+  const statusLabel = top ? renderStatusLabel(locale, top.state.labelKey, top.state.labelParams) : t(locale, 'tray.starting');
   tray.setToolTip(`${t(locale, 'tray.tooltip')} · ${statusLabel}`);
 }
 
