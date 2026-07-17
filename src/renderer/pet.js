@@ -52,36 +52,144 @@ function fmtFinishClock(remainMins) {
   return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
-// 拼单行标签，紧凑平级：主体是状态本身（打印中时即「打印中 {p}%」）；打印中且开关开启时，
-// 用统一的「 · 」把层数段、剩余时间段平级追加，例：
+// 拼一行的**状态文案**（不含打印机名）：主体是状态本身（打印中时即「打印中 {p}%」）；
+// 打印中且开关开启时，用统一的「 · 」把层数段、剩余时间段平级追加，例：
 //   中文 打印中 50% · 100/200 · 剩余45m    英文 Printing 50% · 100/200 · 45m left
 // 「剩余」只贴在时间段上（层数是当前/总层，不属于「剩余」）。层数段在渲染层直接拼 {layer}/{total}；
-// 时间段由 label.remainTime 定文案。标签恒为一行、不向上生长盖住熊猫。
+// 时间段由 label.remainTime 定文案。打印机名由 renderLabel 单独渲染（带专属分隔符）。
 // 数据由 resolveState 放进 labelParams（remain 已是 locale 无关的紧凑 token），切 locale / 切开关都能就地重绘。
-function renderLabel() {
-  if (!lastPetState) return;
-  const p = lastPetState.labelParams || {};
-  const parts = [t(currentLocale, lastPetState.labelKey, p)];
+function statusText(line) {
+  const p = line.labelParams || {};
+  const parts = [t(currentLocale, line.labelKey, p)];
   if (showLayer && p.layer != null && p.total != null) parts.push(`${p.layer}/${p.total}`);
   if (showTime && p.remain != null) parts.push(t(currentLocale, 'label.remainTime', { time: p.remain }));
   if (showFinishTime && p.remainMins != null) {
     const clock = fmtFinishClock(p.remainMins);
     if (clock) parts.push(t(currentLocale, 'label.finishTime', { time: clock }));
   }
-  labelEl.textContent = parts.join(' · ');
-  reportLabelWidth();
+  return parts.join(' · ');
 }
 
-// 量出标签实际像素宽度，上报主进程按需加宽窗口 —— 这样长标签能完整显示，
-// 既不缩小用户设定的字号，也不截断成「…」。隐藏标签时上报 0，窗口回落到熊猫本身宽度。
-// +14px：给 pill 两侧留一点呼吸空隙（与 CSS max-width 的 12px 边距配合，确保不触发 ellipsis）。
+// 「熊猫此刻演的是哪台」——注意力那台的状态若属需要处理类（失败/暂停/离线/登录失效），
+// 高亮竖条取红色示警，否则取竹叶绿表「正常运转」。多台并存时用户扫一眼颜色即知要不要管。
+const ERR_STATES = new Set(['failed', 'paused', 'offline', 'authExpired']);
+
+// 渲染标签：每台打印机一行（state.lines，见 core/attention.js），单台时一行且不带名字
+// —— 与单打印机时代观感一致。无 lines（过渡兼容）时回落用顶层 labelKey 拼单行。
+// 多台时给「熊猫当前表达的那台」（activeSerial）加高亮竖条，其余行压暗——让用户看得出
+// 熊猫的动画/表情说的是哪一台（否则多行长得一样、无从分辨）。
+let lastLabelSig = null;
+function renderLabel() {
+  if (!lastPetState) return;
+  const lines = Array.isArray(lastPetState.lines) && lastPetState.lines.length > 0
+    ? lastPetState.lines
+    : [{ name: null, labelKey: lastPetState.labelKey, labelParams: lastPetState.labelParams }];
+  const multi = lines.length > 1;
+  const activeSerial = lastPetState.activeSerial;
+  // 渲染结果签名：决定标签显示的所有因素（各行名字/序列号/严重度/渲染文案 + 活动台 + locale）。
+  // 内容未变则不重建 DOM —— 否则每次状态推送（打印中约每秒）都会重建、把 marquee 动画重置到
+  // 起点，滚动永远滚不起来。相同即直接返回，保留现有 DOM 与正在进行的滚动。
+  const sig = JSON.stringify(lines.map((l) => [
+    l.name || null, l.serial || null, l.stateKey || null, statusText(l),
+    multi && l.serial != null && l.serial === activeSerial,
+  ]));
+  if (sig === lastLabelSig) return;
+  lastLabelSig = sig;
+  labelEl.textContent = '';
+  labelEl.classList.toggle('multi', multi);
+  for (const line of lines) {
+    const div = document.createElement('div');
+    div.className = 'label-line';
+    if (multi && line.serial != null && line.serial === activeSerial) {
+      div.classList.add('active');
+      div.classList.add(ERR_STATES.has(line.stateKey) ? 'sev-err' : 'sev-ok');
+    }
+    // 行内容包两层：.line-vp 是**从左侧竖线右侧开始**的裁剪视口（竖线在视口之外的左槽里，
+    // 内容永不进入其区域），.line-inner 是被裁部分做横向滚动（marquee）的内容层。窗口宽固定
+    // 为熊猫宽，超宽的行由 applyMarquee 给 inner 加往返平移，滚出全貌而不撑宽窗口、不截断。
+    const vp = document.createElement('span');
+    vp.className = 'line-vp';
+    const inner = document.createElement('span');
+    inner.className = 'line-inner';
+    // 打印机名与状态之间用专属分隔符（竖条），区别于状态内部用的「 · 」——
+    // 否则名字和后面的状态段全用点串起来，一眼看不出名字到哪结束。
+    if (line.name) {
+      const nameEl = document.createElement('span');
+      nameEl.className = 'label-name';
+      nameEl.textContent = line.name;
+      const sepEl = document.createElement('span');
+      sepEl.className = 'label-sep';
+      sepEl.textContent = '›';
+      inner.append(nameEl, sepEl, document.createTextNode(statusText(line)));
+    } else {
+      inner.textContent = statusText(line);
+    }
+    vp.appendChild(inner);
+    div.appendChild(vp);
+    labelEl.appendChild(div);
+  }
+  reportLabelSize();
+}
+
+// 超宽的行做横向滚动（marquee）：窗口宽固定=熊猫宽，pill 经 CSS max-width 卡在窗口内，
+// 视口 .line-vp 内容超出时给 .line-inner 施加往返平移，把被裁部分滚出来看全，不截断。
+// 竖线在视口左侧的独立槽里、不在裁剪区内，故滚动内容不会与竖线重叠。
+// 需在布局落定后测量（reportLabelSize 的 rAF 里调用）。滚动距离 = 视口内容溢出量。
+//
+// 时间轴：**起点停 REST(固定) → 滚出 tScroll(按最大距离) → 末端停 ENDPAUSE(固定) → 滚回 tScroll**，
+// 循环。REST/ENDPAUSE 是固定秒数（不随内容长短变），故每轮之间在起点明显停一段再滚下一轮。
+// 因固定停顿使关键帧百分比依赖动态的 tScroll，改由 JS 算好百分比注入 @keyframes（覆盖 css 里的
+// 静态兜底那份）。多行共用同一 total 与同一注入 keyframes → **整体同步**（同时起/停/回，不漂移）。
+const MARQUEE_SPEED = 45;      // px/s 滚动速度
+const MARQUEE_REST = 2.2;      // s 起点停顿（每轮之间停这么久）
+const MARQUEE_ENDPAUSE = 0.9;  // s 滚到底后的停顿
+// 溢出小于该阈值不滚：几像素的微溢出去滚一圈毫无意义（观感是无谓抽动），
+// 宁可裁掉那一点点（多为半个字符的边缘）也不做无意义动画。
+const MARQUEE_MIN_OVER = 10;   // px
+let marqueeStyleEl = null;
+function applyMarquee() {
+  const vps = [...labelEl.querySelectorAll('.line-vp')];
+  const overs = vps.map((vp) => vp.scrollWidth - vp.clientWidth);
+  // 只有超过阈值的行才算「需要滚」；统一周期按这些行里的最大溢出定（同步）。
+  const scrollOvers = overs.filter((o) => o >= MARQUEE_MIN_OVER);
+  const maxOver = scrollOvers.length ? Math.max(...scrollOvers) : 0;
+  const tScroll = maxOver / MARQUEE_SPEED;
+  const total = MARQUEE_REST + tScroll + MARQUEE_ENDPAUSE + tScroll;
+  const durStr = total.toFixed(2) + 's';
+  vps.forEach((vp, i) => {
+    const line = vp.parentElement;
+    if (overs[i] >= MARQUEE_MIN_OVER) {
+      line.classList.add('scroll');
+      line.style.setProperty('--dist', overs[i] + 'px');
+      line.style.setProperty('--dur', durStr);
+    } else {
+      line.classList.remove('scroll');
+      line.style.removeProperty('--dist');
+      line.style.removeProperty('--dur');
+    }
+  });
+  if (maxOver <= 0) return; // 无需滚动的行，不注入动画
+  const a = (MARQUEE_REST / total * 100).toFixed(2);
+  const b = ((MARQUEE_REST + tScroll) / total * 100).toFixed(2);
+  const c = ((MARQUEE_REST + tScroll + MARQUEE_ENDPAUSE) / total * 100).toFixed(2);
+  if (!marqueeStyleEl) { marqueeStyleEl = document.createElement('style'); document.head.appendChild(marqueeStyleEl); }
+  marqueeStyleEl.textContent =
+    `@keyframes label-marquee{0%,${a}%{transform:translateX(0)}${b}%,${c}%{transform:translateX(calc(-1*var(--dist,0px)))}100%{transform:translateX(0)}}`;
+}
+
+// 量出标签实际像素尺寸，上报主进程按需加宽/向下加高窗口 —— 长标签完整显示、多行放得下，
+// 既不缩小用户设定的字号，也不截断成「…」。隐藏标签时上报 0，窗口回落到熊猫本身尺寸。
+// 宽度 +14px：给 pill 两侧留一点呼吸空隙（与 CSS max-width 的 12px 边距配合，确保不触发 ellipsis）。
 const LABEL_WIN_MARGIN = 14;
-function reportLabelWidth() {
+function reportLabelSize() {
   const hidden = labelEl.classList.contains('hidden');
-  // requestAnimationFrame：等本次文本改动完成布局后再量，scrollWidth 才是真实内容宽
+  // requestAnimationFrame：等本次文本改动完成布局后再量，scrollWidth/offsetHeight 才是真实尺寸
   requestAnimationFrame(() => {
-    const w = hidden ? 0 : Math.ceil(labelEl.scrollWidth) + LABEL_WIN_MARGIN;
-    window.pet.setLabelWidth(w);
+    if (!hidden) applyMarquee(); // 布局落定后判定各行是否需横向滚动
+    window.pet.setLabelSize({
+      w: hidden ? 0 : Math.ceil(labelEl.scrollWidth) + LABEL_WIN_MARGIN,
+      h: hidden ? 0 : Math.ceil(labelEl.offsetHeight),
+    });
   });
 }
 
@@ -113,11 +221,17 @@ function refreshOverlays() {
 window.pet.onLocale((locale, strings) => {
   currentLocale = locale;
   localeStrings[locale] = strings;
+  lastLabelSig = null; // 强制重建（文案随语言变）
   renderLabel();
 });
 
 // 偏好更新
 window.pet.onPrefs((prefs) => {
+  if (prefs.sizePx != null) {
+    // 熊猫方形边长（--pet-px）：窗口可因多行标签比方形更高，100vh 不再恒等于边长，
+    // 熊猫几何（.pet 宽高、标签带位置）都以此变量为准。
+    document.documentElement.style.setProperty('--pet-px', prefs.sizePx + 'px');
+  }
   if (prefs.labelFontSize != null) {
     labelEl.style.setProperty('--label-font-size', prefs.labelFontSize + 'px');
   }
@@ -128,6 +242,8 @@ window.pet.onPrefs((prefs) => {
   if (prefs.showTime != null) showTime = prefs.showTime;
   if (prefs.showFinishTime != null) showFinishTime = prefs.showFinishTime;
   if (prefs.matchFilamentColor != null) matchFilamentColor = prefs.matchFilamentColor;
+  // 字号 / 熊猫尺寸变会改变标签宽与滚动上限，但不改文案签名 → 强制重建以重新测量 marquee。
+  lastLabelSig = null;
   renderLabel();
   refreshOverlays(); // 开关变化就地生效，无需等下一帧状态
 });

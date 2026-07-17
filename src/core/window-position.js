@@ -42,8 +42,9 @@ function clampToVisible(saved, displays, sizePx) {
 
 /**
  * 据「熊猫方形中心」这一权威真源计算目标窗口 bounds：窗口按标签留白横向加宽，
- * 熊猫恒居中；高度恒为 sizePx。纯函数、**幂等**——同一 center+targetWidth+sizePx
- * 反复调用得到同一结果，绝不从 getBounds() 读回值再写回。
+ * 多行标签时按 extraHeight **向下**加高（熊猫方形顶部锚定，y 只由 center 与 sizePx
+ * 决定，加高不动熊猫）。纯函数、**幂等**——同一入参反复调用得到同一结果，
+ * 绝不从 getBounds() 读回值再写回。
  *
  * 为何真源是「中心」而非「左上角」或「当前窗口 bounds」：
  *   1) 用当前 bounds 保持中心：从已漂移的 cur.x/y 反推再 Math.round，居中取整误差会
@@ -56,15 +57,16 @@ function clampToVisible(saved, displays, sizePx) {
  *
  * @param {{x:number,y:number}} center - 熊猫方形中心（权威真源，可为小数）
  * @param {number} targetWidth - 目标窗口宽度（含标签加宽）
- * @param {number} sizePx - 熊猫方形边长 = 窗口高度
+ * @param {number} sizePx - 熊猫方形边长（窗口高度下限）
+ * @param {number} [extraHeight=0] - 多行标签超出预留带的部分，窗口向下加高的量
  * @returns {{x:number,y:number,width:number,height:number}}
  */
-function petWindowBounds(center, targetWidth, sizePx) {
+function petWindowBounds(center, targetWidth, sizePx, extraHeight = 0) {
   return {
     x: Math.round(center.x - targetWidth / 2),
     y: Math.round(center.y - sizePx / 2),
     width: targetWidth,
-    height: sizePx,
+    height: sizePx + extraHeight,
   };
 }
 

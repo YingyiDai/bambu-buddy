@@ -49,7 +49,7 @@ window.bambu.onNavigate((section) => { if (KNOWN_SECTIONS.includes(section)) swi
 let carIndex = 0;        // 当前居中卡片索引
 let carCount = 0;        // 卡片总数（含末尾添加卡）
 let carouselWired = false;
-let carInitialized = false; // 首次渲染时把焦点定位到当前打印机
+let carInitialized = false; // 首次渲染时把焦点定位到第一张卡
 const RENAME_ICON = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 const CONFIRM_ICON = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
 
@@ -97,7 +97,7 @@ function sourceChip(source, srcText) {
   return '<span class="src-chip">' + icon + ' ' + escapeHtml(srcText[source] || source) + '</span>';
 }
 
-// 切换当前打印机后，实时状态需要几秒才连上 —— 期间显示「连接中…」而非误报离线。
+// 刚添加的打印机实时状态需要几秒才连上 —— 期间显示「连接中…」而非误报离线。
 let connectingSerial = null;
 let connectingUntil = 0;
 function markConnecting(serial) {
@@ -114,16 +114,16 @@ function buildStats(live) {
     const layer = (Number.isFinite(pr.layer) && Number.isFinite(pr.total) && pr.total > 0) ? ' · ' + pr.layer + '/' + pr.total : '';
     items.push('<span class="pcard-stat">📊 ' + pr.percent + '%' + layer + '</span>');
   }
-  if (Number.isFinite(tp.nozzleTemp)) items.push('<span class="pcard-stat">🌡️ ' + tp.nozzleTemp + '°</span>');
-  if (Number.isFinite(tp.bedTemp)) items.push('<span class="pcard-stat">🛏️ ' + tp.bedTemp + '°</span>');
+  // 温度（喷嘴/热床）已去除：稳定打印时恒在目标值、不可操作，属低价值信息。保留进度/层数/剩余时间。
   if (Number.isFinite(tp.remainingTime) && tp.remainingTime > 0) items.push('<span class="pcard-stat">⏱️ ' + escapeHtml(fmtMin(tp.remainingTime)) + '</span>');
   return items.length ? '<div class="pcard-stats">' + items.join('') + '</div>' : '';
 }
-// 决定状态胶囊：用简短文案（数字在统计行）；切换中且未拿到「好」状态显示连接中。
-function pickStatus(p, isActive, live) {
-  // 活动机：用主进程从熊猫 stateKey 派生的权威类别；非活动机：用云端粗粒度在线状态。
-  let cls = (isActive && live && live.statusClass) ? live.statusClass : connCls(p);
-  if (isActive && (cls === 'offline' || cls === 'unknown') && isConnecting(p.serial)) cls = 'connecting';
+// 决定状态胶囊：用简短文案（数字在统计行）；刚添加、还没拿到「好」状态时显示连接中。
+function pickStatus(p, live) {
+  // 有实时遥测（全部台常驻连接）：用主进程从熊猫 stateKey 派生的权威类别；
+  // 尚无遥测（mock 模式 / 未收到首帧）：回落云端粗粒度在线状态。
+  let cls = (live && live.statusClass) ? live.statusClass : connCls(p);
+  if ((cls === 'offline' || cls === 'unknown') && isConnecting(p.serial)) cls = 'connecting';
   return { cls, text: shortStatus(cls, p) };
 }
 
@@ -132,25 +132,25 @@ async function renderPrinters() {
   let st = {};
   try { st = (await window.bambu.getStoredState()) || {}; } catch (e) { /* ignore */ }
   const r = await window.bambu.listPrinters();
-  const { printers, activeSerial } = r;
-  const live = { statusClass: r.liveStatusClass, key: r.liveLabelKey, params: r.liveLabelParams, temps: r.liveTemps, progress: r.liveProgress };
+  const { printers } = r;
+  const telemetry = r.telemetry || {};
   const srcText = { cloud: t('settings.srcCloud'), lan: t('settings.srcLan'), both: t('settings.srcBoth') };
 
   // 目标卡片描述（含末尾账号卡 + 添加本地卡）
-  const desired = printers.map((p) => ({ key: p.serial, type: 'printer', p, isActive: p.serial === activeSerial }));
+  const desired = printers.map((p) => ({ key: p.serial, type: 'printer', p }));
   desired.push({ key: '__account', type: 'account' });
   desired.push({ key: '__lan', type: 'lan' });
 
   const track = el('carTrack');
   const existing = new Map([...track.children].map((c) => [c.dataset.key, c]));
   const order = [];
-  let activeIdx = -1;
   desired.forEach((d, i) => {
     let card = existing.get(d.key);
     if (d.type === 'printer') {
-      if (d.isActive) activeIdx = i;
+      const tm = telemetry[d.p.serial] || {};
+      const live = { statusClass: tm.liveStatusClass, key: tm.liveLabelKey, params: tm.liveLabelParams, temps: tm.liveTemps, progress: tm.liveProgress };
       if (!card || card.dataset.model !== (d.p.model || '')) card = buildPrinterCard(d.p);
-      fillPrinterCard(card, d.p, d.isActive, srcText, live);   // 原位更新，避免重建闪烁/重置动画
+      fillPrinterCard(card, d.p, srcText, live);   // 原位更新，避免重建闪烁/重置动画
     } else if (d.type === 'account') {
       // sig 含 currentLocale：切换语言时强制重建卡片，否则复用旧 DOM → 文案不刷新
       const sig = 'acct:' + currentLocale + ':' + (st && st.hasToken ? 'in:' + (st.account || '') + ':' + (st.region || '') : 'out');
@@ -165,7 +165,7 @@ async function renderPrinters() {
   order.forEach((c, i) => { if (track.children[i] !== c) track.insertBefore(c, track.children[i] || null); });
 
   carCount = order.length;
-  if (!carInitialized) { carIndex = activeIdx >= 0 ? activeIdx : 0; carInitialized = true; }
+  if (!carInitialized) { carIndex = 0; carInitialized = true; }
   carIndex = Math.max(0, Math.min(carCount - 1, carIndex));
   buildDots();
   wireCarouselOnce();
@@ -191,10 +191,11 @@ function buildPrinterCard(p) {
 }
 
 // 原位填充/更新动态内容（状态、操作、统计等）——重用同一 DOM，避免切换/轮询闪烁。
-function fillPrinterCard(card, p, isActive, srcText, live) {
+// 全部台常驻连接后每张卡都有实时遥测（live 来自 printer:list 的逐台 telemetry），
+// 不再有「当前打印机」概念，故去掉「设为当前 / 已是当前」按钮。
+function fillPrinterCard(card, p, srcText, live) {
   card.dataset.serial = p.serial;
-  card.classList.toggle('is-current', isActive);
-  const status = pickStatus(p, isActive, live);
+  const status = pickStatus(p, live);
   card.querySelector('.pcard-frame').className = 'pcard-frame pcard-status-' + status.cls;
   card.querySelector('.pcard-body').innerHTML =
     '<div class="pcard-namerow">' +
@@ -206,18 +207,18 @@ function fillPrinterCard(card, p, isActive, srcText, live) {
       '<span class="status-chip ' + status.cls + '"><span class="sdot"></span>' + escapeHtml(status.text) + '</span>' +
       sourceChip(p.source, srcText) +
     '</div>' +
-    (isActive ? buildStats(live) : '') +
+    buildStats(live) +
     '<div class="pcard-serial">' + escapeHtml(p.serial) + '</div>';
   card.querySelector('.pc-act-rename').addEventListener('click', (e) => { e.stopPropagation(); startRename(p.serial, card, p.name); });
   const actions = card.querySelector('.pcard-actions');
-  // 「当前」表达在主按钮上：当前打印机显示「已是当前」（禁用），否则「设为当前」（可点）
+  // 桌面可见性：文案与颜色都跟「动作」走——当前隐藏→绿色 CTA「显示」（点它加回桌面）、
+  // 当前显示→中性描边「隐藏」（减法动作、弱化）。绿色恒表"点它能上桌面"，也一眼看出哪些待恢复。
+  // 隐藏的台仍常驻连接，托盘/本卡照常显示状态，只是不上桌面熊猫。
+  // 仅本地打印机额外保留「删除」（云端打印机由账号登录态管理，删不掉、只能隐藏）。
   actions.innerHTML =
-    (isActive
-      ? '<div class="pc-current">✓ ' + escapeHtml(t('printers.isCurrent')) + '</div>'
-      : '<button class="btn pc-act-use">' + escapeHtml(t('settings.setActive')) + '</button>') +
+    '<button class="btn pc-act-vis' + (p.hidden ? ' pc-act-use' : '') + '">' + escapeHtml(t(p.hidden ? 'settings.showPrinter' : 'settings.hidePrinter')) + '</button>' +
     (p.hasLan ? '<button class="btn btn-danger pc-act-remove">' + escapeHtml(t('settings.remove')) + '</button>' : '');
-  const use = actions.querySelector('.pc-act-use');
-  if (use) use.addEventListener('click', async (e) => { e.stopPropagation(); markConnecting(p.serial); await window.bambu.setActivePrinter(p.serial); renderPrinters(); });
+  actions.querySelector('.pc-act-vis').addEventListener('click', async (e) => { e.stopPropagation(); await window.bambu.setHidden(p.serial, !p.hidden); renderPrinters(); });
   const rm = actions.querySelector('.pc-act-remove');
   if (rm) rm.addEventListener('click', async (e) => { e.stopPropagation(); await window.bambu.removeLanPrinter(p.serial); renderPrinters(); });
 }
@@ -251,7 +252,7 @@ function buildAccountCard(st) {
   let body;
   if (st && st.hasToken) {
     const rl = { global: t('settings.regionGlobalFull'), china: t('settings.regionChinaFull') };
-    const who = st.account || st.activePrinter || '—';
+    const who = st.account || (st.printers && st.printers[0] && st.printers[0].name) || '—';
     const region = rl[st.region] || st.region || '';
     body =
       '<p class="util-status"><span class="acct-dot"></span>' + escapeHtml(t('printers.acctLoggedIn')) + '</p>' +
@@ -429,8 +430,12 @@ function buildLanCard() {
     const name = card.querySelector('.la-name').value.trim();
     const msg = card.querySelector('.add-msg'); msg.textContent = '…';
     const r = await window.bambu.addLanPrinter(host, code, serial, name);
-    if (r.ok) { msg.textContent = t('settings.connSuccess'); renderPrinters(); }
-    else msg.textContent = r.error || t('settings.errLanFailed');
+    if (r.ok) {
+      msg.textContent = t('settings.connSuccess');
+      // 刚加的机常驻连接需几秒才收到首帧 → 期间显示「连接中…」而非误报离线
+      markConnecting(serial);
+      renderPrinters();
+    } else msg.textContent = r.error || t('settings.errLanFailed');
   });
   attachTilt(card);
   return card;

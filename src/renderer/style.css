@@ -24,16 +24,18 @@ html, body {
 }
 
 /* 熊猫容器：实体像素区域，可拖动窗口（§5.1）。
-   窗口可能比熊猫更宽 —— 主进程按标签实际宽度加宽窗口（见 main.js applyWinWidth），
-   好让长标签完整显示而不缩字号/截断。这里用「视口高度 = 窗口高 = sizePx」把熊猫
-   锁成居中的方形：窗口再宽，熊猫也居中不变形，热区/交互判定（基于 petEl 尺寸）不受影响。 */
+   窗口可能比熊猫更宽/更高 —— 主进程按标签实际尺寸加宽（长标签完整显示而不缩字号/截断）、
+   向下加高（多打印机每台一行标签，见 main.js applyWinWidth）。熊猫方形用 --pet-px
+   （主进程经 pet:prefs 下发的 sizePx）锁定：窗口再宽再高，熊猫都顶部锚定、水平居中、
+   不变形，热区/交互判定（基于 petEl 尺寸）不受影响。
+   100vh 兜底仅覆盖 prefs 尚未到达的启动瞬间——此时窗口高恰为 sizePx，二者等价。 */
 .pet {
   position: absolute;
   top: 0;
-  bottom: 34px;             /* 给下方 label 留空间（含 +8px 间距） */
+  height: calc(var(--pet-px, 100vh) - 34px);  /* 方形内给下方 label 留 34px 带（含 +8px 间距） */
   left: 50%;
   transform: translateX(-50%);
-  width: 100vh;             /* = 窗口高 = sizePx，熊猫恒为居中方形 */
+  width: var(--pet-px, 100vh);
   /* cursor 由 pet.js 根据热区动态设置 */
 }
 
@@ -60,15 +62,18 @@ video.layer.active + canvas.overlay {
   opacity: 1;
 }
 
-/* 状态文本 pill（§8.1）：半透明深色底 + 浅色字 + 轻阴影，浮在任意壁纸上可读 */
+/* 状态文本 pill（§8.1）：半透明深色底 + 浅色字 + 轻阴影，浮在任意壁纸上可读。
+   顶部锚定在熊猫方形下沿（--pet-px - 34px 处）：多打印机时每台一行、pill 向下生长，
+   主进程据 pet:labelSize 上报把窗口向下加高——绝不向上生长盖住熊猫。 */
 .status-pill {
   position: absolute;
   left: 50%;
-  bottom: 8px;
+  top: calc(var(--pet-px, 100vh) - 34px);
   transform: translateX(-50%);
-  /* 窗口宽度由主进程按本标签实际宽度加宽（pet.js 量好后上报），故这里只需不超出窗口即可，
-     正常情况整条标签完整显示、不截断、不改用户字号。ellipsis 仅作窗口无法再加宽（极端超长）时的兜底。 */
-  max-width: calc(100% - 12px);
+  /* 窗口宽固定=熊猫宽，pill 最宽卡在窗口内（100% 即窗口宽），仅留很小边距以尽量多容纳内容
+     （减少「刚好差几像素」被裁的情况）。内容确实更宽时按行做横向滚动（见 .label-line.scroll），
+     不撑宽窗口、不改用户字号。 */
+  max-width: calc(100% - 4px);
   box-sizing: border-box;
   padding: 4px 12px;
   font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
@@ -77,14 +82,83 @@ video.layer.active + canvas.overlay {
   color: #f5f5f7;
   background: rgba(20, 20, 22, 0.62);
   border-radius: 999px;
-  white-space: nowrap;      /* 标签恒为一行：层数 / 剩余时间用「 · 」横向拼接，不向上生长盖住熊猫 */
-  overflow: hidden;
-  text-overflow: ellipsis;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
   pointer-events: none;     /* 非交互、点击穿透 */
   transition: opacity 300ms ease;
+}
+
+/* 多行时药丸圆角收敛为圆角矩形（999px 在两行以上观感怪异） */
+.status-pill.multi {
+  border-radius: 14px;
+}
+
+/* 单行标签内容：恒为一行（层数 / 剩余时间用「 · 」横向拼接）。窗口宽固定=熊猫宽，
+   内容超出的行不截断也不撑宽窗口，而是裁掉溢出部分、由 .line-inner 做横向滚动播出全貌。
+   .line-vp 是裁剪视口——**从左侧竖线右侧开始**（竖线在 .label-line 的 padding 左槽里、
+   在视口之外），故滚动内容绝不进入竖线区域、不与之重叠。 */
+.label-line {
+  white-space: nowrap;
+  overflow: visible;
+}
+.line-vp {
+  display: block;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.line-inner {
+  display: inline-block;
+  white-space: nowrap;
+}
+/* 超宽行：往返平移把被裁部分滚出来。--dist/--dur 及带固定停顿的 @keyframes 均由 pet.js
+   applyMarquee 按实际溢出量注入（每轮之间在起点固定停顿再滚下一轮）。下面这份静态 keyframes
+   仅作注入前的首帧兜底，注入的同名 keyframes（在 head 末尾）会覆盖它。 */
+.label-line.scroll .line-inner {
+  animation: label-marquee var(--dur, 6s) ease-in-out infinite;
+}
+@keyframes label-marquee {
+  0%, 15% { transform: translateX(0); }
+  50%, 65% { transform: translateX(calc(-1 * var(--dist, 0px))); }
+  100% { transform: translateX(0); }
+}
+
+/* 多台并存：给「熊猫当前表达的那台」（.active）加左侧短圆角竖条 + 提亮，其余行压暗——
+   让用户一眼看出熊猫的动画说的是哪一台。竖条颜色按状态：正常竹叶绿 / 需处理示警红。
+   仅 .multi（≥2 行）生效；单台一行无歧义，保持原药丸观感。 */
+/* 多行时文本因左槽（竖条）比右侧多缩进，收紧左内距补偿视觉不对称。 */
+.status-pill.multi { padding-left: 4px; }
+.status-pill.multi .label-line {
+  position: relative;
+  padding-left: 9px;        /* 所有行留同宽左槽，文本左对齐；竖条只画在 active 行的槽里 */
+  opacity: 0.5;             /* 非当前行压暗，凸显当前行 */
+}
+.status-pill.multi .label-line.active {
+  opacity: 1;
+  font-weight: 700;
+}
+.status-pill.multi .label-line.active::before {
+  content: '';
+  position: absolute;
+  left: 2px;                /* 贴近文本（文本左缘 9px，竖条 2–5px，间距约 4px） */
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 56%;              /* 短于整行高，居中 */
+  border-radius: 2px;       /* 圆角，避免与圆角底板冲突 */
+  background: #8bd450;      /* 正常运转 = 竹叶绿 */
+}
+.status-pill.multi .label-line.active.sev-err::before {
+  background: #ff5a52;      /* 需要处理（失败 / 暂停 / 离线）= 示警红 */
+}
+
+/* 打印机名与状态之间的分隔符：轻量右尖括号「›」，有方向感、非竖线，既区别于状态段
+   内部的「 · 」，也不与左侧竖状态条撞。让「名字到哪结束」一眼可辨。名字段略提亮以强化标识。 */
+.label-name { opacity: 0.92; }
+.label-sep {
+  margin: 0 6px;
+  opacity: 0.55;
+  font-weight: 400;
 }
 
 /* Add hidden utility */

@@ -20,6 +20,8 @@ const errorCodes = require('./core/bambu-error-codes');
 const fs = require('fs');
 const registry = require('./core/printer-registry');
 const fullscreenWatch = require('./core/fullscreen-watch');
+const { PrinterHub } = require('./core/printer-hub');
+const { pickAttentionItem, sortByAttention, buildLabelLines } = require('./core/attention');
 
 // 走 Electron net 的底层 GET：net 会尊重系统代理（macOS 网络设置 / Clash 系统代理等），
 // 因此在需要代理才能访问 GitHub 的网络里（如中国大陆），检查更新也能连上 api.github.com。
@@ -55,7 +57,7 @@ function netGetRaw(host, path) {
     request.end();
   });
 }
-const { clampToVisible, petWindowBounds, quantizeWinWidth } = require('./core/window-position');
+const { clampToVisible, petWindowBounds } = require('./core/window-position');
 
 const store = new Store();
 
@@ -78,7 +80,6 @@ function migrateStorage() {
         name: bambu.name || bambu.serial,
         model: bambu.model || '',
       }]);
-      store.set('bambuActivePrinter', bambu.serial);
     } else if (bambu.mode === 'lan') {
       store.set('bambuLan', {
         host: bambu.host,
@@ -106,17 +107,38 @@ function migrateStorage() {
 
 let win = null;
 let tray = null;
-let dataSource = null;
 let settingsWin = null; // Bambu 连接设置窗（Cloud 登录 / LAN 配置）
-let lastState = null; // 最近一次 resolveState 结果，用于托盘展示
-let lastReport = null; // 最近一次 MQTT 原始报文，供托盘菜单读取实时指标
-let errorTable = null; // 当前机型+语言的官方错误码表（解析后）；打印失败时查它得原因文案，未加载则 null
-let errorTableKey = null; // 已加载表的 "<lang>_<model>" 标识，避免重复加载
 let cloudPollTimer = null; // 云端粗粒度状态轮询定时器
 let liveNotifyTimer = null; // MQTT 实时状态 → 设置窗重绘的防抖定时器
-let completionTimer = null; // 完成后 20 分钟 / 24 小时两个展示边界的刷新定时器
 let playPercent = 0; // 把玩页打印进度（滑杆位置，0–100）
 let pendingUpdate = null; // 自动检查发现的新版本 { version, url }，供托盘菜单常驻高亮
+
+// ── 多打印机运行时 ──
+// 所有已添加的打印机常驻连接（每台一个数据源实例，生命周期由 PrinterHub diff 管理），
+// 各台的最近状态按 serial 存在 runtimes；桌面只有一只熊猫，动画演「最需要关注」的台
+// （见 core/attention.js），标签逐台一行堆叠。
+// mock（把玩）模式仍是全局单源：挂在伪 serial MOCK_SERIAL 下，聚合天然退化为单台。
+const MOCK_SERIAL = '__mock__';
+
+// 托盘状态区顶层最多展开几台的完整状态块。超出的台按「关注度」折进「其余 N 台」子菜单
+// （见 buildMenuTemplate）——账号绑很多台时（打印农场/教室）避免菜单被顶得极长、把设置/退出挤到要滚动。
+const MAX_TRAY_PRINTERS = 3;
+const runtimes = new Map(); // serial → { lastReport, lastState, completionTimer }
+let mockSource = null; // 仅 mock 模式非空（MockDataSource）
+const errorTables = new Map(); // "<lang>_<model>" → 解析后的官方错误码表（打印失败时查大类）
+const errorTablePending = new Set(); // 正在下载中的表 key，避免并发重复下载
+
+// 鉴权失败提示去抖：云端 token 失效会同时命中所有云端台，避免每台都弹一次设置窗提示。
+let lastAuthNotifyAt = 0;
+
+function getRuntime(serial) {
+  let rt = runtimes.get(serial);
+  if (!rt) {
+    rt = { lastReport: null, lastState: null, completionTimer: null };
+    runtimes.set(serial, rt);
+  }
+  return rt;
+}
 
 // 自动检查更新的节奏：启动后延迟一次（给网络/系统代理就绪时间），之后每 6 小时复查一次。
 // 复查同时也是后台下载失败的自动重试点（见 runAutoUpdateCheck → startUpdateDownload）。
@@ -153,7 +175,7 @@ function createWindow() {
   // 记下熊猫方形中心为权威真源（applyWinWidth 据此算窗口 bounds，见 petCenter 注释）。
   petCenter = { x: x + sizePx / 2, y: y + sizePx / 2 };
 
-  // 初始宽度同样走 targetWinWidth（启动时 labelPx=0，即 max(sizePx, 宽度下限)）；
+  // 初始宽度同样走 targetWinWidth（启动时 labelSize.w=0，即 max(sizePx, 宽度下限)）；
   // x 按「熊猫方形居中」反推窗口左缘，保证熊猫落在记忆位置上。
   const winW = targetWinWidth();
   // 【allow-direct-setBounds：sanctioned exception ①】构造用一次性权威值，非 getBounds 回写。
@@ -190,11 +212,12 @@ function createWindow() {
 
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
-  // 渲染层加载完成后，补发最近一次状态（数据源可能在窗口 ready 前已 emit）
+  // 渲染层加载完成后，补发偏好/语言/最近状态（数据源可能在窗口 ready 前已 emit）。
+  // 顺序：先偏好（渲染层几何依赖 sizePx）再状态，避免多行标签在几何就绪前上报错误尺寸。
   win.webContents.on('did-finish-load', () => {
-    if (lastState) win.webContents.send('pet:state', lastState);
-    pushLocale();
     pushPetPrefs();
+    pushLocale();
+    pushState();
   });
   // 位置记忆在 pet:dragEnd 时保存（§5.3），避免拖拽过程中频繁写盘。
 }
@@ -255,8 +278,10 @@ function applyHideOnFullscreen(enabled) {
   }
 }
 
-// 渲染层上报的标签实际像素宽度：窗口据此加宽以完整显示长标签（不缩字号、不截断）。
-let labelPx = 0;
+// 渲染层上报的标签实际像素尺寸。高度 h 驱动窗口向下加高以容纳多行标签（多台打印机每台
+// 一行，见 core/attention.js）；宽度 w 现已不再驱动窗口加宽（窗口宽固定为熊猫宽，超宽行在
+// 渲染层做 marquee 横向滚动），保留上报仅为兼容、不影响几何。
+const labelSize = { w: 0, h: 0 };
 
 // 熊猫方形**中心**的权威坐标（运行时唯一真源，可为小数）。窗口比熊猫方形宽（标签留白），
 // 故不能用窗口 bounds 反推位置——applyWinWidth 一律据此中心算 bounds，保证幂等、不因
@@ -265,27 +290,34 @@ let labelPx = 0;
 // 持久化仍走 store('window.position')（存熊猫方形左上角，与历史口径一致）。
 let petCenter = null;
 
-// macOS 上宽度小于约 162px 的透明窗口会整窗变成不透明白底（Electron 已知缺陷，官方标记不修：
-// electron/electron#44884，Apple Silicon + 缩放显示器上必现）。实际用户反馈的阈值与 162 吻合：
-// 熊猫尺寸 <160 时空闲态（短标签、窗口不加宽）白底，打印中（长标签把窗口撑宽越过阈值）正常，
-// 也证明该缺陷只受宽度影响、与高度无关。给窗口宽度设下限兜底：熊猫仍按用户尺寸居中渲染，
-// 两侧多出的透明留白与「标签加宽」共用同一机制 —— 点击穿透，不影响交互/热区/位置记忆。
-const MIN_WIN_WIDTH = 170;
+// 窗口宽下限。有两重作用：
+// 1) 标签最小可读宽：窗口宽固定=熊猫宽后，熊猫调小会连带把标签挤窄、内容易滚。设 220 下限
+//    （≈ 单台全开「打印中 88% · 305/340 · 剩余1h12m」所需宽，也是默认熊猫尺寸），使标签宽度
+//    不随熊猫缩小而变小——熊猫再小，标签也保持能放下常规单台内容、一般不滚。熊猫 <220 时
+//    窗口保持 220，两侧透明留白点击穿透，熊猫仍按用户尺寸居中；多台真·超宽仍照常横向滚动。
+// 2) 兼作 macOS 透明窗口白底 workaround：宽度 <约 162px 的透明窗口在 Apple Silicon+缩放屏上会
+//    整窗变白底（electron/electron#44884）。220 远高于该阈值，顺带避开。
+const MIN_WIN_WIDTH = 220;
 
-// 标签比熊猫方形还宽时，窗口加宽量量化到该台阶（见 quantizeWinWidth 注释：消除自动播放
-// 时剩余时间快速变化导致的熊猫抖动）。
-const LABEL_WIDTH_STEP = 40;
-
-// 目标窗口宽度：至少容纳熊猫方形（sizePx），标签更宽时按标签宽（量化到台阶），且不低于
-// 透明窗口安全下限。窗口只在**水平**方向加宽；高度恒为 sizePx。两侧多出的透明留白点击
-// 穿透、可溢出屏幕边缘，熊猫始终居中方形（CSS width:100vh），故窗口变宽不改变熊猫位置/大小/热区。
+// 目标窗口宽度：恒为熊猫方形宽（不低于透明窗口安全下限），**不再随标签加宽**。
+// 标签 pill 经 CSS max-width 卡在窗口宽内；超宽的行由渲染层做横向滚动（marquee）播出全部
+// 内容（见 pet.js），既不截断也不把窗口越撑越宽。窗口宽固定后，标签宽变化不再牵动窗口，
+// 也彻底消除了「标签快速变宽→窗口跟随→熊猫抖动」的老问题（原量化 quantizeWinWidth 不再需要）。
 function targetWinWidth() {
-  return quantizeWinWidth(labelPx, Math.max(currentSizePx(), MIN_WIN_WIDTH), LABEL_WIDTH_STEP);
+  return Math.max(currentSizePx(), MIN_WIN_WIDTH);
+}
+
+// 窗口预留给标签带的高度是 34px（.pet 的 bottom 内缩）里去掉 8px 间距后的 26px。
+// 单行默认字号的标签 ≈25px 恰好放下（extraHeight=0，窗口高恒为 sizePx——与单台时代
+// 完全一致）；多行/大字号超出的部分向下加高窗口，熊猫方形顶部锚定纹丝不动。
+const LABEL_BASE_PX = 26;
+function targetExtraHeight() {
+  return Math.max(0, labelSize.h - LABEL_BASE_PX);
 }
 
 // ★ 窗口 bounds 的**唯一常规写入口**（choke point）。凡「熊猫应待在原地、仅尺寸/标签
-// 宽变化」的场景都必须走这里，绝不在别处直接 win.setBounds。全程据权威源真相
-// （petCenter + currentSizePx + labelPx）计算，从不回写 getBounds() 读回值 —— 这是杜绝
+// 尺寸变化」的场景都必须走这里，绝不在别处直接 win.setBounds。全程据权威源真相
+// （petCenter + currentSizePx + labelSize）计算，从不回写 getBounds() 读回值 —— 这是杜绝
 // 「熊猫越变越大 / 右移 / 上移 / 走位」这类 DIP↔像素 & 居中取整累积缺陷再次出现的结构性保证。
 // 仅两处允许直接 setBounds：① 窗口构造（new BrowserWindow，一次性权威值）；
 // ② 拖拽跟随光标的 dragTimer（写光标绝对位置 + 起始锁定的固定宽高，不累积）。
@@ -296,8 +328,8 @@ function applyWinWidth() {
   // 若在此据陈旧中心 setBounds 会把窗口拽回拖拽前的位置。拖拽结束会再 applyWinWidth 收敛。
   if (dragOffset) return;
   // 一律据权威中心算 bounds（幂等、不累积，见 petWindowBounds 注释）：熊猫恒居中、
-  // 高度恒为 sizePx——彻底消除拖进度滑杆/拖尺寸时熊猫右移/上移/变大/走位。
-  const next = petWindowBounds(petCenter, targetWinWidth(), currentSizePx());
+  // 多行标签只向下加高——彻底消除拖进度滑杆/拖尺寸时熊猫右移/上移/变大/走位。
+  const next = petWindowBounds(petCenter, targetWinWidth(), currentSizePx(), targetExtraHeight());
   const b = win.getBounds();
   if (b.x === next.x && b.y === next.y && b.width === next.width && b.height === next.height) return;
   win.setBounds(next);
@@ -322,16 +354,92 @@ function setPetSizePx(px) {
 }
 
 // ---- 数据源装配 ----
-// 推送最新状态给宠物窗口（提取自原 buildDataSource 内联逻辑）。
+
+// 「在桌面显示」黑名单：hiddenPrinters 存被隐藏台的 serial 列表（默认空 = 全显）。
+// 黑名单语义故新导入的云端台自动出现；独立于 bambuPrinters（云轮询会整体重写它，不能存这儿）。
+function isHidden(serial) {
+  const list = store.get('hiddenPrinters', []);
+  return Array.isArray(list) && list.includes(serial);
+}
+function setHidden(serial, hidden) {
+  const list = (store.get('hiddenPrinters', []) || []).filter((s) => s !== serial);
+  if (hidden) list.push(serial);
+  store.set('hiddenPrinters', list);
+}
+
+// 各台的 { serial, name, state, report } 列表（统一列表序），供聚合与标签行生成。
+// mock 模式退化为单台（伪 serial、不带名字 → 单行标签，与真机单台观感一致）。
+// 「未上桌面」（hiddenPrinters）的台在此就被排除——下游 pickAttentionItem/buildLabelLines
+// 都吃这个列表，故隐藏台既不占标签行、也不参与熊猫的注意力切换（但仍常驻连接，托盘/设置照常）。
+function currentPetItems() {
+  if (store.get('dataSource', 'mock') === 'mock') {
+    const rt = runtimes.get(MOCK_SERIAL);
+    return rt && rt.lastState
+      ? [{ serial: MOCK_SERIAL, name: null, state: rt.lastState, report: rt.lastReport }]
+      : [];
+  }
+  const items = [];
+  for (const p of getUnified()) {
+    if (isHidden(p.serial)) continue;
+    const rt = runtimes.get(p.serial);
+    if (rt && rt.lastState) items.push({ serial: p.serial, name: p.name, state: rt.lastState, report: rt.lastReport });
+  }
+  return items;
+}
+
+// 聚合出给宠物窗口的载荷：顶层沿用单台时代的 state 形状（视频/换色路径零改动），
+// 额外带 lines（逐台标签行）与 activeSerial（熊猫当前表达的那台，渲染层据此高亮对应行）。
+// items 已排除「未上桌面」的台；只剩一台可见时 buildLabelLines 自然给单行无名（回到单台观感）。
+// 无任何台可显示时（含全部被隐藏）回落「离线」熊猫。
+function buildPetPayload() {
+  const items = currentPetItems();
+  const top = pickAttentionItem(items);
+  if (!top) return { ...resolveState({ connected: false }), lines: [], activeSerial: null };
+  return { ...top.state, lines: buildLabelLines(items), activeSerial: top.serial };
+}
+
+// 推送聚合状态给宠物窗口。
 function pushState() {
   if (win && !win.isDestroyed()) {
-    win.webContents.send('pet:state', lastState);
+    win.webContents.send('pet:state', buildPetPayload());
   }
+}
+
+// 宠物推送节流（首沿 + 尾沿）：N 台同时打印时每台约 1 帧/秒，逐帧推送渲染层是无谓开销。
+// 首沿保住把玩页进度滑杆的即时响应（拖动即推），尾沿把突发帧合并到 300ms 一次。
+const PET_PUSH_MS = 300;
+let petPushTimer = null;
+let lastPetPushAt = 0;
+function schedulePetPush() {
+  if (petPushTimer) return;
+  const wait = PET_PUSH_MS - (Date.now() - lastPetPushAt);
+  if (wait <= 0) {
+    lastPetPushAt = Date.now();
+    pushState();
+    return;
+  }
+  petPushTimer = setTimeout(() => {
+    petPushTimer = null;
+    lastPetPushAt = Date.now();
+    pushState();
+  }, wait);
+}
+
+// 托盘重建节流（尾沿合并）：托盘每台都有状态/温度行，N 台打印中逐帧重建整份菜单
+// 既浪费也可能引起菜单闪烁。用户操作路径（切语言、点开关等）仍直调 rebuildTray() 即时生效。
+const TRAY_REBUILD_MS = 1500;
+let trayRebuildTimer = null;
+function scheduleTrayRebuild() {
+  if (trayRebuildTimer) return;
+  trayRebuildTimer = setTimeout(() => {
+    trayRebuildTimer = null;
+    rebuildTray();
+  }, TRAY_REBUILD_MS);
 }
 
 // 当前把玩场景 key（仅 mock 数据源时有值）。
 function currentPlayScenario() {
-  return (dataSource instanceof MockDataSource) ? (dataSource.getCurrent() || null) : null;
+  return mockSource ? (mockSource.getCurrent() || null) : null;
 }
 
 // 把玩状态推送给设置窗（驱动"当前正在演示"卡片刷新）。
@@ -363,47 +471,57 @@ function saveCompletionRecord(serial, record) {
   store.set(COMPLETION_HISTORY_KEY, next);
 }
 
-function clearCompletionTimer() {
-  if (!completionTimer) return;
-  clearTimeout(completionTimer);
-  completionTimer = null;
+function clearCompletionTimer(rt) {
+  if (!rt || !rt.completionTimer) return;
+  clearTimeout(rt.completionTimer);
+  rt.completionTimer = null;
 }
 
-function scheduleCompletionUpdate(nextUpdateAt) {
-  clearCompletionTimer();
+// 完成态展示边界（20 分钟成功动画 / 24 小时完成时刻）的定时刷新——按台各自一个定时器。
+function scheduleCompletionUpdate(serial, rt, nextUpdateAt) {
+  clearCompletionTimer(rt);
   if (!Number.isFinite(nextUpdateAt)) return;
-  completionTimer = setTimeout(() => {
-    completionTimer = null;
-    if (lastReport) applyReport(lastReport);
+  rt.completionTimer = setTimeout(() => {
+    rt.completionTimer = null;
+    if (rt.lastReport) applyReport(serial, rt.lastReport);
   }, Math.max(0, nextUpdateAt - Date.now()));
 }
 
-// 应用一份 report：保存原始报文/解析状态、推送、刷新托盘。
-// 供 mock 路径（经 wireDataSource）与真机 live 路径（经 connect 内的 onState）共用。
-function applyReport(report) {
-  lastReport = report; // 保留原始报文供托盘菜单
-  lastState = resolveState(report);
+// 该台错误码表的缓存 key（按当前语言 + 机型；见 errorTables）。
+function errorTableKeyFor(serial) {
+  const model = errorCodes.modelCodeFromSerial(serial);
+  const lang = errorCodes.langForLocale(store.get('locale', 'zh-CN'));
+  return model ? `${lang}_${model}` : null;
+}
+
+// 应用某台的一帧 report：按 serial 存原始报文/解析状态，节流推送与托盘重建。
+// mock 路径（MOCK_SERIAL）与真机 live 路径（PrinterHub onReport）共用。
+function applyReport(serial, report) {
+  const rt = getRuntime(serial);
+  rt.lastReport = report; // 保留原始报文供托盘菜单
+  let state = resolveState(report);
   // 打印失败：用官方码表把错误归到「大类」（断料/堵头/…），熊猫/托盘/卡片统一显示「打印失败 · 大类」。
   // 具体长句原因太专业，不在熊猫展示 —— 用户要细节请查 Bambu Studio。认不出大类则保持通用「打印失败」。
-  if (lastState.stateKey === 'failed') {
-    const cat = errorCodes.failureCategory(report, errorTable);
-    if (cat) lastState = { ...lastState, labelKey: `label.failed.${cat}`, labelParams: {} };
+  if (state.stateKey === 'failed') {
+    const key = errorTableKeyFor(serial);
+    const cat = errorCodes.failureCategory(report, key ? errorTables.get(key) || null : null);
+    if (cat) state = { ...state, labelKey: `label.failed.${cat}`, labelParams: {} };
   }
 
-  if (store.get('dataSource', 'mock') === 'live') {
-    const serial = store.get('activePrinterSerial');
+  if (serial !== MOCK_SERIAL && store.get('dataSource', 'mock') === 'live') {
     const completion = applyCompletionState(
-      report, lastState, completionRecord(serial), Date.now(),
+      report, state, completionRecord(serial), Date.now(),
     );
     saveCompletionRecord(serial, completion.record);
-    lastState = completion.state;
-    scheduleCompletionUpdate(completion.nextUpdateAt);
+    state = completion.state;
+    scheduleCompletionUpdate(serial, rt, completion.nextUpdateAt);
   } else {
-    clearCompletionTimer();
+    clearCompletionTimer(rt);
   }
 
-  pushState();
-  rebuildTray();
+  rt.lastState = state;
+  schedulePetPush();
+  scheduleTrayRebuild();
   notifySettingsLive(); // MQTT 实时状态变化 → 刷新设置窗打印机卡片
 }
 
@@ -419,20 +537,9 @@ function notifySettingsLive() {
   }, 1000);
 }
 
-// 给数据源接上统一的 onState 回调：保存原始报文/解析状态、推送、刷新托盘。
-// （提取自原 buildDataSource 内联逻辑，行为不变）
-function wireDataSource(ds) {
-  ds.onState((report) => applyReport(report));
-}
-
 // 合并云端 + 本地 打印机为统一列表
 function getUnified() {
   return registry.mergePrinters(store.get('bambuPrinters', []), store.get('bambuLanPrinters', []));
-}
-// 取当前选中的统一条目
-function resolveActiveEntry() {
-  const serial = store.get('activePrinterSerial');
-  return getUnified().find((p) => p.serial === serial) || null;
 }
 // 用某条目建数据源；transport 指定 'lan'|'cloud'
 function makeSourceFor(entry, transport) {
@@ -446,142 +553,103 @@ function makeSourceFor(entry, transport) {
   });
 }
 
-// 官方错误码表：按当前机型（序列号前 3 位）+ 语言下载 BambuStudio 的 hms_<lang>_<model>.json，
+// 官方错误码表：按机型（序列号前 3 位）+ 语言下载 BambuStudio 的 hms_<lang>_<model>.json，
 // 缓存到 userData/error-codes/，解析后供托盘/卡片在「打印失败」时显示官方原因文案（与 Bambu Studio 同源）。
+// 多台可能是不同机型 → 表按 "<lang>_<model>" 缓存在 errorTables Map，errorTablePending 挡并发重复下载。
 // 全程失败静默 —— 拿不到表只是不显示原因、回退通用「打印失败」，不影响主流程。命中磁盘缓存即用（码表极少变）。
 async function ensureErrorTable(serial, locale) {
   const model = errorCodes.modelCodeFromSerial(serial);
   const lang = errorCodes.langForLocale(locale);
   if (!model) return;
   const key = `${lang}_${model}`;
-  if (key === errorTableKey && errorTable) return; // 已加载同一张表
-  const fileName = `hms_${lang}_${model}.json`;
-  const cachePath = path.join(app.getPath('userData'), 'error-codes', fileName);
+  if (errorTables.has(key) || errorTablePending.has(key)) return; // 已加载 / 下载中
+  errorTablePending.add(key);
   try {
-    if (fs.existsSync(cachePath)) {
-      errorTable = errorCodes.parseErrorTable(JSON.parse(fs.readFileSync(cachePath, 'utf8')), lang);
-      errorTableKey = key;
-      rebuildTray();
-      return;
-    }
-  } catch { /* 缓存损坏 → 走下载 */ }
-  try {
-    const res = await netGetRaw('raw.githubusercontent.com',
-      `/bambulab/BambuStudio/master/resources/hms/${fileName}`);
-    if (res.statusCode !== 200) return; // 该机型/语言无对应文件时静默
-    const json = JSON.parse(res.body);
+    const fileName = `hms_${lang}_${model}.json`;
+    const cachePath = path.join(app.getPath('userData'), 'error-codes', fileName);
     try {
-      fs.mkdirSync(path.dirname(cachePath), { recursive: true });
-      fs.writeFileSync(cachePath, res.body);
-    } catch { /* 缓存写失败不影响本次使用 */ }
-    errorTable = errorCodes.parseErrorTable(json, lang);
-    errorTableKey = key;
-    rebuildTray();
-  } catch (e) {
-    console.error('[error-codes] 下载失败:', e && (e.message || e));
+      if (fs.existsSync(cachePath)) {
+        errorTables.set(key, errorCodes.parseErrorTable(JSON.parse(fs.readFileSync(cachePath, 'utf8')), lang));
+        scheduleTrayRebuild();
+        return;
+      }
+    } catch { /* 缓存损坏 → 走下载 */ }
+    try {
+      const res = await netGetRaw('raw.githubusercontent.com',
+        `/bambulab/BambuStudio/master/resources/hms/${fileName}`);
+      if (res.statusCode !== 200) return; // 该机型/语言无对应文件时静默
+      const json = JSON.parse(res.body);
+      try {
+        fs.mkdirSync(path.dirname(cachePath), { recursive: true });
+        fs.writeFileSync(cachePath, res.body);
+      } catch { /* 缓存写失败不影响本次使用 */ }
+      errorTables.set(key, errorCodes.parseErrorTable(json, lang));
+      scheduleTrayRebuild();
+    } catch (e) {
+      console.error('[error-codes] 下载失败:', e && (e.message || e));
+    }
+  } finally {
+    errorTablePending.delete(key);
   }
 }
 
-function buildDataSource() {
-  clearCompletionTimer();
-  if (dataSource) { dataSource.stop(); dataSource = null; }
+// 连接生命周期交给 PrinterHub（diff 式：新增建连、消失断连、配置未变不动）。
+// onAuthFailure：云端 token 失效会同时命中所有云端台，去抖后只提示一次。
+const hub = new PrinterHub({
+  makeSource: makeSourceFor,
+  onReport: applyReport,
+  onAuthFailure: () => {
+    const now = Date.now();
+    if (now - lastAuthNotifyAt < 5000) return;
+    lastAuthNotifyAt = now;
+    if (!settingsWin) createSettingsWindow();
+    if (settingsWin) settingsWin.webContents.send('bambu:error', '连接已失效，请重新登录');
+  },
+  pickTransport: registry.pickTransport,
+});
+
+// 数据源与统一列表对齐（替代单台时代的 buildDataSource）：
+//   - mock：断开全部真机连接，单个 MockDataSource 挂在 MOCK_SERIAL 下；
+//   - live：hub.sync 全量对齐（配置签名未变的台不重连——云端 45s 轮询安全），
+//     清掉已不在列表里的台的残留状态，逐台就绪错误码表。
+function rebuildDataSources() {
   const mode = store.get('dataSource', 'mock');
   if (mode === 'mock') {
-    dataSource = new MockDataSource();
-    wireDataSource(dataSource);
-    dataSource.start();
+    hub.stopAll();
+    for (const rt of runtimes.values()) clearCompletionTimer(rt);
+    runtimes.clear();
+    if (mockSource) mockSource.stop();
+    mockSource = new MockDataSource();
+    mockSource.onState((report) => applyReport(MOCK_SERIAL, report));
+    mockSource.start();
     return;
   }
-  // live：解析当前打印机
-  const entry = resolveActiveEntry();
-  if (!entry) {
-    lastState = resolveState({ connected: false });
-    lastReport = null; // 清掉上一台的遥测，避免 printer:list 误把旧进度当作当前机实时数据
-    pushState();
-    rebuildTray();
-    return;
+  // live
+  if (mockSource) { mockSource.stop(); mockSource = null; }
+  const unified = getUnified();
+  const valid = new Set(unified.map((p) => p.serial));
+  for (const [serial, rt] of runtimes) {
+    if (!valid.has(serial)) { // 含 MOCK_SERIAL 与已删除的台：清掉避免状态/遥测串台
+      clearCompletionTimer(rt);
+      runtimes.delete(serial);
+    }
   }
-  // 切换打印机时先把宠物重置为「离线」，再等新机首帧报文覆盖：
-  //   - 在线机：pushall 回传后很快更新为真实状态；
-  //   - 离线机：永远收不到报文，保持离线（修复切到离线机仍显示上一台状态的问题）。
-  // 同时清空 lastReport：否则 printer:list 的 hasLive/liveProgress 仍取上一台报文，
-  // 导致切换后活动卡片上串显上一台的进度/层数。
-  lastState = resolveState({ connected: false });
-  lastReport = null;
+  hub.sync(unified);
+  const locale = store.get('locale', 'zh-CN');
+  for (const p of unified) ensureErrorTable(p.serial, locale);
   pushState();
   rebuildTray();
-
-  // 该机型的官方错误码表异步就绪（打印失败时用于显示官方原因文案）；不阻塞连接流程
-  ensureErrorTable(entry.serial, store.get('locale', 'zh-CN'));
-
-  const transport = registry.pickTransport(entry);
-  let triedCloudFallback = false;
-  const connect = (tp) => {
-    dataSource = makeSourceFor(entry, tp);
-    let everConnected = false;
-    // LAN 从未连接成功且该机也在云端 → 回退云一次（仅一次）
-    const maybeFallback = () => {
-      if (tp === 'lan' && entry.hasCloud && !triedCloudFallback && !everConnected) {
-        triedCloudFallback = true;
-        if (dataSource) dataSource.stop();
-        connect('cloud');
-        return true;
-      }
-      return false;
-    };
-    // 启动期鉴权/配置失败（如云端 token 失效、登录异常）：仍走原逻辑提示重登。
-    if (typeof dataSource.onAuthFailure === 'function') {
-      dataSource.onAuthFailure(() => {
-        if (maybeFallback()) return;
-        // 非回退场景（如云端鉴权失效）：重新打开设置窗提示
-        if (!settingsWin) createSettingsWindow();
-        if (settingsWin) settingsWin.webContents.send('bambu:error', '连接已失效，请重新登录');
-      });
-    }
-    // 运行期 onState：成功连接过一次后，瞬时 error/offline 只表现为离线，不再触发回退或弹窗。
-    dataSource.onState((report) => {
-      if (report && report.connected) everConnected = true;
-      if (!(report && report.connected) && !everConnected && maybeFallback()) return;
-      applyReport(report);
-    });
-    dataSource.start();
-  };
-  connect(transport);
 }
 
 // ---- 托盘（§5.2）----
-// 构建托盘菜单中的打印机身份行。
-function getPrinterLabel(locale) {
-  const mode = store.get('dataSource', 'mock');
-  if (mode === 'mock') return null;
-  const active = store.get('activePrinterSerial');
-  const printer = getUnified().find((p) => p.serial === active);
-  if (!printer) return active ? `${t(locale, 'tray.printer')}：${active}` : null;
-  const label = printer.model
-    ? `${printer.model} · ${printer.serial}`
-    : `${printer.name} · ${printer.serial}`;
-  return `${t(locale, 'tray.printer')}：${label}`;
-}
-
-// 构建托盘菜单中的账号行（已登录时展示，Mock 模式不展示）。
-function getAccountLabel(locale) {
-  const mode = store.get('dataSource', 'mock');
-  if (mode === 'mock') return null;
-  const account = store.get('bambuAccount', {});
-  if (!account.account) return null;
-  const regionLabel = account.region === 'china'
-    ? t(locale, 'settings.regionChina')
-    : t(locale, 'settings.regionGlobal');
-  return `${t(locale, 'tray.account')}：${account.account} [${regionLabel}]`;
-}
-
-// 构建托盘菜单中的实时指标行（层数 / 剩余时间 / 温度）。
-// 返回实时指标的**多条**短文本，托盘菜单里每条各占一行，避免拼成一整行把菜单顶得很宽。
-// 状态行（含百分比）在 buildMenuTemplate 单独展示，故这里从第 2 行起：层数 → 剩余时间 → 喷嘴 → 热床。
+// 构建托盘菜单中的实时指标行（层数 / 剩余时间）。
+// 层数与剩余时间用「 · 」拼成**一行**返回（省高度），托盘菜单里占一行。返回数组是为兼容
+// 调用方逐条 push 的写法：有指标时是单元素数组，无指标时空数组。
+// 状态行（含百分比）在 buildMenuTemplate 单独展示，故这里只出层数 / 剩余时间。
+// 温度（喷嘴/热床）已去除：打印稳定进行时温度恒定在目标值、不可操作，属低价值信息，不再展示。
 // 托盘始终全显，不受「显示层数 / 剩余时间」开关影响（那两个开关只作用于桌面熊猫标签）。
 function getMetricsLines(locale, report) {
   if (!report || !report.connected) return [];
-  const temps = extractTemps(report);
   const parts = [];
   // 层数 / 剩余时间是任务级指标，仅打印任务进行中（RUNNING/PAUSE/PREPARE）展示：
   // 真机空闲时报文仍残留上一任务的 layer/total（如 0/400），只判 total>0 会在「空闲」下误显层数行。
@@ -590,24 +658,10 @@ function getMetricsLines(locale, report) {
       parts.push(t(locale, 'label.layers', { layer: report.layer_num, total: report.total_layer_num }));
     }
     // 剩余时间：复用与熊猫标签一致的 fmtRemain 格式化，口径统一
-    const remain = fmtRemain(temps.remainingTime);
+    const remain = fmtRemain(extractTemps(report).remainingTime);
     if (remain != null) parts.push(t(locale, 'label.remaining', { time: remain }));
   }
-  if (temps.nozzleTemp != null) {
-    if (temps.targetNozzleTemp != null && temps.targetNozzleTemp > 0) {
-      parts.push(`${t(locale, 'tray.nozzle')} ${temps.nozzleTemp}→${temps.targetNozzleTemp}°C`);
-    } else {
-      parts.push(`${t(locale, 'tray.nozzle')} ${temps.nozzleTemp}°C`);
-    }
-  }
-  if (temps.bedTemp != null) {
-    if (temps.targetBedTemp != null && temps.targetBedTemp > 0) {
-      parts.push(`${t(locale, 'tray.bed')} ${temps.bedTemp}→${temps.targetBedTemp}°C`);
-    } else {
-      parts.push(`${t(locale, 'tray.bed')} ${temps.bedTemp}°C`);
-    }
-  }
-  return parts;
+  return parts.length ? [parts.join(' · ')] : [];
 }
 
 function makeTrayIcon() {
@@ -634,20 +688,77 @@ function applyDockVisibility(visible) {
   }
 }
 
+// 某台的托盘状态文案（未收到首帧时为「启动中…」）。
+function trayStatusLabel(locale, rt) {
+  const st = rt && rt.lastState;
+  return st ? t(locale, st.labelKey, st.labelParams) : t(locale, 'tray.starting');
+}
+
+// 往模板里压入某台的状态块：名字头 → 状态行 → 指标行（层数/剩余，仅打印中）。
+// 顶层与「其余 N 台」子菜单共用，保证折叠前后单台观感一致。全部 enabled:false（纯信息、不可点）。
+function pushPrinterBlock(items, locale, it) {
+  const rt = it.rt;
+  items.push({ label: `${it.name} · ${it.model || it.serial}`, enabled: false });
+  items.push({ label: `${t(locale, 'tray.status')}：${trayStatusLabel(locale, rt)}`, enabled: false });
+  for (const line of getMetricsLines(locale, rt && rt.lastReport)) {
+    items.push({ label: line, enabled: false });
+  }
+}
+
+// 「其余 N 台」子菜单内容：每台一份状态块，块间分隔线——与顶层同一套 pushPrinterBlock。
+function buildRestSubmenu(locale, rest) {
+  const sub = [];
+  rest.forEach((it, i) => {
+    if (i > 0) sub.push({ type: 'separator' });
+    pushPrinterBlock(sub, locale, it);
+  });
+  return sub;
+}
+
 function buildMenuTemplate() {
   const mode = store.get('dataSource', 'mock');
   const locale = store.get('locale', 'zh-CN');
-  const statusLabel = lastState ? t(locale, lastState.labelKey, lastState.labelParams) : t(locale, 'tray.starting');
   const template = [];
 
-
-  // 状态行（总是展示）。失败时 statusLabel 已是「打印失败 · 大类」（applyReport 里按官方码表归类注入）。
-  template.push({ label: `${t(locale, 'tray.status')}：${statusLabel}`, enabled: false });
-
-  // 实时指标（已连接时）：层数 / 剩余时间 / 喷嘴 / 热床各占一行，接在状态行（百分比）之后，
-  // 避免拼成一行撑宽菜单。托盘始终全显，不受「显示层数 / 剩余时间」开关影响。
-  for (const line of getMetricsLines(locale, lastReport)) {
-    template.push({ label: line, enabled: false });
+  // ── 状态区：全部台常驻连接，逐台展示 ──
+  // 单台 / mock：沿用单打印机时代布局（一条状态行 + 指标行，不带名字头）。
+  // 多台：每台一块——名字头 → 状态行 → 指标行，块间分隔线。
+  // 失败时状态文案已是「打印失败 · 大类」（applyReport 里按官方码表归类注入）。
+  const unified = mode === 'live' ? getUnified() : [];
+  if (unified.length > 1) {
+    // 每台一份 { 记录 + 运行时 }（含 state/report 供关注度排序）。托盘展示全部台（含未上桌面的）。
+    const items = unified.map((p) => {
+      const rt = runtimes.get(p.serial);
+      return { serial: p.serial, name: p.name, model: p.model, rt, state: rt && rt.lastState, report: rt && rt.lastReport };
+    });
+    // 台数超过上限：按关注度选出留在顶层的 N 台，其余折进「其余 N 台」子菜单。
+    // 「留谁」按关注度定（需处理/在打印的优先），但**顶层与子菜单内都保持列表序展示**——
+    // 菜单不因状态变化而重排、用户找某台的位置稳定；只有「谁被折叠」随关注度变。
+    let head = items;
+    let rest = [];
+    if (items.length > MAX_TRAY_PRINTERS) {
+      const keep = new Set(sortByAttention(items).slice(0, MAX_TRAY_PRINTERS).map((it) => it.serial));
+      head = items.filter((it) => keep.has(it.serial));
+      rest = items.filter((it) => !keep.has(it.serial));
+    }
+    head.forEach((it, i) => {
+      if (i > 0) template.push({ type: 'separator' });
+      pushPrinterBlock(template, locale, it);
+    });
+    if (rest.length) {
+      template.push({ type: 'separator' });
+      template.push({ label: t(locale, 'tray.morePrinters', { n: rest.length }), submenu: buildRestSubmenu(locale, rest) });
+    }
+  } else {
+    const rt = mode === 'mock'
+      ? runtimes.get(MOCK_SERIAL)
+      : (unified[0] && runtimes.get(unified[0].serial));
+    template.push({ label: `${t(locale, 'tray.status')}：${trayStatusLabel(locale, rt)}`, enabled: false });
+    // 实时指标（已连接时）：层数 / 剩余时间 / 喷嘴 / 热床各占一行，接在状态行（百分比）之后，
+    // 避免拼成一行撑宽菜单。托盘始终全显，不受「显示层数 / 剩余时间」开关影响。
+    for (const line of getMetricsLines(locale, rt && rt.lastReport)) {
+      template.push({ label: line, enabled: false });
+    }
   }
 
   // Mock 模式：数据源标识
@@ -657,25 +768,21 @@ function buildMenuTemplate() {
 
   template.push({ type: 'separator' });
 
-  // ── 打印机（始终展示）：有打印机则列出可切换；无打印机则提示并支持跳转设置 ──
-  {
-    const unified = getUnified();
-    const active = store.get('activePrinterSerial');
-    let printerSubmenu;
-    if (unified.length > 0) {
-      printerSubmenu = unified.map((p) => ({
-        label: `${p.name} · ${p.model || p.serial}`,
-        type: 'radio',
-        checked: mode === 'live' && p.serial === active,
-        click: () => { store.set('activePrinterSerial', p.serial); store.set('dataSource', 'live'); buildDataSource(); },
-      }));
-    } else {
-      printerSubmenu = [
-        { label: t(locale, 'tray.noPrinter'), enabled: false },
-        { label: t(locale, 'tray.addPrinter'), click: () => createSettingsWindow('printers') },
-      ];
-    }
-    template.push({ label: t(locale, 'tray.printer'), submenu: printerSubmenu });
+  // ── 打印机入口 ──
+  // 全部台常驻连接后无需「切换当前」；保留两类入口：
+  //   - mock 模式且已有打印机：「回到真机」（原 radio 点击兼具此职能）；
+  //   - live 模式但没有打印机：「添加打印机…」跳设置。
+  if (mode === 'mock' && getUnified().length > 0) {
+    template.push({
+      label: t(locale, 'play.returnToLive'),
+      click: () => {
+        store.set('dataSource', 'live');
+        rebuildDataSources();
+        pushPlayState();
+      },
+    });
+  } else if (mode === 'live' && unified.length === 0) {
+    template.push({ label: t(locale, 'tray.addPrinter'), click: () => createSettingsWindow('printers') });
   }
 
   // ── 把玩模式 / 设置 / 大小 / 退出 ──
@@ -759,16 +866,13 @@ function pushLocale() {
   }
 }
 
-function resendState() {
-  if (win && !win.isDestroyed() && lastState) {
-    win.webContents.send('pet:state', lastState);
-  }
-}
-
 // 推送偏好设置给宠物窗口
 function pushPetPrefs() {
   if (win && !win.isDestroyed()) {
     win.webContents.send('pet:prefs', {
+      // 渲染层几何需要 sizePx（CSS 变量 --pet-px）：窗口可因多行标签比熊猫方形更高，
+      // 100vh 不再恒等于熊猫边长，熊猫方形必须用显式像素锁定。
+      sizePx: currentSizePx(),
       labelFontSize: store.get('labelFontSize', 12),
       showLabel: store.get('showLabel', true),
       showLayer: store.get('showLayer', false),
@@ -783,7 +887,9 @@ function rebuildTray() {
   if (!tray) return;
   tray.setContextMenu(Menu.buildFromTemplate(buildMenuTemplate()));
   const locale = store.get('locale', 'zh-CN');
-  const statusLabel = lastState ? t(locale, lastState.labelKey, lastState.labelParams) : t(locale, 'tray.starting');
+  // tooltip 用聚合后的「最需要关注」台的状态（与熊猫演的一致）
+  const top = pickAttentionItem(currentPetItems());
+  const statusLabel = top ? t(locale, top.state.labelKey, top.state.labelParams) : t(locale, 'tray.starting');
   tray.setToolTip(`${t(locale, 'tray.tooltip')} · ${statusLabel}`);
 }
 
@@ -990,7 +1096,10 @@ async function refreshCloudPrinters() {
     const printers = store.get('bambuPrinters', []);
     store.set('bambuPrinters', printers.map((p) => ({ ...p, online: null, printStatus: null })));
   }
-  rebuildTray();
+  // 列表可能新增/减少了台子 → 与常驻连接对齐（配置签名未变的台不重连，轮询不会闪断）。
+  // rebuildDataSources 内部会 rebuildTray；mock 模式只刷托盘展示、不动 mock 源。
+  if (store.get('dataSource', 'mock') === 'live') rebuildDataSources();
+  else rebuildTray();
   if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('printers:changed');
 }
 function startCloudPoll() {
@@ -1018,14 +1127,10 @@ ipcMain.handle('bambu:completeCloudLogin', async () => {
       name: prevBySerial.get(d.serial)?.name || d.name,
       model: d.model, online: d.online, printStatus: d.printStatus || null,
     })));
-    const active = store.get('activePrinterSerial');
-    const stillThere = r.devices.some((d) => d.serial === active);
-    if (!stillThere && r.devices.length > 0) store.set('activePrinterSerial', r.devices[0].serial);
   }
   store.set('dataSource', 'live');
   pendingAuth = null;
-  buildDataSource();
-  rebuildTray();
+  rebuildDataSources();
   if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('printers:changed');
   return { ok: true };
 });
@@ -1059,20 +1164,26 @@ async function testLanConnection(host, accessCode, serial) {
 
 // ---- 统一打印机列表管理（§Task 6）----
 ipcMain.handle('printer:list', () => {
-  // 把玩（mock）模式下 lastState/lastReport 是模拟场景，不能当作真机实时状态显示到卡片上。
-  // 实时遥测派生见 core/live-telemetry.js（纯函数，含切换/重登后置空防串台的契约）。
+  // 把玩（mock）模式下 runtimes 是模拟场景，不能当作真机实时状态显示到卡片上。
+  // 实时遥测派生见 core/live-telemetry.js（纯函数，含删机/重登后置空防串台的契约）。
+  // 全部台常驻连接：逐台给出实时遥测（telemetry[serial]），不再只有「当前」一台有数据。
   const liveMode = store.get('dataSource', 'mock') === 'live';
-  return {
-    printers: getUnified(),
-    activeSerial: store.get('activePrinterSerial') || null,
-    ...buildLiveTelemetry(liveMode, lastState, lastReport),
-  };
+  const telemetry = {};
+  const printers = getUnified().map((p) => ({ ...p, hidden: isHidden(p.serial) }));
+  for (const p of printers) {
+    const rt = runtimes.get(p.serial);
+    telemetry[p.serial] = buildLiveTelemetry(liveMode, rt ? rt.lastState : null, rt ? rt.lastReport : null);
+  }
+  return { printers, telemetry };
 });
 
-ipcMain.handle('printer:setActive', (_e, serial) => {
-  store.set('activePrinterSerial', serial);
-  store.set('dataSource', 'live');
-  buildDataSource();
+// 「在桌面显示」开关：隐藏台仍常驻连接（托盘/设置照常），只是不上桌面熊猫、不参与注意力。
+// 改后立即重推一帧让桌面即时生效，并刷新托盘与设置窗。
+ipcMain.handle('printer:setHidden', (_e, serial, hidden) => {
+  setHidden(serial, hidden);
+  pushState();
+  rebuildTray();
+  if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('printers:changed');
   return { ok: true };
 });
 
@@ -1082,18 +1193,16 @@ ipcMain.handle('printer:addLan', async (_e, host, accessCode, serial, name) => {
   const list = registry.addLan(store.get('bambuLanPrinters', []),
     { serial, name: name || serial, model: '', host, accessCode: encryptSecret(accessCode) });
   store.set('bambuLanPrinters', list);
-  rebuildTray();
+  // 新添加的台立即接入常驻连接（也顺带从 mock 切回 live——添加即想看真机）
+  store.set('dataSource', 'live');
+  rebuildDataSources();
   return { ok: true };
 });
 
 ipcMain.handle('printer:removeLan', (_e, serial) => {
   store.set('bambuLanPrinters', registry.removeLan(store.get('bambuLanPrinters', []), serial));
-  if (store.get('activePrinterSerial') === serial) {
-    const next = getUnified()[0];
-    store.set('activePrinterSerial', next ? next.serial : null);
-    buildDataSource();
-  }
-  rebuildTray();
+  if (store.get('dataSource', 'mock') === 'live') rebuildDataSources(); // 断开该台连接并清残留状态
+  else rebuildTray();
   return { ok: true };
 });
 
@@ -1113,7 +1222,7 @@ ipcMain.handle('printer:refreshCloud', async () => {
 function ensurePlayMode() {
   if (store.get('dataSource', 'mock') !== 'mock') {
     store.set('dataSource', 'mock');
-    buildDataSource();
+    rebuildDataSources();
   }
 }
 
@@ -1126,7 +1235,7 @@ ipcMain.handle('play:getState', () => ({
 ipcMain.handle('play:setScenario', (_e, key) => {
   ensurePlayMode();
   if (key !== 'printing') playPercent = 0;
-  if (dataSource instanceof MockDataSource) dataSource.setScenario(key);
+  if (mockSource) mockSource.setScenario(key);
   pushPlayState();
   return { ok: true };
 });
@@ -1134,7 +1243,7 @@ ipcMain.handle('play:setScenario', (_e, key) => {
 ipcMain.handle('play:setProgress', (_e, percent) => {
   ensurePlayMode();
   playPercent = Math.max(0, Math.min(100, Math.round(Number(percent) || 0)));
-  if (dataSource instanceof MockDataSource) dataSource.setPrintingProgress(playPercent);
+  if (mockSource) mockSource.setPrintingProgress(playPercent);
   pushPlayState();
   return { ok: true };
 });
@@ -1142,14 +1251,14 @@ ipcMain.handle('play:setProgress', (_e, percent) => {
 // 把玩页「耗材颜色（测试）」：仅 mock 数据源生效；null = 恢复原始素材绿。不持久化。
 ipcMain.handle('play:setFilamentColor', (_e, hexOrNull) => {
   ensurePlayMode();
-  if (dataSource instanceof MockDataSource) dataSource.setFilamentColor(hexOrNull);
+  if (mockSource) mockSource.setFilamentColor(hexOrNull);
   return { ok: true };
 });
 
 ipcMain.handle('play:autoTour', (_e, start) => {
   ensurePlayMode();
-  if (dataSource instanceof MockDataSource) {
-    if (start) dataSource.startAutoCycle(); else dataSource.stopAutoCycle();
+  if (mockSource) {
+    if (start) mockSource.startAutoCycle(); else mockSource.stopAutoCycle();
   }
   pushPlayState();
   return { ok: true };
@@ -1157,7 +1266,7 @@ ipcMain.handle('play:autoTour', (_e, start) => {
 
 ipcMain.handle('play:returnToLive', () => {
   store.set('dataSource', 'live');
-  buildDataSource();
+  rebuildDataSources();
   pushPlayState();
   return { ok: true };
 });
@@ -1165,16 +1274,12 @@ ipcMain.handle('play:returnToLive', () => {
 // 返回脱敏状态给设置窗预填（永不回 token / accessCode 明文）
 ipcMain.handle('bambu:getState', async () => {
   const account = store.get('bambuAccount', {});
-  const printers = store.get('bambuPrinters', []);
-  const activePrinter = store.get('activePrinterSerial');
   return {
     region: account.region,
     hasToken: !!account.token,
     account: account.account,
     uid: account.uid,
-    printers,
-    activePrinter,
-    name: printers.find(p => p.serial === activePrinter)?.name || '',
+    printers: store.get('bambuPrinters', []),
   };
 });
 
@@ -1182,9 +1287,7 @@ ipcMain.handle('bambu:logout', async () => {
   store.delete('bambuAccount');
   store.delete('bambuPrinters');
   pendingAuth = null;
-  const stillActive = getUnified().some((p) => p.serial === store.get('activePrinterSerial'));
-  if (!stillActive) store.set('activePrinterSerial', getUnified()[0]?.serial || null);
-  buildDataSource();
+  if (store.get('dataSource', 'mock') === 'live') rebuildDataSources(); // 断开云端台，仅剩 LAN 台
   return { ok: true };
 });
 
@@ -1233,9 +1336,11 @@ ipcMain.on('pet:dragStart', () => {
   // 拖拽全程锁定为当前尺寸：分数 DPI 缩放下反复 setPosition 会因 DIP↔像素取整误差
   // 让窗口逐帧变大（熊猫随之被放大），每帧用 setBounds 显式回写固定宽高即可杜绝累积。
   // 写的是「光标绝对位置 + 起始锁定的固定宽高」，不回写 getBounds()，故不累积。
-  // 宽度锁定为当前窗口宽（含标签加宽的部分），避免拖拽时窗口回落成方形、标签被截断。
-  const size = currentSizePx();
-  const width = win.getBounds().width;
+  // 宽高都锁定为起始值（含标签加宽/多行标签加高的部分），避免拖拽时窗口回落、
+  // 标签被截断或多行标签突然缩没。起始值一次性读取、拖拽期间恒定，不构成读回累积。
+  const startBounds = win.getBounds();
+  const width = startBounds.width;
+  const height = startBounds.height;
   if (dragTimer) clearInterval(dragTimer);
   dragTimer = setInterval(() => {
     if (!win || win.isDestroyed() || !dragOffset) return;
@@ -1244,7 +1349,7 @@ ipcMain.on('pet:dragStart', () => {
       x: Math.round(p.x - dragOffset.dx),
       y: Math.round(p.y - dragOffset.dy),
       width,
-      height: size,
+      height,
     });
   }, 16);
 });
@@ -1264,36 +1369,42 @@ ipcMain.on('pet:dragEnd', () => {
   }
 });
 
-// 渲染层量出标签实际宽度 → 按需加宽窗口（保持中心不动，熊猫不移动）。
-// 变宽立即生效（长标签要能完整显示，否则截断）；变窄延迟落定（滞回）。为何滞回、为何要
-// 「久」：探索模式自动播放里剩余时间/完成时间/进度会同时快速跳变，标签宽度既可能在某个
-// 台阶边界±抖动（量化后目标宽 260↔300 反复拉锯），也会在「打印中 ↔ 换料中」之间来回切
-// （宽↔窄）。只要一次变宽在延时窗口内到来，就撤销待收窄、窗口维持在近期较宽值——熊猫不动。
+// 渲染层量出标签实际宽高 → 按需加宽/向下加高窗口（保持中心不动，熊猫不移动）。
+// 变大立即生效（长标签要完整显示、多出的行要能放下）；变小延迟落定（滞回）。为何滞回、
+// 为何要「久」：探索模式自动播放里剩余时间/完成时间/进度会同时快速跳变，标签宽度既可能在
+// 某个台阶边界±抖动（量化后目标宽 260↔300 反复拉锯），也会在「打印中 ↔ 换料中」之间来回切
+// （宽↔窄）；多台时某台瞬时掉线/重连也会让行数±1 抖动。只要一次变大在延时窗口内到来，就
+// 撤销待收缩、窗口维持在近期较大值——熊猫不动。
 // 因此延时必须 **大于数据推送/自动播放的刷新间隔**（自动播放 1.5s/帧、真机 MQTT 约 1s/帧），
-// 这样相邻两帧间的抖动/短暂换料插帧都会被下一帧的变宽吃掉，绝不触发收窄；只有标签真正稳定
-// 地变短（如打印结束回到空闲）超过该时长，才收窄一次落定。取 2000ms 留足余量。
+// 这样相邻两帧间的抖动/短暂换料插帧都会被下一帧的变大吃掉，绝不触发收缩；只有标签真正稳定
+// 地变小（如打印结束回到空闲）超过该时长，才收缩一次落定。取 2000ms 留足余量。
+// 宽高各自独立滞回：一次状态变化可能同时「某行变宽 + 行数变少」，两维不能互相绑架。
 const LABEL_SHRINK_DELAY_MS = 2000;
-let labelShrinkTimer = null;
-ipcMain.on('pet:labelWidth', (_e, px) => {
-  const v = Math.max(0, Math.round(Number(px) || 0));
-  if (v > labelPx) {
-    // 变宽：取消待收窄，立即加宽
-    if (labelShrinkTimer) { clearTimeout(labelShrinkTimer); labelShrinkTimer = null; }
-    labelPx = v;
+const labelShrinkTimers = { w: null, h: null };
+function applyLabelDim(dim, raw) {
+  const v = Math.max(0, Math.round(Number(raw) || 0));
+  if (v > labelSize[dim]) {
+    // 变大：取消待收缩，立即生效
+    if (labelShrinkTimers[dim]) { clearTimeout(labelShrinkTimers[dim]); labelShrinkTimers[dim] = null; }
+    labelSize[dim] = v;
     applyWinWidth();
-  } else if (v < labelPx) {
-    // 变窄：重置延时；快速抖动期间不断被推后，故不会反复收窄
-    if (labelShrinkTimer) clearTimeout(labelShrinkTimer);
-    labelShrinkTimer = setTimeout(() => {
-      labelShrinkTimer = null;
-      labelPx = v;
+  } else if (v < labelSize[dim]) {
+    // 变小：重置延时；快速抖动期间不断被推后，故不会反复收缩
+    if (labelShrinkTimers[dim]) clearTimeout(labelShrinkTimers[dim]);
+    labelShrinkTimers[dim] = setTimeout(() => {
+      labelShrinkTimers[dim] = null;
+      labelSize[dim] = v;
       applyWinWidth();
     }, LABEL_SHRINK_DELAY_MS);
-  } else if (labelShrinkTimer) {
-    // 标签稳定回到当前宽度：撤销待收窄
-    clearTimeout(labelShrinkTimer);
-    labelShrinkTimer = null;
+  } else if (labelShrinkTimers[dim]) {
+    // 标签稳定回到当前尺寸：撤销待收缩
+    clearTimeout(labelShrinkTimers[dim]);
+    labelShrinkTimers[dim] = null;
   }
+}
+ipcMain.on('pet:labelSize', (_e, size) => {
+  applyLabelDim('w', size && size.w);
+  applyLabelDim('h', size && size.h);
 });
 
 // ---- 偏好设置 IPC ----
@@ -1314,15 +1425,17 @@ ipcMain.handle('pref:getAll', () => ({
 ipcMain.handle('pref:set', (_e, key, value) => {
   store.set(key, value);
   if (key === 'sizePx') setPetSizePx(value);
-  if (key === 'labelFontSize' || key === 'showLabel' || key === 'showLayer' || key === 'showTime' || key === 'showFinishTime' || key === 'matchFilamentColor') pushPetPrefs();
+  if (key === 'sizePx' || key === 'labelFontSize' || key === 'showLabel' || key === 'showLayer' || key === 'showTime' || key === 'showFinishTime' || key === 'matchFilamentColor') pushPetPrefs();
   if (key === 'locale') {
     pushLocale();
-    if (lastReport && store.get('dataSource', 'mock') === 'live') applyReport(lastReport);
-    else resendState();
-    // 语言变了 → 重新就绪对应语言的官方错误码表（新 "<lang>_<model>" key 会触发重载）
+    // 各台按新语言重解析（失败大类文案等依赖 locale 对应的码表 key）
+    for (const [serial, rt] of runtimes) {
+      if (rt.lastReport) applyReport(serial, rt.lastReport);
+    }
+    pushState(); // 没有任何报文时（如启动中）也立即用新语言重发
+    // 语言变了 → 逐台就绪对应语言的官方错误码表（新 "<lang>_<model>" key 会触发加载）
     if (store.get('dataSource', 'mock') === 'live') {
-      const s = store.get('activePrinterSerial');
-      if (s) ensureErrorTable(s, value);
+      for (const p of getUnified()) ensureErrorTable(p.serial, value);
     }
   }
   if (key === 'showInMenuBar') {
@@ -1389,7 +1502,7 @@ app.whenReady().then(() => {
   // 全屏时自动隐藏：默认开启。Windows 启动轮询；macOS 已在 createWindow 设好 Space 可见性。
   applyHideOnFullscreen(store.get('hideOnFullscreen', true));
   if (store.get('showInMenuBar', true)) createTray();
-  buildDataSource();
+  rebuildDataSources();
   refreshCloudPrinters();
   startCloudPoll();
 
