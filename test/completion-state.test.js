@@ -1,11 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { execFileSync } = require('node:child_process');
 const {
   SUCCESS_DISPLAY_MS,
   FINISHED_MEMORY_MS,
   applyCompletionState,
-  formatFinishedTime,
 } = require('../src/core/completion-state');
 const { resolveState } = require('../src/core/state-machine');
 const { STRINGS } = require('../src/config/locales');
@@ -30,7 +28,9 @@ test('首次收到 FINISH 时记录完成时间并保持成功动画 20 分钟',
   assert.equal(beforeBoundary.state.labelKey, 'label.finished');
 });
 
-test('完成 20 分钟后切为空闲动画并显示系统本地时间', () => {
+test('完成 20 分钟后切为空闲动画并回传完成时刻的原始时间戳', () => {
+  // 时间戳保持原始值传出（与 remainMins 同理），格式化留给能读到系统 24/12 小时设置的
+  // 渲染进程（Chromium）与托盘——纯模块里不做本地化格式化。
   const record = { finishedAt: START, taskId: 'job-1' };
   const report = { connected: true, gcode_state: 'FINISH', subtask_id: 'job-1' };
   const result = apply(report, record, START + SUCCESS_DISPLAY_MS);
@@ -38,7 +38,7 @@ test('完成 20 分钟后切为空闲动画并显示系统本地时间', () => {
   assert.equal(result.state.stateKey, 'idle');
   assert.equal(result.state.videoFile, 'idle.webm');
   assert.equal(result.state.labelKey, 'label.finishedAt');
-  assert.deepStrictEqual(result.state.labelParams, { time: formatFinishedTime(START) });
+  assert.deepStrictEqual(result.state.labelParams, { finishedAt: START });
   assert.equal(result.nextUpdateAt, START + FINISHED_MEMORY_MS);
 });
 
@@ -89,15 +89,3 @@ test('完成文案符合中英文产品文案', () => {
   assert.equal(STRINGS.en['label.finishedAt'], 'Finished at {time}');
 });
 
-test('完成时刻使用系统 locale，并与预计完成时刻保持两位小时格式', () => {
-  const modulePath = require.resolve('../src/core/completion-state');
-  const script = `
-    const { formatFinishedTime } = require(${JSON.stringify(modulePath)});
-    process.stdout.write(formatFinishedTime(Date.UTC(2025, 0, 1, 14, 30), 'zh-CN'));
-  `;
-  const output = execFileSync(process.execPath, ['-e', script], {
-    encoding: 'utf8',
-    env: { ...process.env, LANG: 'en_US.UTF-8', LC_ALL: 'en_US.UTF-8', TZ: 'UTC' },
-  });
-  assert.equal(output, '02:30 PM');
-});

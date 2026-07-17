@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld('pet', {
   onLocale: (cb) => {
     ipcRenderer.on('pet:locale', (_e, locale, strings) => cb(locale, strings));
   },
-  // 主进程推送的偏好变更：{ labelFontSize, showLabel, showLayer, showTime, showFinishTime, matchFilamentColor }
+  // 主进程推送的偏好变更：{ labelFontSize, showLabel, showLayer, showTime, showFinishTime, matchFilamentColor, hour12 }
   onPrefs: (cb) => {
     ipcRenderer.on('pet:prefs', (_e, prefs) => cb(prefs));
   },

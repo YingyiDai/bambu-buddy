@@ -21,13 +21,6 @@ function normalizeRecord(record) {
   };
 }
 
-function formatFinishedTime(timestamp) {
-  return new Date(timestamp).toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
 function makeFinishedState(state) {
   return {
     ...state,
@@ -78,7 +71,9 @@ function applyCompletionState(report, state, savedRecord, now = Date.now()) {
   if (age < FINISHED_MEMORY_MS) {
     return {
       state: makeIdleState(state, 'label.finishedAt', {
-        time: formatFinishedTime(record.finishedAt),
+        // 传原始时间戳，不在此格式化：主进程 Node 读不到 macOS 的 24 小时制设置
+        // （会回落 en-US → 12 小时）。真正的「时:分」由渲染进程/托盘按系统设置格式化。
+        finishedAt: record.finishedAt,
       }),
       record,
       nextUpdateAt: record.finishedAt + FINISHED_MEMORY_MS,
@@ -92,6 +87,5 @@ module.exports = {
   SUCCESS_DISPLAY_MS,
   FINISHED_MEMORY_MS,
   applyCompletionState,
-  formatFinishedTime,
   taskIdFromReport,
 };
