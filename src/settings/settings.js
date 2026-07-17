@@ -114,8 +114,7 @@ function buildStats(live) {
     const layer = (Number.isFinite(pr.layer) && Number.isFinite(pr.total) && pr.total > 0) ? ' · ' + pr.layer + '/' + pr.total : '';
     items.push('<span class="pcard-stat">📊 ' + pr.percent + '%' + layer + '</span>');
   }
-  if (Number.isFinite(tp.nozzleTemp)) items.push('<span class="pcard-stat">🌡️ ' + tp.nozzleTemp + '°</span>');
-  if (Number.isFinite(tp.bedTemp)) items.push('<span class="pcard-stat">🛏️ ' + tp.bedTemp + '°</span>');
+  // 温度（喷嘴/热床）已去除：稳定打印时恒在目标值、不可操作，属低价值信息。保留进度/层数/剩余时间。
   if (Number.isFinite(tp.remainingTime) && tp.remainingTime > 0) items.push('<span class="pcard-stat">⏱️ ' + escapeHtml(fmtMin(tp.remainingTime)) + '</span>');
   return items.length ? '<div class="pcard-stats">' + items.join('') + '</div>' : '';
 }

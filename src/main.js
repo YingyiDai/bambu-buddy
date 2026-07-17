@@ -638,13 +638,13 @@ function rebuildDataSources() {
 }
 
 // ---- 托盘（§5.2）----
-// 构建托盘菜单中的实时指标行（层数 / 剩余时间 / 温度）。
+// 构建托盘菜单中的实时指标行（层数 / 剩余时间）。
 // 返回实时指标的**多条**短文本，托盘菜单里每条各占一行，避免拼成一整行把菜单顶得很宽。
-// 状态行（含百分比）在 buildMenuTemplate 单独展示，故这里从第 2 行起：层数 → 剩余时间 → 喷嘴 → 热床。
+// 状态行（含百分比）在 buildMenuTemplate 单独展示，故这里从第 2 行起：层数 → 剩余时间。
+// 温度（喷嘴/热床）已去除：打印稳定进行时温度恒定在目标值、不可操作，属低价值信息，不再展示。
 // 托盘始终全显，不受「显示层数 / 剩余时间」开关影响（那两个开关只作用于桌面熊猫标签）。
 function getMetricsLines(locale, report) {
   if (!report || !report.connected) return [];
-  const temps = extractTemps(report);
   const parts = [];
   // 层数 / 剩余时间是任务级指标，仅打印任务进行中（RUNNING/PAUSE/PREPARE）展示：
   // 真机空闲时报文仍残留上一任务的 layer/total（如 0/400），只判 total>0 会在「空闲」下误显层数行。
@@ -653,22 +653,8 @@ function getMetricsLines(locale, report) {
       parts.push(t(locale, 'label.layers', { layer: report.layer_num, total: report.total_layer_num }));
     }
     // 剩余时间：复用与熊猫标签一致的 fmtRemain 格式化，口径统一
-    const remain = fmtRemain(temps.remainingTime);
+    const remain = fmtRemain(extractTemps(report).remainingTime);
     if (remain != null) parts.push(t(locale, 'label.remaining', { time: remain }));
-  }
-  if (temps.nozzleTemp != null) {
-    if (temps.targetNozzleTemp != null && temps.targetNozzleTemp > 0) {
-      parts.push(`${t(locale, 'tray.nozzle')} ${temps.nozzleTemp}→${temps.targetNozzleTemp}°C`);
-    } else {
-      parts.push(`${t(locale, 'tray.nozzle')} ${temps.nozzleTemp}°C`);
-    }
-  }
-  if (temps.bedTemp != null) {
-    if (temps.targetBedTemp != null && temps.targetBedTemp > 0) {
-      parts.push(`${t(locale, 'tray.bed')} ${temps.bedTemp}→${temps.targetBedTemp}°C`);
-    } else {
-      parts.push(`${t(locale, 'tray.bed')} ${temps.bedTemp}°C`);
-    }
   }
   return parts;
 }

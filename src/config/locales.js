@@ -123,8 +123,6 @@ const STRINGS = {
 
     // ── 托盘菜单 ──
     'tray.status': '状态',
-    'tray.nozzle': '喷嘴',
-    'tray.bed': '热床',
     'tray.addPrinter': '添加打印机…',
     'tray.playMode': '探索',
     'tray.settings': '设置…',
@@ -453,8 +451,6 @@ const STRINGS = {
 
     // ── Tray menu ──
     'tray.status': 'Status',
-    'tray.nozzle': 'Nozzle',
-    'tray.bed': 'Bed',
     'tray.addPrinter': 'Add printer…',
     'tray.playMode': 'Explore',
     'tray.settings': 'Settings…',
