@@ -375,7 +375,12 @@ function buildPetPayload() {
   const items = currentPetItems();
   const top = pickAttentionItem(items);
   if (!top) return { ...resolveState({ connected: false }), lines: [], activeSerial: null };
-  return { ...top.state, lines: buildLabelLines(items), activeSerial: top.serial };
+  // 「显示所有打印机」（外观设置，默认开）：开→逐台一行；关→只显示熊猫当前表达的那台
+  // （单行、不带名字，回到单打印机时代观感）。熊猫本身仍按注意力自动切换。
+  const lines = store.get('showAllPrinters', true)
+    ? buildLabelLines(items)
+    : [{ serial: top.serial, name: null, stateKey: top.state.stateKey, labelKey: top.state.labelKey, labelParams: top.state.labelParams }];
+  return { ...top.state, lines, activeSerial: top.serial };
 }
 
 // 推送聚合状态给宠物窗口。
@@ -1362,6 +1367,7 @@ ipcMain.handle('pref:getAll', () => ({
   showLayer: store.get('showLayer', false),
   showTime: store.get('showTime', false),
   showFinishTime: store.get('showFinishTime', false),
+  showAllPrinters: store.get('showAllPrinters', true),
   matchFilamentColor: store.get('matchFilamentColor', true),
   showInMenuBar: store.get('showInMenuBar', true),
   showInDock: store.get('showInDock', true),
@@ -1373,6 +1379,8 @@ ipcMain.handle('pref:set', (_e, key, value) => {
   store.set(key, value);
   if (key === 'sizePx') setPetSizePx(value);
   if (key === 'sizePx' || key === 'labelFontSize' || key === 'showLabel' || key === 'showLayer' || key === 'showTime' || key === 'showFinishTime' || key === 'matchFilamentColor') pushPetPrefs();
+  // 「显示所有打印机」只影响标签行数（在 buildPetPayload 里读 store 决定），改后立即重推一帧。
+  if (key === 'showAllPrinters') pushState();
   if (key === 'locale') {
     pushLocale();
     // 各台按新语言重解析（失败大类文案等依赖 locale 对应的码表 key）
