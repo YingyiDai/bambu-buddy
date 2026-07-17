@@ -110,7 +110,9 @@ video.layer.active + canvas.overlay {
   display: inline-block;
   white-space: nowrap;
 }
-/* 超宽行：往返平移把被裁部分滚出来（起止各停顿，便于读起始）。--dist/--dur 由 pet.js 按溢出量设。 */
+/* 超宽行：往返平移把被裁部分滚出来。--dist/--dur 及带固定停顿的 @keyframes 均由 pet.js
+   applyMarquee 按实际溢出量注入（每轮之间在起点固定停顿再滚下一轮）。下面这份静态 keyframes
+   仅作注入前的首帧兜底，注入的同名 keyframes（在 head 末尾）会覆盖它。 */
 .label-line.scroll .line-inner {
   animation: label-marquee var(--dur, 6s) ease-in-out infinite;
 }

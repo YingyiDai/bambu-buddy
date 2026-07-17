@@ -135,26 +135,41 @@ function renderLabel() {
 // 视口 .line-vp 内容超出时给 .line-inner 施加往返平移，把被裁部分滚出来看全，不截断。
 // 竖线在视口左侧的独立槽里、不在裁剪区内，故滚动内容不会与竖线重叠。
 // 需在布局落定后测量（reportLabelSize 的 rAF 里调用）。滚动距离 = 视口内容溢出量。
-// **整体同步**：所有超宽行共用同一周期（按最大溢出量定），故同时开始/停顿/返回，读起来协调
-//（各行仍各自平移自己的距离，只是节奏对齐；因同一帧统一施加，动画相位锁定不漂移）。
+//
+// 时间轴：**起点停 REST(固定) → 滚出 tScroll(按最大距离) → 末端停 ENDPAUSE(固定) → 滚回 tScroll**，
+// 循环。REST/ENDPAUSE 是固定秒数（不随内容长短变），故每轮之间在起点明显停一段再滚下一轮。
+// 因固定停顿使关键帧百分比依赖动态的 tScroll，改由 JS 算好百分比注入 @keyframes（覆盖 css 里的
+// 静态兜底那份）。多行共用同一 total 与同一注入 keyframes → **整体同步**（同时起/停/回，不漂移）。
+const MARQUEE_SPEED = 45;      // px/s 滚动速度
+const MARQUEE_REST = 2.2;      // s 起点停顿（每轮之间停这么久）
+const MARQUEE_ENDPAUSE = 0.9;  // s 滚到底后的停顿
+let marqueeStyleEl = null;
 function applyMarquee() {
   const vps = [...labelEl.querySelectorAll('.line-vp')];
   const overs = vps.map((vp) => vp.scrollWidth - vp.clientWidth);
   const maxOver = Math.max(0, ...overs);
-  // 统一周期：以最长那行定速（约 40px/s）+ 两端停顿基底；短行同周期→稍慢但与长行齐步。
-  const dur = (maxOver / 40 + 3).toFixed(1) + 's';
+  const tScroll = maxOver / MARQUEE_SPEED;
+  const total = MARQUEE_REST + tScroll + MARQUEE_ENDPAUSE + tScroll;
+  const durStr = total.toFixed(2) + 's';
   vps.forEach((vp, i) => {
     const line = vp.parentElement;
     if (overs[i] > 1) {
       line.classList.add('scroll');
       line.style.setProperty('--dist', overs[i] + 'px');
-      line.style.setProperty('--dur', dur);
+      line.style.setProperty('--dur', durStr);
     } else {
       line.classList.remove('scroll');
       line.style.removeProperty('--dist');
       line.style.removeProperty('--dur');
     }
   });
+  if (maxOver <= 1) return; // 无超宽行，无需注入动画
+  const a = (MARQUEE_REST / total * 100).toFixed(2);
+  const b = ((MARQUEE_REST + tScroll) / total * 100).toFixed(2);
+  const c = ((MARQUEE_REST + tScroll + MARQUEE_ENDPAUSE) / total * 100).toFixed(2);
+  if (!marqueeStyleEl) { marqueeStyleEl = document.createElement('style'); document.head.appendChild(marqueeStyleEl); }
+  marqueeStyleEl.textContent =
+    `@keyframes label-marquee{0%,${a}%{transform:translateX(0)}${b}%,${c}%{transform:translateX(calc(-1*var(--dist,0px)))}100%{transform:translateX(0)}}`;
 }
 
 // 量出标签实际像素尺寸，上报主进程按需加宽/向下加高窗口 —— 长标签完整显示、多行放得下，
