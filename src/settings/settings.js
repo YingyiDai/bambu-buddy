@@ -196,6 +196,8 @@ function buildPrinterCard(p) {
 // 不再有「当前打印机」概念，故去掉「设为当前 / 已是当前」按钮。
 function fillPrinterCard(card, p, srcText, live) {
   card.dataset.serial = p.serial;
+  // 「未上桌面」（hidden）的卡整体压暗 + 一个小 chip，一眼可辨其不在桌面熊猫显示。
+  card.classList.toggle('is-hidden', !!p.hidden);
   const status = pickStatus(p, live);
   card.querySelector('.pcard-frame').className = 'pcard-frame pcard-status-' + status.cls;
   card.querySelector('.pcard-body').innerHTML =
@@ -207,14 +209,21 @@ function fillPrinterCard(card, p, srcText, live) {
     '<div class="pcard-chips">' +
       '<span class="status-chip ' + status.cls + '"><span class="sdot"></span>' + escapeHtml(status.text) + '</span>' +
       sourceChip(p.source, srcText) +
+      (p.hidden ? '<span class="src-chip hidden-chip">🙈 ' + escapeHtml(t('printers.hiddenBadge')) + '</span>' : '') +
     '</div>' +
     buildStats(live) +
     '<div class="pcard-serial">' + escapeHtml(p.serial) + '</div>';
   card.querySelector('.pc-act-rename').addEventListener('click', (e) => { e.stopPropagation(); startRename(p.serial, card, p.name); });
   const actions = card.querySelector('.pcard-actions');
-  // 全部台常驻连接：仅本地打印机保留「删除」操作（云端打印机由账号登录态管理）。
+  // 「在桌面显示」开关（每台一个）：关掉则该台不上桌面熊猫，但仍常驻连接、托盘/本卡照常显示状态。
+  // 仅本地打印机额外保留「删除」（云端打印机由账号登录态管理，删不掉、只能隐藏）。
   actions.innerHTML =
+    '<label class="pc-desk-toggle"><span>' + escapeHtml(t('settings.showOnDesktop')) + '</span>' +
+      '<input type="checkbox" class="toggle pc-act-desk"' + (p.hidden ? '' : ' checked') + ' /></label>' +
     (p.hasLan ? '<button class="btn btn-danger pc-act-remove">' + escapeHtml(t('settings.remove')) + '</button>' : '');
+  const desk = actions.querySelector('.pc-act-desk');
+  desk.addEventListener('click', (e) => e.stopPropagation());
+  desk.addEventListener('change', async (e) => { e.stopPropagation(); await window.bambu.setHidden(p.serial, !desk.checked); renderPrinters(); });
   const rm = actions.querySelector('.pc-act-remove');
   if (rm) rm.addEventListener('click', async (e) => { e.stopPropagation(); await window.bambu.removeLanPrinter(p.serial); renderPrinters(); });
 }
@@ -535,7 +544,6 @@ async function loadPreferences() {
   el('showLayerToggle').checked = p.showLayer;
   el('showTimeToggle').checked = p.showTime;
   el('showFinishTimeToggle').checked = p.showFinishTime;
-  el('showAllPrintersToggle').checked = p.showAllPrinters;
   el('matchFilamentColorToggle').checked = p.matchFilamentColor;
   syncLabelSubRows();
   el('localeSelect').value = p.locale;
@@ -562,13 +570,11 @@ function syncLabelSubRows() {
   el('rowShowLayer').classList.toggle('hidden', !on);
   el('rowShowTime').classList.toggle('hidden', !on);
   el('rowShowFinishTime').classList.toggle('hidden', !on);
-  el('rowShowAllPrinters').classList.toggle('hidden', !on);
 }
 el('showLabelToggle').addEventListener('change', () => { window.bambu.setPreference('showLabel', el('showLabelToggle').checked); syncLabelSubRows(); });
 el('showLayerToggle').addEventListener('change', () => window.bambu.setPreference('showLayer', el('showLayerToggle').checked));
 el('showTimeToggle').addEventListener('change', () => window.bambu.setPreference('showTime', el('showTimeToggle').checked));
 el('showFinishTimeToggle').addEventListener('change', () => window.bambu.setPreference('showFinishTime', el('showFinishTimeToggle').checked));
-el('showAllPrintersToggle').addEventListener('change', () => window.bambu.setPreference('showAllPrinters', el('showAllPrintersToggle').checked));
 el('matchFilamentColorToggle').addEventListener('change', () => window.bambu.setPreference('matchFilamentColor', el('matchFilamentColorToggle').checked));
 el('localeSelect').addEventListener('change', () => { currentLocale = el('localeSelect').value; renderLocale(); renderPrinters(); if (playGalleryBuilt) buildGallery(); window.bambu.setPreference('locale', currentLocale); });
 

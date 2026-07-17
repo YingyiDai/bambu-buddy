@@ -397,6 +397,22 @@ select {
 .pcard-actions .btn-danger { background: var(--danger-weak); border-color: color-mix(in srgb, var(--danger) 32%, transparent); color: var(--danger); }
 .pcard-actions .btn-danger:hover { background: var(--danger); border-color: var(--danger); color: #fff; }
 
+/* 每台「在桌面显示」开关：一行「文案 + 右侧开关」，与删除按钮同排 */
+.pc-desk-toggle {
+  flex: 1; min-width: 0; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 5px 10px; font-size: 11.5px; font-weight: 600; color: var(--text);
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  cursor: pointer; white-space: nowrap;
+}
+.pc-desk-toggle .toggle { width: 38px; height: 22px; }
+.pc-desk-toggle .toggle::after { width: 16px; height: 16px; }
+.pc-desk-toggle .toggle:checked::after { transform: translateX(16px); }
+
+/* 未上桌面的卡：照片与状态区压暗示意「不在桌面显示」；开关区保持清晰可操作。 */
+.pcard.is-hidden .pcard-pop,
+.pcard.is-hidden .pcard-body { opacity: 0.5; }
+.hidden-chip { border-style: dashed; }
+
 /* 工具卡（账号 / 添加本地打印机）：用 .pcard-frame 卡面 + 可滚动内容 */
 .util-inner { height: 100%; padding: 12px 16px 14px; overflow-y: auto; display: flex; flex-direction: column; }
 /* emoji 与标题同一行居中 */

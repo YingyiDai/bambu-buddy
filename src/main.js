@@ -351,8 +351,22 @@ function setPetSizePx(px) {
 
 // ---- 数据源装配 ----
 
+// 「在桌面显示」黑名单：hiddenPrinters 存被隐藏台的 serial 列表（默认空 = 全显）。
+// 黑名单语义故新导入的云端台自动出现；独立于 bambuPrinters（云轮询会整体重写它，不能存这儿）。
+function isHidden(serial) {
+  const list = store.get('hiddenPrinters', []);
+  return Array.isArray(list) && list.includes(serial);
+}
+function setHidden(serial, hidden) {
+  const list = (store.get('hiddenPrinters', []) || []).filter((s) => s !== serial);
+  if (hidden) list.push(serial);
+  store.set('hiddenPrinters', list);
+}
+
 // 各台的 { serial, name, state, report } 列表（统一列表序），供聚合与标签行生成。
 // mock 模式退化为单台（伪 serial、不带名字 → 单行标签，与真机单台观感一致）。
+// 「未上桌面」（hiddenPrinters）的台在此就被排除——下游 pickAttentionItem/buildLabelLines
+// 都吃这个列表，故隐藏台既不占标签行、也不参与熊猫的注意力切换（但仍常驻连接，托盘/设置照常）。
 function currentPetItems() {
   if (store.get('dataSource', 'mock') === 'mock') {
     const rt = runtimes.get(MOCK_SERIAL);
@@ -362,6 +376,7 @@ function currentPetItems() {
   }
   const items = [];
   for (const p of getUnified()) {
+    if (isHidden(p.serial)) continue;
     const rt = runtimes.get(p.serial);
     if (rt && rt.lastState) items.push({ serial: p.serial, name: p.name, state: rt.lastState, report: rt.lastReport });
   }
@@ -370,17 +385,13 @@ function currentPetItems() {
 
 // 聚合出给宠物窗口的载荷：顶层沿用单台时代的 state 形状（视频/换色路径零改动），
 // 额外带 lines（逐台标签行）与 activeSerial（熊猫当前表达的那台，渲染层据此高亮对应行）。
-// 无任何台有状态时回落「离线」（沿用旧行为）。
+// items 已排除「未上桌面」的台；只剩一台可见时 buildLabelLines 自然给单行无名（回到单台观感）。
+// 无任何台可显示时（含全部被隐藏）回落「离线」熊猫。
 function buildPetPayload() {
   const items = currentPetItems();
   const top = pickAttentionItem(items);
   if (!top) return { ...resolveState({ connected: false }), lines: [], activeSerial: null };
-  // 「显示所有打印机」（外观设置，默认开）：开→逐台一行；关→只显示熊猫当前表达的那台
-  // （单行、不带名字，回到单打印机时代观感）。熊猫本身仍按注意力自动切换。
-  const lines = store.get('showAllPrinters', true)
-    ? buildLabelLines(items)
-    : [{ serial: top.serial, name: null, stateKey: top.state.stateKey, labelKey: top.state.labelKey, labelParams: top.state.labelParams }];
-  return { ...top.state, lines, activeSerial: top.serial };
+  return { ...top.state, lines: buildLabelLines(items), activeSerial: top.serial };
 }
 
 // 推送聚合状态给宠物窗口。
@@ -1132,11 +1143,22 @@ ipcMain.handle('printer:list', () => {
   // 全部台常驻连接：逐台给出实时遥测（telemetry[serial]），不再只有「当前」一台有数据。
   const liveMode = store.get('dataSource', 'mock') === 'live';
   const telemetry = {};
-  for (const p of getUnified()) {
+  const printers = getUnified().map((p) => ({ ...p, hidden: isHidden(p.serial) }));
+  for (const p of printers) {
     const rt = runtimes.get(p.serial);
     telemetry[p.serial] = buildLiveTelemetry(liveMode, rt ? rt.lastState : null, rt ? rt.lastReport : null);
   }
-  return { printers: getUnified(), telemetry };
+  return { printers, telemetry };
+});
+
+// 「在桌面显示」开关：隐藏台仍常驻连接（托盘/设置照常），只是不上桌面熊猫、不参与注意力。
+// 改后立即重推一帧让桌面即时生效，并刷新托盘与设置窗。
+ipcMain.handle('printer:setHidden', (_e, serial, hidden) => {
+  setHidden(serial, hidden);
+  pushState();
+  rebuildTray();
+  if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('printers:changed');
+  return { ok: true };
 });
 
 ipcMain.handle('printer:addLan', async (_e, host, accessCode, serial, name) => {
@@ -1367,7 +1389,6 @@ ipcMain.handle('pref:getAll', () => ({
   showLayer: store.get('showLayer', false),
   showTime: store.get('showTime', false),
   showFinishTime: store.get('showFinishTime', false),
-  showAllPrinters: store.get('showAllPrinters', true),
   matchFilamentColor: store.get('matchFilamentColor', true),
   showInMenuBar: store.get('showInMenuBar', true),
   showInDock: store.get('showInDock', true),
@@ -1379,8 +1400,6 @@ ipcMain.handle('pref:set', (_e, key, value) => {
   store.set(key, value);
   if (key === 'sizePx') setPetSizePx(value);
   if (key === 'sizePx' || key === 'labelFontSize' || key === 'showLabel' || key === 'showLayer' || key === 'showTime' || key === 'showFinishTime' || key === 'matchFilamentColor') pushPetPrefs();
-  // 「显示所有打印机」只影响标签行数（在 buildPetPayload 里读 store 决定），改后立即重推一帧。
-  if (key === 'showAllPrinters') pushState();
   if (key === 'locale') {
     pushLocale();
     // 各台按新语言重解析（失败大类文案等依赖 locale 对应的码表 key）

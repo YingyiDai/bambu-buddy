@@ -57,6 +57,7 @@ contextBridge.exposeInMainWorld('bambu', {
     ipcRenderer.invoke('printer:addLan', host, accessCode, serial, name),
   removeLanPrinter: (serial) => ipcRenderer.invoke('printer:removeLan', serial),
   renamePrinter: (serial, name) => ipcRenderer.invoke('printer:rename', serial, name),
+  setHidden: (serial, hidden) => ipcRenderer.invoke('printer:setHidden', serial, hidden),
   refreshCloud: () => ipcRenderer.invoke('printer:refreshCloud'),
   onPrintersChanged: (cb) => ipcRenderer.on('printers:changed', () => cb()),
 
