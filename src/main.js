@@ -57,7 +57,7 @@ function netGetRaw(host, path) {
     request.end();
   });
 }
-const { clampToVisible, petWindowBounds, quantizeWinWidth } = require('./core/window-position');
+const { clampToVisible, petWindowBounds } = require('./core/window-position');
 
 const store = new Store();
 
@@ -274,8 +274,9 @@ function applyHideOnFullscreen(enabled) {
   }
 }
 
-// 渲染层上报的标签实际像素尺寸：窗口据宽度加宽以完整显示长标签（不缩字号、不截断），
-// 据高度向下加高以容纳多行标签（多台打印机每台一行，见 core/attention.js）。
+// 渲染层上报的标签实际像素尺寸。高度 h 驱动窗口向下加高以容纳多行标签（多台打印机每台
+// 一行，见 core/attention.js）；宽度 w 现已不再驱动窗口加宽（窗口宽固定为熊猫宽，超宽行在
+// 渲染层做 marquee 横向滚动），保留上报仅为兼容、不影响几何。
 const labelSize = { w: 0, h: 0 };
 
 // 熊猫方形**中心**的权威坐标（运行时唯一真源，可为小数）。窗口比熊猫方形宽（标签留白），
@@ -292,15 +293,12 @@ let petCenter = null;
 // 两侧多出的透明留白与「标签加宽」共用同一机制 —— 点击穿透，不影响交互/热区/位置记忆。
 const MIN_WIN_WIDTH = 170;
 
-// 标签比熊猫方形还宽时，窗口加宽量量化到该台阶（见 quantizeWinWidth 注释：消除自动播放
-// 时剩余时间快速变化导致的熊猫抖动）。
-const LABEL_WIDTH_STEP = 40;
-
-// 目标窗口宽度：至少容纳熊猫方形（sizePx），标签更宽时按标签宽（量化到台阶），且不低于
-// 透明窗口安全下限。两侧多出的透明留白点击穿透、可溢出屏幕边缘，熊猫始终居中方形
-//（CSS width:--pet-px），故窗口变宽不改变熊猫位置/大小/热区。
+// 目标窗口宽度：恒为熊猫方形宽（不低于透明窗口安全下限），**不再随标签加宽**。
+// 标签 pill 经 CSS max-width 卡在窗口宽内；超宽的行由渲染层做横向滚动（marquee）播出全部
+// 内容（见 pet.js），既不截断也不把窗口越撑越宽。窗口宽固定后，标签宽变化不再牵动窗口，
+// 也彻底消除了「标签快速变宽→窗口跟随→熊猫抖动」的老问题（原量化 quantizeWinWidth 不再需要）。
 function targetWinWidth() {
-  return quantizeWinWidth(labelSize.w, Math.max(currentSizePx(), MIN_WIN_WIDTH), LABEL_WIDTH_STEP);
+  return Math.max(currentSizePx(), MIN_WIN_WIDTH);
 }
 
 // 窗口预留给标签带的高度是 34px（.pet 的 bottom 内缩）里去掉 8px 间距后的 26px。

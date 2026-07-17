@@ -70,8 +70,8 @@ video.layer.active + canvas.overlay {
   left: 50%;
   top: calc(var(--pet-px, 100vh) - 34px);
   transform: translateX(-50%);
-  /* 窗口宽度由主进程按本标签实际宽度加宽（pet.js 量好后上报），故这里只需不超出窗口即可，
-     正常情况整条标签完整显示、不截断、不改用户字号。ellipsis 仅作窗口无法再加宽（极端超长）时的兜底。 */
+  /* 窗口宽固定=熊猫宽，pill 最宽卡在窗口内（100% 即窗口宽）。内容更宽时按行做横向滚动
+     （见 .label-line.scroll），不撑宽窗口、不截断、不改用户字号。 */
   max-width: calc(100% - 12px);
   box-sizing: border-box;
   padding: 4px 12px;
@@ -93,12 +93,28 @@ video.layer.active + canvas.overlay {
   border-radius: 14px;
 }
 
-/* 单行标签内容：恒为一行，层数 / 剩余时间用「 · 」横向拼接，超长时省略号兜底 */
+/* 单行标签内容：恒为一行（层数 / 剩余时间用「 · 」横向拼接）。窗口宽固定=熊猫宽，
+   内容超出的行不截断也不撑宽窗口，而是裁掉溢出部分、由 .line-inner 做横向滚动播出全貌。 */
 .label-line {
   white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
+.line-inner {
+  display: inline-block;
+  white-space: nowrap;
+}
+/* 超宽行：往返平移把被裁部分滚出来（起止各停顿，便于读起始）。--dist/--dur 由 pet.js 按溢出量设。 */
+.label-line.scroll .line-inner {
+  animation: label-marquee var(--dur, 6s) ease-in-out infinite;
+}
+@keyframes label-marquee {
+  0%, 15% { transform: translateX(0); }
+  50%, 65% { transform: translateX(calc(-1 * var(--dist, 0px))); }
+  100% { transform: translateX(0); }
+}
+/* 滚动时状态高亮竖条保持压在文本之上、不被划过的文字盖住 */
+.status-pill.multi .label-line.active::before { z-index: 2; }
+.status-pill.multi .label-line.active .line-inner { position: relative; z-index: 1; }
 
 /* 多台并存：给「熊猫当前表达的那台」（.active）加左侧短圆角竖条 + 提亮，其余行压暗——
    让用户一眼看出熊猫的动画说的是哪一台。竖条颜色按状态：正常竹叶绿 / 需处理示警红。

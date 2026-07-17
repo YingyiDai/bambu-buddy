@@ -94,6 +94,10 @@ function renderLabel() {
       div.classList.add('active');
       div.classList.add(ERR_STATES.has(line.stateKey) ? 'sev-err' : 'sev-ok');
     }
+    // 行内容包一层 .line-inner：窗口宽固定为熊猫宽，超宽的行由 applyMarquee 给这层加横向
+    // 滚动（marquee）播出全部内容，既不撑宽窗口也不截断。
+    const inner = document.createElement('span');
+    inner.className = 'line-inner';
     // 打印机名与状态之间用专属分隔符（竖条），区别于状态内部用的「 · 」——
     // 否则名字和后面的状态段全用点串起来，一眼看不出名字到哪结束。
     if (line.name) {
@@ -103,13 +107,33 @@ function renderLabel() {
       const sepEl = document.createElement('span');
       sepEl.className = 'label-sep';
       sepEl.textContent = '›';
-      div.append(nameEl, sepEl, document.createTextNode(statusText(line)));
+      inner.append(nameEl, sepEl, document.createTextNode(statusText(line)));
     } else {
-      div.textContent = statusText(line);
+      inner.textContent = statusText(line);
     }
+    div.appendChild(inner);
     labelEl.appendChild(div);
   }
   reportLabelSize();
+}
+
+// 超宽的行做横向滚动（marquee）：窗口宽固定=熊猫宽，pill 经 CSS max-width 卡在窗口内，
+// 内容超出的行给 .line-inner 施加往返平移动画，把被裁掉的部分滚出来看全，不截断。
+// 需在布局落定后测量（reportLabelSize 的 rAF 里调用）。滚动距离 = 行内容溢出量。
+function applyMarquee() {
+  for (const line of labelEl.querySelectorAll('.label-line')) {
+    const over = line.scrollWidth - line.clientWidth;
+    if (over > 1) {
+      line.classList.add('scroll');
+      line.style.setProperty('--dist', over + 'px');
+      // 速度约 40px/s，两端各留停顿，故时长与溢出量成正比再加基底
+      line.style.setProperty('--dur', (over / 40 + 3).toFixed(1) + 's');
+    } else {
+      line.classList.remove('scroll');
+      line.style.removeProperty('--dist');
+      line.style.removeProperty('--dur');
+    }
+  }
 }
 
 // 量出标签实际像素尺寸，上报主进程按需加宽/向下加高窗口 —— 长标签完整显示、多行放得下，
@@ -120,6 +144,7 @@ function reportLabelSize() {
   const hidden = labelEl.classList.contains('hidden');
   // requestAnimationFrame：等本次文本改动完成布局后再量，scrollWidth/offsetHeight 才是真实尺寸
   requestAnimationFrame(() => {
+    if (!hidden) applyMarquee(); // 布局落定后判定各行是否需横向滚动
     window.pet.setLabelSize({
       w: hidden ? 0 : Math.ceil(labelEl.scrollWidth) + LABEL_WIN_MARGIN,
       h: hidden ? 0 : Math.ceil(labelEl.offsetHeight),
