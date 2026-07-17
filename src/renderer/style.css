@@ -103,6 +103,8 @@ video.layer.active + canvas.overlay {
 /* 多台并存：给「熊猫当前表达的那台」（.active）加左侧短圆角竖条 + 提亮，其余行压暗——
    让用户一眼看出熊猫的动画说的是哪一台。竖条颜色按状态：正常竹叶绿 / 需处理示警红。
    仅 .multi（≥2 行）生效；单台一行无歧义，保持原药丸观感。 */
+/* 多行时文本因左槽（竖条）比右侧多缩进，左内距减 2px 补偿视觉不对称。 */
+.status-pill.multi { padding-left: 10px; }
 .status-pill.multi .label-line {
   position: relative;
   padding-left: 9px;        /* 所有行留同宽左槽，文本左对齐；竖条只画在 active 行的槽里 */
