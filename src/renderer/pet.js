@@ -102,7 +102,7 @@ function renderLabel() {
       nameEl.textContent = line.name;
       const sepEl = document.createElement('span');
       sepEl.className = 'label-sep';
-      sepEl.textContent = '|';
+      sepEl.textContent = '›';
       div.append(nameEl, sepEl, document.createTextNode(statusText(line)));
     } else {
       div.textContent = statusText(line);
