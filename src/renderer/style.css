@@ -70,9 +70,10 @@ video.layer.active + canvas.overlay {
   left: 50%;
   top: calc(var(--pet-px, 100vh) - 34px);
   transform: translateX(-50%);
-  /* 窗口宽固定=熊猫宽，pill 最宽卡在窗口内（100% 即窗口宽）。内容更宽时按行做横向滚动
-     （见 .label-line.scroll），不撑宽窗口、不截断、不改用户字号。 */
-  max-width: calc(100% - 12px);
+  /* 窗口宽固定=熊猫宽，pill 最宽卡在窗口内（100% 即窗口宽），仅留很小边距以尽量多容纳内容
+     （减少「刚好差几像素」被裁的情况）。内容确实更宽时按行做横向滚动（见 .label-line.scroll），
+     不撑宽窗口、不改用户字号。 */
+  max-width: calc(100% - 4px);
   box-sizing: border-box;
   padding: 4px 12px;
   font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
