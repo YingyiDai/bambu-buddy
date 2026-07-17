@@ -57,6 +57,30 @@ function pickAttentionItem(items) {
   return best;
 }
 
+/**
+ * 按关注度把台排序（rank 升序 = 越需要关注越靠前），托盘「台数很多时留谁、折谁」用它定优先级。
+ * 平手规则与 pickAttentionItem 一致：同为打印中取进度高者在前；其余保持传入的稳定序（列表序）。
+ * 缺 state 的台（如刚启动未收到首帧）按空闲档处理（rankOf 兜底），不会因此丢台。
+ * @param {Array<{serial:string,state:?object,report:?object}>} items
+ * @returns {Array} 新数组，原数组不改
+ */
+function sortByAttention(items) {
+  return (items || [])
+    .map((it, i) => ({ it, i }))
+    .sort((a, b) => {
+      const ra = rankOf(a.it);
+      const rb = rankOf(b.it);
+      if (ra !== rb) return ra - rb;
+      if (ra === RANK_PRINTING) {
+        const pa = Number(a.it.report && a.it.report.mc_percent) || 0;
+        const pb = Number(b.it.report && b.it.report.mc_percent) || 0;
+        if (pa !== pb) return pb - pa;
+      }
+      return a.i - b.i; // 平手保持列表序（稳定，不因引擎排序实现而抖动）
+    })
+    .map((x) => x.it);
+}
+
 // 离线/登录失效台不占标签行（有任一台活着时）：多台里挂一两台离线是常态，
 // 逐台列「离线」会把标签变成墓碑堆；托盘菜单里仍逐台全列，细节去那里看。
 function isDarkItem(it) {
@@ -91,4 +115,4 @@ function buildLabelLines(items) {
   return visible.map((it) => lineOf(it, showName));
 }
 
-module.exports = { ATTENTION_RANK, pickAttentionItem, buildLabelLines };
+module.exports = { ATTENTION_RANK, pickAttentionItem, sortByAttention, buildLabelLines };

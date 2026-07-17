@@ -1,7 +1,7 @@
 // 多打印机聚合单测：熊猫演哪台（pickAttentionItem）+ 标签行生成（buildLabelLines）。
 const test = require('node:test');
 const assert = require('node:assert');
-const { ATTENTION_RANK, pickAttentionItem, buildLabelLines } = require('../src/core/attention');
+const { ATTENTION_RANK, pickAttentionItem, sortByAttention, buildLabelLines } = require('../src/core/attention');
 
 // 造 item 的小工厂：state 只需 stateKey/labelKey/labelParams。
 function item(serial, stateKey, extra = {}) {
@@ -50,6 +50,42 @@ test('未知 stateKey 按空闲对待：压过 offline，但输给 paused', () =
   const weird = item('W', 'someFutureState');
   assert.strictEqual(pickAttentionItem([item('O', 'offline'), weird]).serial, 'W');
   assert.strictEqual(pickAttentionItem([weird, item('P', 'paused')]).serial, 'P');
+});
+
+// ── sortByAttention（托盘折叠优先级）──
+
+test('按关注度升序排（越需要关注越靠前）', () => {
+  const idle = item('I', 'idle');
+  const fail = item('F', 'failed');
+  const print = item('P', 'printing_50');
+  const sorted = sortByAttention([idle, print, fail]);
+  assert.deepStrictEqual(sorted.map((it) => it.serial), ['F', 'P', 'I']);
+});
+
+test('打印中平手：进度高者靠前；其余平手保持列表序（稳定）', () => {
+  const a = item('A', 'printing_25', { report: { mc_percent: 30 } });
+  const b = item('B', 'printing_75', { report: { mc_percent: 90 } });
+  assert.deepStrictEqual(sortByAttention([a, b]).map((it) => it.serial), ['B', 'A']);
+  // 两台空闲平手：不重排，列表序保持
+  const x = item('X', 'idle');
+  const y = item('Y', 'idle');
+  assert.deepStrictEqual(sortByAttention([x, y]).map((it) => it.serial), ['X', 'Y']);
+});
+
+test('缺 state 的台按空闲档处理，不丢台', () => {
+  const starting = { serial: 'S', name: '启动中', state: null, report: null };
+  const print = item('P', 'printing_50');
+  const sorted = sortByAttention([starting, print]);
+  assert.strictEqual(sorted.length, 2);
+  assert.strictEqual(sorted[0].serial, 'P');       // 打印中在前
+  assert.strictEqual(sorted[1].serial, 'S');       // 无 state 垫后（按 idle）
+});
+
+test('不改原数组', () => {
+  const arr = [item('I', 'idle'), item('F', 'failed')];
+  const copy = arr.slice();
+  sortByAttention(arr);
+  assert.deepStrictEqual(arr, copy);
 });
 
 // ── buildLabelLines ──
