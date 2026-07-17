@@ -212,13 +212,14 @@ function fillPrinterCard(card, p, srcText, live) {
     '<div class="pcard-serial">' + escapeHtml(p.serial) + '</div>';
   card.querySelector('.pc-act-rename').addEventListener('click', (e) => { e.stopPropagation(); startRename(p.serial, card, p.name); });
   const actions = card.querySelector('.pcard-actions');
-  // 桌面可见性：绿色按钮（沿用旧「设为当前」样式），文案取「动作」——当前显示→「隐藏」、
-  // 当前隐藏→「显示」，点击即切换。隐藏的台仍常驻连接，托盘/本卡照常显示状态，只是不上桌面熊猫。
+  // 桌面可见性：文案与颜色都跟「动作」走——当前隐藏→绿色 CTA「显示」（点它加回桌面）、
+  // 当前显示→中性描边「隐藏」（减法动作、弱化）。绿色恒表"点它能上桌面"，也一眼看出哪些待恢复。
+  // 隐藏的台仍常驻连接，托盘/本卡照常显示状态，只是不上桌面熊猫。
   // 仅本地打印机额外保留「删除」（云端打印机由账号登录态管理，删不掉、只能隐藏）。
   actions.innerHTML =
-    '<button class="btn pc-act-use">' + escapeHtml(t(p.hidden ? 'settings.showPrinter' : 'settings.hidePrinter')) + '</button>' +
+    '<button class="btn pc-act-vis' + (p.hidden ? ' pc-act-use' : '') + '">' + escapeHtml(t(p.hidden ? 'settings.showPrinter' : 'settings.hidePrinter')) + '</button>' +
     (p.hasLan ? '<button class="btn btn-danger pc-act-remove">' + escapeHtml(t('settings.remove')) + '</button>' : '');
-  actions.querySelector('.pc-act-use').addEventListener('click', async (e) => { e.stopPropagation(); await window.bambu.setHidden(p.serial, !p.hidden); renderPrinters(); });
+  actions.querySelector('.pc-act-vis').addEventListener('click', async (e) => { e.stopPropagation(); await window.bambu.setHidden(p.serial, !p.hidden); renderPrinters(); });
   const rm = actions.querySelector('.pc-act-remove');
   if (rm) rm.addEventListener('click', async (e) => { e.stopPropagation(); await window.bambu.removeLanPrinter(p.serial); renderPrinters(); });
 }
