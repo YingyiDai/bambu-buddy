@@ -80,11 +80,13 @@ function loadMacNative() {
       CFDictionaryGetValue: CF.func('CFDictionaryGetValue', 'void *', ['void *', 'void *']),
       CFNumberGetValue: CF.func('CFNumberGetValue', 'bool', ['void *', 'int', 'void *']),
       CFStringCreateWithCString: CF.func('CFStringCreateWithCString', 'void *', ['void *', 'str', 'uint32']),
+      CFStringGetCString: CF.func('CFStringGetCString', 'bool', ['void *', 'void *', 'long', 'uint32']),
       CFRelease: CF.func('CFRelease', 'void', ['void *']),
     };
     b.keyBounds = b.CFStringCreateWithCString(null, 'kCGWindowBounds', CF_UTF8);
     b.keyPID = b.CFStringCreateWithCString(null, 'kCGWindowOwnerPID', CF_UTF8);
-    if (!b.keyBounds || !b.keyPID) return null;
+    b.keyOwner = b.CFStringCreateWithCString(null, 'kCGWindowOwnerName', CF_UTF8);
+    if (!b.keyBounds || !b.keyPID || !b.keyOwner) return null;
     return b;
   } catch (e) {
     console.warn('[fullscreen-watch] CoreGraphics 加载失败，全屏自动隐藏在本机不可用：', e && e.message);
@@ -126,17 +128,25 @@ function decideHide(snap) {
   return eqPtr(snap.fgMon, snap.petMon); // 只有全屏发生在熊猫那块屏上才隐藏
 }
 
-// macOS 判定：屏上是否存在盖住熊猫所在显示器的「非自身」窗口（= 有 app 在这块屏全屏）。
+// 系统 UI 进程：它们不是「全屏的 app」，即便某个窗口盖满整屏也不该据此隐藏熊猫。owner 名取自
+// kCGWindowOwnerName，是**进程名**（真机实测跨语言恒为英文，如中文系统仍显示 "Dock"/"Finder"），
+// 故按名匹配可靠。其中 Dock 是关键：显示 Dock 时 Dock 进程会造一个 layer 20、盖满整屏的窗口
+// （真机 macOS 实测），旧代码误以为它「细条状盖不住屏」而漏排除，导致一显示 Dock 熊猫就被藏。
+const SYSTEM_UI_OWNERS = new Set(['Dock', 'Window Server', 'Control Center']);
+
+// macOS 判定：屏上是否存在盖住熊猫所在显示器的「非自身、非系统 UI」窗口（= 有 app 在这块屏全屏）。
 // 关键是**不看图层**：原生全屏在 0 层，而 Preview 幻灯片 / 视频元素全屏等「演示型全屏」常在
-// 更高图层——按图层过滤反而会漏掉正是要抓的场景。菜单栏(24)/Control Center(25)/Dock 等系统
-// 窗虽也在列，但它们是细条状、盖不住整屏（rectCoversMonitor 要求 top<=0 且盖满四边），最大化
-// 窗口因让出菜单栏(top=菜单栏高)同样不算——都天然为 false。只跟熊猫那块屏的矩形比，别屏全屏
-// 不会盖住此矩形 → 多显示器天然隔离。排除自身 pid（熊猫窗在 screen-saver 层、设置窗等）。
-// windows: [{ pid, rect }]，rect 为 {left,top,right,bottom} 或 null。取不到熊猫屏矩形则不隐藏。
+// 更高图层——按图层过滤反而会漏掉正是要抓的场景。菜单栏(24)/Control Center(25) 等系统窗虽也在
+// 列，但它们细条状盖不住整屏（rectCoversMonitor 要求 top<=0 且盖满四边）；Dock 显示时却会盖满
+// 整屏，故这类系统 UI 一律按 owner 名排除（见 SYSTEM_UI_OWNERS）。最大化窗口因让出菜单栏(top=
+// 菜单栏高)同样不算全屏。只跟熊猫那块屏的矩形比，别屏全屏不会盖住此矩形 → 多显示器天然隔离。
+// 排除自身 pid（熊猫窗在 screen-saver 层、设置窗等）。
+// windows: [{ pid, rect, owner }]，rect 为 {left,top,right,bottom} 或 null。取不到熊猫屏矩形则不隐藏。
 function anyWindowCoversDisplay(windows, ownPid, petDisplayRect) {
   if (!petDisplayRect) return false;
   for (const w of windows) {
     if (ownPid != null && w.pid === ownPid) continue;
+    if (SYSTEM_UI_OWNERS.has(w.owner)) continue;
     if (w.rect && rectCoversMonitor(w.rect, petDisplayRect)) return true;
   }
   return false;
@@ -208,6 +218,16 @@ function cfInt(b, dict, key) {
   return buf.readInt32LE(0);
 }
 
+// 取字典里某 CFString 键的 JS 字符串（owner 名）。取不到返回 null（→ 不在系统 UI 名单，照常判定）。
+function cfStr(b, dict, key) {
+  const v = b.CFDictionaryGetValue(dict, key);
+  if (!v) return null;
+  const buf = Buffer.alloc(256); // 进程名远短于此，够用；失败/截断都无碍（只用于精确名匹配）
+  if (!b.CFStringGetCString(v, buf, buf.length, CF_UTF8)) return null;
+  const z = buf.indexOf(0);
+  return buf.toString('utf8', 0, z < 0 ? buf.length : z);
+}
+
 // 取窗口 bounds（kCGWindowBounds 是 {X,Y,Width,Height} 字典）→ {left,top,right,bottom}。
 function cfRect(b, dict) {
   const bd = b.CFDictionaryGetValue(dict, b.keyBounds);
@@ -219,7 +239,7 @@ function cfRect(b, dict) {
   return { left: x, top: y, right: x + w, bottom: y + h };
 }
 
-// 枚举当前 Space 屏上的窗口，解析出 [{pid, rect}]（不看图层，见 anyWindowCoversDisplay）。
+// 枚举当前 Space 屏上的窗口，解析出 [{pid, rect, owner}]（不看图层，见 anyWindowCoversDisplay）。
 // OnScreenOnly 只含当前 Space，故别的 Space 的全屏 app 不会被误算。任何失败返回 []。
 function enumWindows(b) {
   const arr = b.CGWindowListCopyWindowInfo(CG_ONSCREEN_ONLY | CG_EXCLUDE_DESKTOP, 0);
@@ -230,7 +250,7 @@ function enumWindows(b) {
     for (let i = 0; i < n; i++) {
       const dict = b.CFArrayGetValueAtIndex(arr, i);
       if (!dict) continue;
-      out.push({ pid: cfInt(b, dict, b.keyPID), rect: cfRect(b, dict) });
+      out.push({ pid: cfInt(b, dict, b.keyPID), rect: cfRect(b, dict), owner: cfStr(b, dict, b.keyOwner) });
     }
     return out;
   } finally {
