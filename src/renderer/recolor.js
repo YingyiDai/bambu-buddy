@@ -62,11 +62,27 @@ function recolorImageData(imageData, targetHex) {
   const out = new Uint8ClampedArray(src.length);
   if (!target) return { data: out, width: imageData.width, height: imageData.height };
 
+  // 去溢色强度：目标色本身就是绿色系时，绿边即目标色边，无需去除
+  const spillScale = target.h >= HUE_MIN && target.h <= HUE_MAX
+    ? Math.max(0, 1 - target.s / SAT_MIN)
+    : 1;
+
   for (let i = 0; i < src.length; i += 4) {
     const a = src[i + 3];
     if (a === 0) continue;
-    const { h, s, v } = rgbToHsv(src[i], src[i + 1], src[i + 2]);
-    if (h < HUE_MIN || h > HUE_MAX || s < SAT_MIN || v < VAL_MIN) continue;
+    const r0 = src[i], g0 = src[i + 1], b0 = src[i + 2];
+    const { h, s, v } = rgbToHsv(r0, g0, b0);
+    if (v < VAL_MIN) continue;
+
+    // 残留绿量：g 超出 r/b 的部分。抗锯齿边像素与背景混色后饱和度掉到阈值以下，
+    // 但仍带这层绿——直接压平成中性色（despill），否则改浅色耗材时露出绿圈。
+    const spill = Math.round(Math.max(0, g0 - Math.max(r0, b0)) * spillScale);
+    const gBase = g0 - spill;
+
+    if (h < HUE_MIN || h > HUE_MAX || s < SAT_MIN) {
+      if (spill > 0) { out[i] = r0; out[i + 1] = gBase; out[i + 2] = b0; out[i + 3] = a; }
+      continue;
+    }
 
     // 明暗迁移：像素明度相对参考耗材绿按比例映射到目标色明度上（clamp 到 1）
     const vOut = Math.min(1, target.v * (v / REF_VAL));
@@ -74,10 +90,13 @@ function recolorImageData(imageData, targetHex) {
     const sOut = target.s * Math.min(1, s / 0.6);
     const [r, g, b] = hsvToRgb(target.h, sOut, vOut);
 
-    // 边缘软化：刚过饱和阈值的抗锯齿像素部分覆盖，避免留绿边/硬边
+    // 边缘软化：刚过饱和阈值的抗锯齿像素按 coverage 与去溢色后的原像素「混色」，
+    // 不透明输出。此前用半透明 alpha 叠加，未覆盖的部分仍露出下层原始绿。
     const coverage = Math.min(1, (s - SAT_MIN) / SAT_SOFT);
-    out[i] = r; out[i + 1] = g; out[i + 2] = b;
-    out[i + 3] = Math.round(a * coverage);
+    out[i] = Math.round(r0 + (r - r0) * coverage);
+    out[i + 1] = Math.round(gBase + (g - gBase) * coverage);
+    out[i + 2] = Math.round(b0 + (b - b0) * coverage);
+    out[i + 3] = a;
   }
   return { data: out, width: imageData.width, height: imageData.height };
 }
