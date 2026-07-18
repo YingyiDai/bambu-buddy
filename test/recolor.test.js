@@ -2,7 +2,8 @@
 // 其余像素输出全透明（overlay 只画被改色的部分，叠在原视频上方）。
 // 契约：
 //   - 命中（绿色系）像素：色相/饱和取目标色，明度按像素相对参考耗材色的比例缩放（保留明暗）；
-//   - 非绿色像素、全透明像素：输出 alpha=0（露出下层原视频）；
+//   - 低于饱和阈值但仍带绿的抗锯齿边像素：压平多余绿分量（despill），不留绿圈；
+//   - 非绿色（无绿溢色）像素、全透明像素：输出 alpha=0（露出下层原视频）；
 //   - 白/黑目标色同样成立（白→保留明暗的灰白，黑→深色）。
 const test = require('node:test');
 const assert = require('node:assert');
@@ -64,6 +65,32 @@ test('非绿色像素输出全透明（白肚、黑耳、蓝汗滴都不动）',
   for (let i = 0; i < 3; i++) {
     assert.equal(px(out, i)[3], 0, `第 ${i} 个非绿像素应透明`);
   }
+});
+
+// ── 绿边回归：耗材边缘的抗锯齿像素（绿与白肚/背景混色）饱和度低于命中阈值，
+//    此前保持透明露出下层淡绿；改白色耗材时肉眼可见绿圈。 ──
+test('低饱和残绿边像素：多余绿分量被压平（不再露绿圈）', () => {
+  // 绿耗材与白色身体的抗锯齿混色：sat≈0.13 < SAT_MIN，但 g 明显高于 r/b
+  const img = makeImage([[210, 235, 205, 255]]);
+  const out = recolorImageData(img, '#ffffff');
+  const [r, g, b, a] = px(out, 0);
+  assert.ok(a > 200, `残绿边应被覆盖，got alpha=${a}`);
+  assert.ok(g <= Math.max(r, b) + 1, `绿分量应压平到 max(r,b)，got rgb(${r},${g},${b})`);
+});
+
+test('软化带像素：不透明输出且不偏绿（不再靠半透明露下层绿）', () => {
+  // sat≈0.25，落在 [SAT_MIN, SAT_MIN+SAT_SOFT) 软化带内
+  const img = makeImage([[180, 230, 172, 255]]);
+  const out = recolorImageData(img, '#ffffff');
+  const [r, g, b, a] = px(out, 0);
+  assert.equal(a, 255, `软化带像素应不透明输出，got alpha=${a}`);
+  assert.ok(g <= Math.max(r, b) + 1, `输出不应偏绿，got rgb(${r},${g},${b})`);
+});
+
+test('目标为绿色系时不做去溢色（绿边即目标色边）', () => {
+  const img = makeImage([[210, 235, 205, 255]]);
+  const out = recolorImageData(img, '#3fa02a');
+  assert.equal(px(out, 0)[3], 0, '绿色目标下残绿边应保持透明不动');
 });
 
 test('源全透明像素输出 alpha=0', () => {
