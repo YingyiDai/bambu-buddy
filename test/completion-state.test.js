@@ -4,6 +4,7 @@ const {
   SUCCESS_DISPLAY_MS,
   FINISHED_MEMORY_MS,
   applyCompletionState,
+  taskIdFromReport,
 } = require('../src/core/completion-state');
 const { resolveState } = require('../src/core/state-machine');
 const { STRINGS } = require('../src/config/locales');
@@ -80,6 +81,56 @@ test('不同任务完成时会创建新的 20 分钟成功状态', () => {
   assert.deepStrictEqual(result.record, { finishedAt: nextFinish, taskId: 'job-2' });
   assert.equal(result.state.stateKey, 'finished');
   assert.equal(result.nextUpdateAt, nextFinish + SUCCESS_DISPLAY_MS);
+});
+
+test('P1S 局域网直连：云端 id 恒为占位符 "0"，回落到 gcode_file 作任务标识', () => {
+  // 真机取证：P1S/A1 在 LAN 直连打印时 subtask_id/task_id/project_id 恒为 "0"
+  // （真实 id 只在云端任务里生成）。占位符必须跳过，否则每份作业都被当成同一任务。
+  const report = {
+    connected: true, gcode_state: 'FINISH',
+    subtask_id: '0', task_id: '0', project_id: '0',
+    gcode_file: 'plate_1.gcode', subtask_name: '螺丝盒',
+  };
+  assert.equal(taskIdFromReport(report), 'plate_1.gcode');
+});
+
+test('P1S 局域网：全部占位符 + 仅 subtask_name / file 可用时也能识别任务', () => {
+  assert.equal(
+    taskIdFromReport({ subtask_id: '0', task_id: '0', project_id: '0', subtask_name: 'test' }),
+    'test',
+  );
+  assert.equal(
+    taskIdFromReport({ subtask_id: 0, task_id: 0, project_id: 0, file: 'model.3mf/plate_5.g' }),
+    'model.3mf/plate_5.g',
+  );
+  // 完全没有可用标识（全占位/缺失）→ null
+  assert.equal(taskIdFromReport({ subtask_id: '0', task_id: '', project_id: null }), null);
+});
+
+test('P1S 局域网：应用未在线时换了新作业完成，占位 id 不再误判为同一任务', () => {
+  // 旧作业记录已老化（>24h），期间应用离线（没观测到 RUNNING，记录未被清空）。
+  // 修复前：两次作业 taskId 都是 "0" → 被当成同一任务 → 新完成被误按旧完成时刻算龄 → 直接空闲、
+  //         既不庆祝也不显示完成时刻（P1S 用户实测的「完成状态不对/不显示完成时间」）。
+  const staleRecord = { finishedAt: START, taskId: 'jobA.gcode' };
+  const reconnectAt = START + FINISHED_MEMORY_MS + 60 * 60 * 1000; // 25 小时后
+  const jobBFinish = {
+    connected: true, gcode_state: 'FINISH',
+    subtask_id: '0', task_id: '0', project_id: '0', gcode_file: 'jobB.gcode',
+  };
+  const result = apply(jobBFinish, staleRecord, reconnectAt);
+  assert.equal(result.state.stateKey, 'finished');
+  assert.deepStrictEqual(result.record, { finishedAt: reconnectAt, taskId: 'jobB.gcode' });
+  assert.equal(result.nextUpdateAt, reconnectAt + SUCCESS_DISPLAY_MS);
+});
+
+test('同一作业的连续 FINISH 帧（gcode_file 稳定）不重置完成时刻', () => {
+  const report = { connected: true, gcode_state: 'FINISH', subtask_id: '0', gcode_file: 'plate_1.gcode' };
+  const first = apply(report, null);
+  assert.deepStrictEqual(first.record, { finishedAt: START, taskId: 'plate_1.gcode' });
+  // 21 分钟后同一份作业仍在 FINISH：完成时刻保持不变，正常降级到「完成时刻」
+  const later = apply(report, first.record, START + SUCCESS_DISPLAY_MS + 60 * 1000);
+  assert.equal(later.state.labelKey, 'label.finishedAt');
+  assert.equal(later.record.finishedAt, START);
 });
 
 test('完成文案符合中英文产品文案', () => {
