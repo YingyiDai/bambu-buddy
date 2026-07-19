@@ -294,6 +294,7 @@ const STRINGS = {
 
     // 浏览器登录（海外区第三方账号）
     'settings.browserLogin': '通过浏览器登录（支持 Google / Apple / Facebook）',
+    'settings.browserLoginPasskeyHint': '登录窗内暂不支持指纹 Passkey；遇到 Passkey 验证请点「Try another way」，改用密码或手机确认',
     'settings.browserLoginOr': '或使用邮箱密码登录：',
     'auth.errBrowserLoginBusy': '浏览器登录窗口已打开，请在该窗口中完成登录',
     'auth.errBrowserLoginRegion': '当前区域暂不支持浏览器登录',
@@ -661,6 +662,7 @@ const STRINGS = {
 
     // Browser login (overseas third-party accounts)
     'settings.browserLogin': 'Sign in with browser (Google / Apple / Facebook)',
+    'settings.browserLoginPasskeyHint': 'Fingerprint passkeys are not supported in this window — if asked for a passkey, choose "Try another way" and verify with your password or phone',
     'settings.browserLoginOr': 'Or sign in with email & password:',
     'auth.errBrowserLoginBusy': 'A sign-in window is already open — please finish there',
     'auth.errBrowserLoginRegion': 'Browser sign-in is not available for this region',

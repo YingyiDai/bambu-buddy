@@ -289,6 +289,9 @@ function buildAccountCard(st) {
       // 第三方账号）；中国区隐藏（applyRegionUI 控制）。
       '<div class="ac-pane ac-pane-pw hidden">' +
         '<button class="btn btn-primary ac-browserlogin">' + escapeHtml(t('settings.browserLogin')) + '</button>' +
+        // Passkey 提示：Electron 内容层无平台认证器（electron#24573），指纹 Passkey 点了无反应；
+        // iCloud 现成 passkey 需要 Apple 只发给真浏览器的特权，升 Electron 也解不了 → 引导走替代验证。
+        '<p class="add-note ac-browserlogin-hint">' + escapeHtml(t('settings.browserLoginPasskeyHint')) + '</p>' +
         '<p class="add-note ac-browserlogin-or">' + escapeHtml(t('settings.browserLoginOr')) + '</p>' +
         '<input class="ac-account util-field" type="text" autocomplete="username" placeholder="' + escapeHtml(t('settings.account')) + '" />' +
         '<input class="ac-password util-field" type="password" autocomplete="current-password" placeholder="' + escapeHtml(t('settings.password')) + '" />' +
@@ -332,6 +335,7 @@ function applyRegionUI(card) {
   const isChina = sel.value === 'china';
   card.querySelector('.ac-mode-switch')?.classList.toggle('hidden', !isChina);
   card.querySelector('.ac-browserlogin')?.classList.toggle('hidden', isChina);
+  card.querySelector('.ac-browserlogin-hint')?.classList.toggle('hidden', isChina);
   card.querySelector('.ac-browserlogin-or')?.classList.toggle('hidden', isChina);
   setLoginMode(card, isChina ? 'code' : 'password');
 }

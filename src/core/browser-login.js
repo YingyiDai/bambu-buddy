@@ -9,6 +9,14 @@
 // ⚠️ 红线：绝不向登录窗口注入任何 JS（executeJavaScript / preload）、不读取表单。
 //    我们的代码只允许读会话 cookie——密码全程只经过 Bambu 官方页面。
 //    这是隐私承诺（README FAQ）的基础，改动此模块时必须维持。
+//
+// 已知限制（2026-07 真机验证，勿当 bug 修）：指纹 Passkey 在登录窗内点击无反应。
+// Electron 内容层没有 Chrome 的平台认证器 UI（electron#24573）；Electron 41/42 新增的
+// app.configureWebAuthn 也只是自建应用私有认证器（且需签名 entitlement），用户存在
+// iCloud 钥匙串的现成 passkey 依旧够不着（需要 Apple 只发给真浏览器的
+// web-browser.public-key-credential 特权）→ 升级 Electron 解决不了。
+// 对策：设置页按钮下方提示用户点「Try another way」改用密码/手机确认
+//（Google 的替代验证已实测可完整走通）。
 
 // 登录页 URL。仅海外区提供浏览器登录：中国区短信/密码登录已可用，且 bambulab.cn
 // 前置 Cloudflare 交互挑战，没必要引入额外变量。
