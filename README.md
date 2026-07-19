@@ -32,7 +32,7 @@ Bambu Buddy turns your printer's status into a little animated panda that lives 
 
 - 🐼 **Reacts in real time** — the panda's animation and status text change instantly when the printer's state changes.
 - 🎬 **11 hand-crafted moods** — from idle and printing to filament change, success, and failure, each with its own expression.
-- 🖨️ **Cloud & LAN** — sign in with your Bambu account (MQTT live status) or connect directly via IP + access code on your local network.
+- 🖨️ **Cloud & LAN** — sign in with your Bambu account, including **Google / Apple / Facebook** accounts (login happens on the official Bambu page — your password never touches this app), or connect directly via IP + access code on your local network.
 - 🔀 **Multi-printer** — cloud and local printers merge into one list, switch from the tray menu.
 
 ---
@@ -76,7 +76,7 @@ Bambu Buddy turns your printer's status into a little animated panda that lives 
 | Mode | How |
 |---|---|
 | 🎮 **Playground** | No printer needed — click through every state in the Playground, or auto-cycle. |
-| ☁️ **Bambu Cloud** | Sign in with your Bambu account; cloud printers sync automatically and subscribe to live status via MQTT. |
+| ☁️ **Bambu Cloud** | Sign in with your Bambu account — email/password and Google / Apple / Facebook are all supported via the official Bambu sign-in page. Cloud printers sync automatically and subscribe to live status via MQTT. |
 | 🏠 **LAN** | Enter the printer's IP + access code (shown on the printer's screen) to connect directly on your local network. |
 
 <div align="center"><img src="assets/readme/connectprinter-en.png" width="720" alt="Connect your printer" /></div>
