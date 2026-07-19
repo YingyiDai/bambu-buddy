@@ -289,7 +289,8 @@ async function getUid(region, token) {
       '/v1/design-user-service/my/preference',
       'GET', null, { Authorization: `Bearer ${token}` },
     );
-    if (res && res.uid != null) return { ok: true, uid: res.uid };
+    // handle 是账号昵称，浏览器登录（无邮箱输入环节）用它做账号卡展示名
+    if (res && res.uid != null) return { ok: true, uid: res.uid, handle: res.handle || res.name || '' };
     return { ok: false, error: 'auth.errUidMissing' };
   } catch (e) {
     return { ok: false, error: humanizeError(e) };

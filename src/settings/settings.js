@@ -284,8 +284,12 @@ function buildAccountCard(st) {
         '<input class="ac-smscode util-field" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="' + escapeHtml(t('settings.verifyCode')) + '" />' +
         '<button class="btn btn-primary ac-codelogin">' + escapeHtml(t('settings.login')) + '</button>' +
       '</div>' +
-      // 账号密码登录表单（含 2FA/邮箱验证码二次确认）
+      // 账号密码登录表单（含 2FA/邮箱验证码二次确认）。
+      // 海外区在表单上方提供浏览器登录入口（官方登录页，支持 Google/Apple/Facebook
+      // 第三方账号）；中国区隐藏（applyRegionUI 控制）。
       '<div class="ac-pane ac-pane-pw hidden">' +
+        '<button class="btn btn-primary ac-browserlogin">' + escapeHtml(t('settings.browserLogin')) + '</button>' +
+        '<p class="add-note ac-browserlogin-or">' + escapeHtml(t('settings.browserLoginOr')) + '</p>' +
         '<input class="ac-account util-field" type="text" autocomplete="username" placeholder="' + escapeHtml(t('settings.account')) + '" />' +
         '<input class="ac-password util-field" type="password" autocomplete="current-password" placeholder="' + escapeHtml(t('settings.password')) + '" />' +
         '<button class="btn btn-primary ac-login">' + escapeHtml(t('settings.login')) + '</button>' +
@@ -320,12 +324,15 @@ function setLoginMode(card, mode) {
   clearError();
 }
 
-// 区域决定可用登录方式：海外区无短信通道 → 隐藏切换、强制密码登录；中国区默认验证码。
+// 区域决定可用登录方式：海外区无短信通道 → 隐藏切换、强制密码登录，另给浏览器
+// 登录入口（第三方账号唯一出路）；中国区默认验证码、隐藏浏览器登录。
 function applyRegionUI(card) {
   const sel = card.querySelector('.ac-region');
   if (!sel) return;
   const isChina = sel.value === 'china';
   card.querySelector('.ac-mode-switch')?.classList.toggle('hidden', !isChina);
+  card.querySelector('.ac-browserlogin')?.classList.toggle('hidden', isChina);
+  card.querySelector('.ac-browserlogin-or')?.classList.toggle('hidden', isChina);
   setLoginMode(card, isChina ? 'code' : 'password');
 }
 
@@ -383,6 +390,18 @@ function wireAccountCard(card) {
     setBusy(false);
     if (r.ok) { await afterLogin(); return; }
     showError(r.error || t('settings.errVerifyInvalid'));
+  });
+
+  // 浏览器登录（海外区）：主进程弹官方登录页并等 token cookie；用户关窗＝取消（不报错）
+  const browserBtn = card.querySelector('.ac-browserlogin');
+  if (browserBtn) browserBtn.addEventListener('click', async (e) => {
+    e.stopPropagation(); clearError();
+    pending.region = card.querySelector('.ac-region').value;
+    setBusy(true);
+    const r = await window.bambu.browserLogin(pending.region);
+    setBusy(false);
+    if (r.ok) { await afterLogin(); return; }
+    if (!r.canceled) showError(r.error || t('settings.errLoginFailed'));
   });
 
   const loginBtn = card.querySelector('.ac-login');

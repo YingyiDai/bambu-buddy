@@ -292,6 +292,12 @@ const STRINGS = {
     'updater.errNoRelease': '未找到发布版本',
     'updater.errNetwork': '网络连接失败，请检查网络或代理',
 
+    // 浏览器登录（海外区第三方账号）
+    'settings.browserLogin': '通过浏览器登录（支持 Google / Apple / Facebook）',
+    'settings.browserLoginOr': '或使用邮箱密码登录：',
+    'auth.errBrowserLoginBusy': '浏览器登录窗口已打开，请在该窗口中完成登录',
+    'auth.errBrowserLoginRegion': '当前区域暂不支持浏览器登录',
+
     // 托盘状态行（冒号随语言：中文全角、英文半角）
     'tray.statusLine': '状态：{status}',
 
@@ -652,6 +658,12 @@ const STRINGS = {
     'updater.errBadTag': 'Unsupported release tag format',
     'updater.errNoRelease': 'No release found',
     'updater.errNetwork': 'Network error — check your connection or proxy',
+
+    // Browser login (overseas third-party accounts)
+    'settings.browserLogin': 'Sign in with browser (Google / Apple / Facebook)',
+    'settings.browserLoginOr': 'Or sign in with email & password:',
+    'auth.errBrowserLoginBusy': 'A sign-in window is already open — please finish there',
+    'auth.errBrowserLoginRegion': 'Browser sign-in is not available for this region',
 
     // Tray status line (colon follows language: full-width in zh, ASCII in en)
     'tray.statusLine': 'Status: {status}',

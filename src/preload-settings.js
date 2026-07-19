@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('bambu', {
   loginWithCode: (region, account, code, tfaKey) =>
     ipcRenderer.invoke('bambu:loginWithCode', region, account, code, tfaKey),
   completeCloudLogin: () => ipcRenderer.invoke('bambu:completeCloudLogin'),
+  // 浏览器登录（海外区）：弹官方登录页，支持 Google/Apple/Facebook 第三方账号
+  browserLogin: (region) => ipcRenderer.invoke('bambu:browserLogin', region),
 
   // 主进程请求设置窗切到某个子页面（printers / play / appearance / about）
   onNavigate: (cb) => ipcRenderer.on('settings:navigate', (_e, section) => cb(section)),
