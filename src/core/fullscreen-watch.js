@@ -72,7 +72,10 @@ function loadMacNative() {
     const koffi = require('koffi');
     const CG = koffi.load('/System/Library/Frameworks/CoreGraphics.framework/CoreGraphics');
     const CF = koffi.load('/System/Library/Frameworks/CoreFoundation.framework/CoreFoundation');
+    const libSystem = koffi.load('/usr/lib/libSystem.B.dylib');
     const b = {
+      // 系统 UI 判别用：pid → 可执行路径（真机验证对他人进程如 WindowServer 也可用）
+      proc_pidpath: libSystem.func('proc_pidpath', 'int', ['int32', 'void *', 'uint32']),
       CGWindowListCopyWindowInfo: CG.func('CGWindowListCopyWindowInfo', 'void *', ['uint32', 'uint32']),
       CGRectMakeWithDictionaryRepresentation: CG.func('CGRectMakeWithDictionaryRepresentation', 'bool', ['void *', 'void *']),
       CFArrayGetCount: CF.func('CFArrayGetCount', 'long', ['void *']),
@@ -128,26 +131,40 @@ function decideHide(snap) {
   return eqPtr(snap.fgMon, snap.petMon); // 只有全屏发生在熊猫那块屏上才隐藏
 }
 
-// 系统 UI 进程：它们不是「全屏的 app」，即便某个窗口盖满整屏也不该据此隐藏熊猫。owner 名取自
-// kCGWindowOwnerName，是**进程名**（真机实测跨语言恒为英文，如中文系统仍显示 "Dock"/"Finder"），
-// 故按名匹配可靠。其中 Dock 是关键：显示 Dock 时 Dock 进程会造一个 layer 20、盖满整屏的窗口
-// （真机 macOS 实测），旧代码误以为它「细条状盖不住屏」而漏排除，导致一显示 Dock 熊猫就被藏。
-const SYSTEM_UI_OWNERS = new Set(['Dock', 'Window Server', 'Control Center']);
+// 系统 UI 进程：它们不是「全屏的 app」，即便某个窗口盖满整屏也不该据此隐藏熊猫。这是一整类
+// 问题——真机实测显示 Dock 时 Dock 进程造 layer 20 盖屏窗口，弹通知横幅时 NotificationCenter
+// 进程造 layer 21、alpha 1 的盖屏宿主窗口（横幅只是画在其中一角）——逐个按名字排除是打地鼠。
+// 通用判别：系统 UI 的可执行文件都在 /System/Library/ 下（Dock/NotificationCenter/ControlCenter
+// 位于 CoreServices，WindowServer 位于 PrivateFrameworks/SkyLight，均真机验证）；而用户能全屏的
+// app 都在 /Applications、/System/Applications、/System/Cryptexes（Safari）等处，不会误伤。
+// owner 名单仅作 proc_pidpath 失败时的兜底：owner 名取自 kCGWindowOwnerName，是**进程名**
+// （真机实测跨语言恒为英文，中文系统仍显示 "Dock"），按名精确匹配可靠。
+const SYSTEM_UI_OWNERS = new Set(['Dock', 'Window Server', 'Control Center', 'Notification Center', 'Spotlight', 'Siri']);
+const SYSTEM_UI_PATH_PREFIX = '/System/Library/';
 
 // macOS 判定：屏上是否存在盖住熊猫所在显示器的「非自身、非系统 UI」窗口（= 有 app 在这块屏全屏）。
 // 关键是**不看图层**：原生全屏在 0 层，而 Preview 幻灯片 / 视频元素全屏等「演示型全屏」常在
 // 更高图层——按图层过滤反而会漏掉正是要抓的场景。菜单栏(24)/Control Center(25) 等系统窗虽也在
-// 列，但它们细条状盖不住整屏（rectCoversMonitor 要求 top<=0 且盖满四边）；Dock 显示时却会盖满
-// 整屏，故这类系统 UI 一律按 owner 名排除（见 SYSTEM_UI_OWNERS）。最大化窗口因让出菜单栏(top=
+// 列，但它们细条状盖不住整屏（rectCoversMonitor 要求 top<=0 且盖满四边）；Dock、通知横幅宿主窗
+// 等系统 UI 却会盖满整屏，故按可执行路径 /System/Library/ 归类排除（owner 名单兜底，见
+// SYSTEM_UI_OWNERS）。最大化窗口因让出菜单栏(top=
 // 菜单栏高)同样不算全屏。只跟熊猫那块屏的矩形比，别屏全屏不会盖住此矩形 → 多显示器天然隔离。
 // 排除自身 pid（熊猫窗在 screen-saver 层、设置窗等）。
 // windows: [{ pid, rect, owner }]，rect 为 {left,top,right,bottom} 或 null。取不到熊猫屏矩形则不隐藏。
-function anyWindowCoversDisplay(windows, ownPid, petDisplayRect) {
+// getOwnerPath: (pid) => 可执行路径|null，仅对「已盖屏」的候选调用（每轮至多几次，开销可忽略）；
+// 解析失败/未提供时退回 owner 名单兜底。
+function anyWindowCoversDisplay(windows, ownPid, petDisplayRect, getOwnerPath) {
   if (!petDisplayRect) return false;
   for (const w of windows) {
     if (ownPid != null && w.pid === ownPid) continue;
+    if (!w.rect || !rectCoversMonitor(w.rect, petDisplayRect)) continue;
     if (SYSTEM_UI_OWNERS.has(w.owner)) continue;
-    if (w.rect && rectCoversMonitor(w.rect, petDisplayRect)) return true;
+    if (getOwnerPath && w.pid != null) {
+      let p = null;
+      try { p = getOwnerPath(w.pid); } catch (_) { /* 解析失败 → 按普通 app 对待 */ }
+      if (p && p.startsWith(SYSTEM_UI_PATH_PREFIX)) continue;
+    }
+    return true;
   }
   return false;
 }
@@ -258,11 +275,20 @@ function enumWindows(b) {
   }
 }
 
-// 单次轮询（macOS）：枚举 → 是否有非自身窗口盖住熊猫所在屏。失败向「不隐藏」降级。
+// pid → 可执行路径（proc_pidpath）。失败返回 null → anyWindowCoversDisplay 退回名单兜底。
+function pidPath(b, pid) {
+  try {
+    const buf = Buffer.alloc(4096); // PROC_PIDPATHINFO_MAXSIZE
+    const n = b.proc_pidpath(pid, buf, buf.length);
+    return n > 0 ? buf.toString('utf8', 0, n) : null;
+  } catch (_) { return null; }
+}
+
+// 单次轮询（macOS）：枚举 → 是否有非自身、非系统 UI 的窗口盖住熊猫所在屏。失败向「不隐藏」降级。
 function pollOnceMac(getPetDisplayRect) {
   const petRect = getPetDisplayRect ? getPetDisplayRect() : null;
   if (!petRect) return false;
-  return anyWindowCoversDisplay(enumWindows(macNative), process.pid, petRect);
+  return anyWindowCoversDisplay(enumWindows(macNative), process.pid, petRect, (pid) => pidPath(macNative, pid));
 }
 
 // 开始轮询。onChange(shouldHide) 仅在判定翻转时回调一次。
