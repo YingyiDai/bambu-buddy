@@ -61,12 +61,12 @@ test('httpsJson: 4xx + HTML 响应体不吞状态码', async () => {
   } finally { restore(); }
 });
 
-test('requestSmsCode: 被拦截返回 HTML 403 → 给出安全策略拦截提示，而非解析报错', async () => {
+test('requestSmsCode: 被拦截返回 HTML 403 → 给出安全策略拦截 key，而非解析报错', async () => {
   const restore = stubHttps(403, '<!DOCTYPE html><html><head><title>Just a moment...</title></head></html>');
   try {
     const r = await auth.requestSmsCode('china', '13800000000');
     assert.strictEqual(r.ok, false);
-    assert.match(r.error, /安全策略拦截/);
+    assert.strictEqual(r.error, 'auth.errSmsBlocked');
   } finally { restore(); }
 });
 
@@ -82,12 +82,12 @@ test('httpsJson: 请求悬死会超时 reject，不会永久挂起', async () =>
   } finally { restore(); }
 });
 
-test('httpsJson: 2xx 但响应体非 JSON → 明确报「服务器响应异常」', async () => {
+test('httpsJson: 2xx 但响应体非 JSON → 明确报响应异常（语言中立文案）', async () => {
   const restore = stubHttps(200, '<html>not json</html>');
   try {
     await assert.rejects(
       auth.httpsJson('api.bambulab.cn', '/v1/x', 'GET', null),
-      /服务器响应异常/,
+      /non-JSON response/,
     );
   } finally { restore(); }
 });
@@ -97,13 +97,14 @@ test('loginWithCode 缺手机号或验证码即返回错误，不触网', async 
   assert.strictEqual((await auth.loginWithCode('china', '138', '')).ok, false);
 });
 
-// 验证码登录错误映射：仅 code 1/2 才是验证码问题，其余透出真实原因（曾把一切盖成「验证码错误」）。
-test('codeLoginError: code=2 → 验证码错误', () => {
-  assert.strictEqual(auth.codeLoginError({ code: 2 }, '兜底'), '验证码错误，请重新输入');
+// 验证码登录错误映射：仅 code 1/2 才是验证码问题（返回 locale key，主进程翻译），
+// 其余透出真实原因（曾把一切盖成「验证码错误」）。
+test('codeLoginError: code=2 → 验证码错误 key', () => {
+  assert.strictEqual(auth.codeLoginError({ code: 2 }, '兜底'), 'auth.errCodeWrong');
 });
 
-test('codeLoginError: code=1 → 验证码已过期', () => {
-  assert.strictEqual(auth.codeLoginError({ code: 1 }, '兜底'), '验证码已过期，请重新获取');
+test('codeLoginError: code=1 → 验证码已过期 key', () => {
+  assert.strictEqual(auth.codeLoginError({ code: 1 }, '兜底'), 'auth.errCodeExpired');
 });
 
 test('codeLoginError: 非验证码错误 → 透出服务器真实文案，不误报验证码', () => {

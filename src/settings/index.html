@@ -22,11 +22,11 @@
       <section class="section section-printers" data-section="printers">
         <!-- 卡片轮播 -->
         <div class="carousel" id="printerCarousel">
-          <button class="carousel-arrow prev" id="carPrev" aria-label="上一张"><svg viewBox="6 5 12 14" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+          <button class="carousel-arrow prev" id="carPrev" data-i18n-aria="settings.carPrev" aria-label="上一张"><svg viewBox="6 5 12 14" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
           <div class="carousel-viewport" id="carViewport">
             <div class="carousel-track" id="carTrack"></div>
           </div>
-          <button class="carousel-arrow next" id="carNext" aria-label="下一张"><svg viewBox="6 5 12 14" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+          <button class="carousel-arrow next" id="carNext" data-i18n-aria="settings.carNext" aria-label="下一张"><svg viewBox="6 5 12 14" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
         </div>
         <div class="carousel-dots" id="carDots"></div>
         <p id="err" class="err hidden"></p>
@@ -65,7 +65,7 @@
                 </div>
                 <div class="play-field-body play-color-ctl">
                   <input type="color" id="playFilamentColor" class="color-swatch" value="#80ae3b" />
-                  <button id="playFilamentReset" class="icon-btn" data-i18n-title="play.filamentReset" title="恢复原始绿" aria-label="恢复原始绿">
+                  <button id="playFilamentReset" class="icon-btn" data-i18n-title="play.filamentReset" data-i18n-aria="play.filamentReset" title="恢复原始绿" aria-label="恢复原始绿">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
                   </button>
                 </div>
@@ -151,6 +151,7 @@
           <img class="about-img" src="../../assets/image/about.png" alt="Bambu Buddy" />
           <h2 id="aboutName">Bambu Buddy</h2>
           <p class="about-desc" data-i18n="settings.aboutDesc">一只住在桌面上的熊猫，会实时跟着你的拓竹打印机状态做出反应。</p>
+          <p class="about-desc" data-i18n="settings.aboutDisclaimer">非官方第三方项目，与 Bambu Lab（拓竹科技）无从属或合作关系。</p>
         </div>
 
         <div class="section-rows">

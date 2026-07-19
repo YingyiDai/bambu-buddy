@@ -111,7 +111,8 @@ function httpsJson(host, path, method, body, headers = {}, opts = {}) {
           err.body = parsed;
           fail(err);
         } else if (parseFailed) {
-          fail(new Error(`服务器响应异常（HTTP ${res.statusCode}，非 JSON）：${snippet}`));
+          // 语言中立：此消息可能直达 UI（humanizeError 不识别时原样透出）
+          fail(new Error(`Unexpected non-JSON response (HTTP ${res.statusCode}): ${snippet}`));
         } else done(parsed);
       });
     };
@@ -151,7 +152,7 @@ function regionOf(region) {
  * 返回 {ok:true, token, uid} | {ok:false, needsVerify:true, tfaKey} | {ok:false, error}
  */
 async function login(region, account, password) {
-  if (!account || !password) return { ok: false, error: '请输入账号和密码' };
+  if (!account || !password) return { ok: false, error: 'auth.errAccountPasswordRequired' };
   try {
     const res = await httpsJson(regionOf(region).api, LOGIN_PATH, 'POST', {
       account,
@@ -161,7 +162,7 @@ async function login(region, account, password) {
     if (res.loginType === 'verifyCode' || res.tfaKey) {
       return { ok: false, needsVerify: true, tfaKey: res.tfaKey, raw: res };
     }
-    if (!res.accessToken) return { ok: false, error: '登录响应缺少 token' };
+    if (!res.accessToken) return { ok: false, error: 'auth.errNoToken' };
     return { ok: true, token: res.accessToken, uid: res.uid || decodeUidFromToken(res.accessToken), account };
   } catch (e) {
     return { ok: false, error: humanizeError(e) };
@@ -182,7 +183,7 @@ async function sendVerifyCode(region, account, password, tfaKey, code) {
       code,
     });
     if (process.env.BAMBU_DEBUG_AUTH) console.log('[bambu-auth] sendVerifyCode res:', JSON.stringify(redactAuth(res)));
-    if (!res.accessToken) return { ok: false, error: codeLoginError(res, '验证码无效') };
+    if (!res.accessToken) return { ok: false, error: codeLoginError(res, 'settings.errVerifyInvalid') };
     return { ok: true, token: res.accessToken, uid: res.uid || decodeUidFromToken(res.accessToken), account };
   } catch (e) {
     if (process.env.BAMBU_DEBUG_AUTH) console.log('[bambu-auth] sendVerifyCode err:', e && e.status, JSON.stringify(e && e.body));
@@ -198,7 +199,7 @@ async function sendVerifyCode(region, account, password, tfaKey, code) {
  * 返回 {ok:true, tfaKey?} | {ok:false, error}
  */
 async function requestSmsCode(region, phone) {
-  if (!phone) return { ok: false, error: '请输入手机号' };
+  if (!phone) return { ok: false, error: 'settings.errPhoneRequired' };
   try {
     // browserStack：api 域名当前不设 Cloudflare 挑战、Node https 也能通，但发码是
     // 全站最易被 bot 规则盯上的端点，保留 Electron net 的真浏览器 TLS 指纹更稳。
@@ -211,12 +212,12 @@ async function requestSmsCode(region, phone) {
     const status = String((e && e.status) || (msg.match(/HTTP (\d{3})/) || [])[1] || '');
     // 官方 App 能登录、独此客户端发码失败 → 多半是请求被 Cloudflare/安全策略当成「非浏览器」
     // 拦掉（403），而非手机号本身有问题。按状态码分开提示，别笼统甩锅给手机号，也便于反馈定位。
-    if (status === '429') return { ok: false, error: '验证码发送过于频繁，请稍后再试' };
+    if (status === '429') return { ok: false, error: 'auth.errSmsTooMany' };
     if (status === '403' || /cloudflare|attention required|just a moment|forbidden/i.test(msg)) {
-      return { ok: false, error: '发送失败：请求被服务端安全策略拦截（403），请稍后重试' };
+      return { ok: false, error: 'auth.errSmsBlocked' };
     }
-    if (status === '400') return { ok: false, error: '发送失败：手机号未注册或格式不正确（400）' };
-    if (status) return { ok: false, error: `发送失败（HTTP ${status}）` };
+    if (status === '400') return { ok: false, error: 'auth.errSmsBadPhone' };
+    if (status) return { ok: false, error: 'auth.errSmsHttp', errorParams: { status } };
     return { ok: false, error: humanizeError(e) };
   }
 }
@@ -229,13 +230,13 @@ async function requestSmsCode(region, phone) {
  * 返回 {ok:true, token, uid, account} | {ok:false, error}
  */
 async function loginWithCode(region, account, code, tfaKey) {
-  if (!account || !code) return { ok: false, error: '请输入手机号和验证码' };
+  if (!account || !code) return { ok: false, error: 'auth.errPhoneCodeRequired' };
   try {
     const body = { account, code };
     if (tfaKey) body.tfaKey = tfaKey;
     const res = await httpsJson(regionOf(region).api, LOGIN_PATH, 'POST', body);
     if (process.env.BAMBU_DEBUG_AUTH) console.log('[bambu-auth] loginWithCode res:', JSON.stringify(redactAuth(res)));
-    if (!res.accessToken) return { ok: false, error: codeLoginError(res, '登录失败，请重试') };
+    if (!res.accessToken) return { ok: false, error: codeLoginError(res, 'auth.errLoginRetry') };
     let uid = res.uid || decodeUidFromToken(res.accessToken);
     if (!uid) {
       const u = await getUid(region, res.accessToken);
@@ -254,7 +255,7 @@ async function loginWithCode(region, account, code, tfaKey) {
  * 返回 {ok:true, devices:[{serial,name,model,online,printStatus}]} | {ok:false, error}
  */
 async function listDevices(region, token) {
-  if (!token) return { ok: false, error: '未登录' };
+  if (!token) return { ok: false, error: 'auth.errNotLoggedIn' };
   try {
     const res = await httpsJson(regionOf(region).api, DEVICE_LIST_PATH, 'GET', null, {
       Authorization: `Bearer ${token}`,
@@ -281,7 +282,7 @@ async function listDevices(region, token) {
  * 返回 {ok:true, uid} | {ok:false, error}
  */
 async function getUid(region, token) {
-  if (!token) return { ok: false, error: '未登录' };
+  if (!token) return { ok: false, error: 'auth.errNotLoggedIn' };
   try {
     const res = await httpsJson(
       regionOf(region).api,
@@ -289,21 +290,22 @@ async function getUid(region, token) {
       'GET', null, { Authorization: `Bearer ${token}` },
     );
     if (res && res.uid != null) return { ok: true, uid: res.uid };
-    return { ok: false, error: '响应缺少 uid' };
+    return { ok: false, error: 'auth.errUidMissing' };
   } catch (e) {
     return { ok: false, error: humanizeError(e) };
   }
 }
 
-// 把「验证码登录」的响应体/错误映射为面向用户的中文提示。
+// 把「验证码登录」的响应体/错误映射为错误提示。已知情形返回 locale key
+// （auth.errCodeExpired 等，主进程用 t() 翻译后再跨 IPC）；服务器真实文案原样透传。
 // Bambu 登录响应带整型 code（与 pybambu 一致）：1=验证码已过期，2=验证码错误；
 // 其余情形绝不能盖成「验证码错误」——优先透出服务器真实文案，再回退到通用错误。
 // ⚠️ 历史 bug：中国区短信登录把任何 4xx / 无 token 响应都误报成「验证码错误或已过期」，
 //    把区域不符 / 账号异常等真因全盖住了。
 function codeLoginError(body, fallbackMsg) {
   const code = body && body.code;
-  if (code === 1) return '验证码已过期，请重新获取';
-  if (code === 2) return '验证码错误，请重新输入';
+  if (code === 1) return 'auth.errCodeExpired';
+  if (code === 2) return 'auth.errCodeWrong';
   const serverMsg = body && (body.error || body.message);
   if (serverMsg) return String(serverMsg);
   return fallbackMsg;
@@ -317,12 +319,12 @@ function redactAuth(obj) {
   return clone;
 }
 
-// 把底层错误转成面向用户的中文提示
+// 把底层错误转成错误提示：已知情形返回 locale key（主进程翻译），未知原样透传。
 function humanizeError(e) {
   const msg = e && e.message ? e.message : String(e);
-  if (/HTTP 401|HTTP 403/.test(msg)) return '账号或密码错误';
-  if (/HTTP 4/.test(msg)) return `请求失败：${msg}`;
-  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|getaddrinfo/i.test(msg)) return '网络连接失败，请检查网络';
+  if (/HTTP 401|HTTP 403/.test(msg)) return 'auth.errBadCredentials';
+  if (/HTTP 4/.test(msg)) return msg; // 带状态码与响应片段，语言中立，原样透出便于排障
+  if (/ENOTFOUND|ECONNREFUSED|ETIMEDOUT|getaddrinfo/i.test(msg)) return 'auth.errNetwork';
   return msg;
 }
 
