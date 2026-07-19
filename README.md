@@ -8,9 +8,11 @@ English | <a href="README.zh-CN.md">简体中文</a>
 
 **A desktop pet panda that lives on your screen and reacts to your Bambu Lab 3D printer.**
 
+<sub>Unofficial community project — not affiliated with or endorsed by Bambu Lab.</sub>
+
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-black?logo=apple)
 ![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-arm64-333)
-![Version](https://img.shields.io/badge/version-0.1.0-brightgreen)
+![Version](https://img.shields.io/github/v/release/YingyiDai/bambu-buddy?color=brightgreen&label=version)
 
 ### [⬇️ Download for macOS / Windows](https://github.com/YingyiDai/bambu-buddy/releases/latest)
 
@@ -84,7 +86,7 @@ Bambu Buddy turns your printer's status into a little animated panda that lives 
 ## ❓ FAQ
 
 **Does it send my data anywhere?**
-No. Account credentials are encrypted locally via macOS `safeStorage` and only used to connect to your own printer — nothing is sent to any third-party server.
+No. Account credentials are encrypted locally with your OS keychain (macOS Keychain / Windows DPAPI via Electron `safeStorage`) and only used to connect to your own printer — nothing is sent to any third-party server.
 
 **How do I update?**
 Click "Check for updates" from the tray menu or Settings › About — it compares against the latest GitHub Release and offers a one-click jump to download.

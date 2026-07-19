@@ -59,6 +59,10 @@ function netGetRaw(host, path) {
 }
 const { clampToVisible, petWindowBounds } = require('./core/window-position');
 
+// 调试/测试：BAMBU_BUDDY_USER_DATA 指定独立数据目录（干净登录态、不动正式数据）。
+// 必须在 new Store() 之前生效——electron-store 在构造时就固定了 userData 路径。
+if (process.env.BAMBU_BUDDY_USER_DATA) app.setPath('userData', process.env.BAMBU_BUDDY_USER_DATA);
+
 const store = new Store();
 
 // 将旧版 bambu 存储格式迁移到新版（账号与打印机解耦）。
@@ -603,7 +607,7 @@ const hub = new PrinterHub({
     if (now - lastAuthNotifyAt < 5000) return;
     lastAuthNotifyAt = now;
     if (!settingsWin) createSettingsWindow();
-    if (settingsWin) settingsWin.webContents.send('bambu:error', '连接已失效，请重新登录');
+    if (settingsWin) settingsWin.webContents.send('bambu:error', t(store.get('locale', 'zh-CN'), 'settings.errAuthExpired'));
   },
   pickTransport: registry.pickTransport,
 });
@@ -734,7 +738,7 @@ function trayStatusLabel(locale, rt) {
 function pushPrinterBlock(items, locale, it) {
   const rt = it.rt;
   items.push({ label: `${it.name} · ${it.model || it.serial}`, enabled: false });
-  items.push({ label: `${t(locale, 'tray.status')}：${trayStatusLabel(locale, rt)}`, enabled: false });
+  items.push({ label: t(locale, 'tray.statusLine', { status: trayStatusLabel(locale, rt) }), enabled: false });
   for (const line of getMetricsLines(locale, rt && rt.lastReport)) {
     items.push({ label: line, enabled: false });
   }
@@ -788,7 +792,7 @@ function buildMenuTemplate() {
     const rt = mode === 'mock'
       ? runtimes.get(MOCK_SERIAL)
       : (unified[0] && runtimes.get(unified[0].serial));
-    template.push({ label: `${t(locale, 'tray.status')}：${trayStatusLabel(locale, rt)}`, enabled: false });
+    template.push({ label: t(locale, 'tray.statusLine', { status: trayStatusLabel(locale, rt) }), enabled: false });
     // 实时指标（已连接时）：层数 / 剩余时间 / 喷嘴 / 热床各占一行，接在状态行（百分比）之后，
     // 避免拼成一行撑宽菜单。托盘始终全显，不受「显示层数 / 剩余时间」开关影响。
     for (const line of getMetricsLines(locale, rt && rt.lastReport)) {
@@ -987,7 +991,7 @@ function setupAutoUpdater() {
   // 必须挂 error 监听：electron-updater 以 EventEmitter 抛错，无监听会变成未捕获异常。
   autoUpdater.on('error', (e) => {
     if (updatePhase === 'downloading') { updatePhase = 'idle'; updatePercent = 0; }
-    pushUpdateState({ phase: 'error', message: humanizeError(e && e.message ? e.message : String(e)) });
+    pushUpdateState({ phase: 'error', message: localizeMsg(humanizeError(e && e.message ? e.message : String(e))) });
   });
 }
 
@@ -1011,7 +1015,7 @@ async function startUpdateDownload() {
     autoUpdater.downloadUpdate().catch(() => { /* 已由 error 事件处理 */ });
     return { ok: true };
   } catch (e) {
-    return { ok: false, reason: 'error', message: humanizeError(e && e.message ? e.message : String(e)) };
+    return { ok: false, reason: 'error', message: localizeMsg(humanizeError(e && e.message ? e.message : String(e))) };
   }
 }
 
@@ -1087,12 +1091,24 @@ function decryptSecret(secret) {
 // 本次会话刚换到的 token（验证码登录后 / 直接登录后缓存）
 let pendingAuth = null;
 
+// 纯逻辑模块（bambu-auth / updater）的 error 字段是 locale key（如 'auth.errNetwork'）
+// 或服务器/底层原始文案。跨 IPC 给 UI 前在这里翻译：命中 key 表则按当前语言渲染，
+// 未命中（服务器真实文案等）原样透传。errorParams 供带占位符的 key（如 {status}）。
+function localizeMsg(msg, params) {
+  const locale = store.get('locale', 'zh-CN');
+  const map = STRINGS[locale] || STRINGS['zh-CN'];
+  return msg != null && map[msg] != null ? t(locale, msg, params || {}) : msg;
+}
+function localizeResult(r) {
+  return r && r.error ? { ...r, error: localizeMsg(r.error, r.errorParams) } : r;
+}
+
 ipcMain.handle('bambu:login', async (_e, region, account, password) => {
   const r = await bambuAuth.login(region, account, password);
   if (r.ok) {
     pendingAuth = { region, account, password, token: r.token, uid: r.uid };
   }
-  return r;
+  return localizeResult(r);
 });
 
 ipcMain.handle('bambu:verify', async (_e, region, account, password, tfaKey, code) => {
@@ -1100,19 +1116,19 @@ ipcMain.handle('bambu:verify', async (_e, region, account, password, tfaKey, cod
   if (r.ok) {
     pendingAuth = { region, account, password, token: r.token, uid: r.uid };
   }
-  return r;
+  return localizeResult(r);
 });
 
 // 短信验证码登录（中国区）：发码（无需鉴权），再用码换 token（无密码）。
 ipcMain.handle('bambu:requestSmsCode', async (_e, region, phone) =>
-  bambuAuth.requestSmsCode(region, phone));
+  localizeResult(await bambuAuth.requestSmsCode(region, phone)));
 
 ipcMain.handle('bambu:loginWithCode', async (_e, region, account, code, tfaKey) => {
   const r = await bambuAuth.loginWithCode(region, account, code, tfaKey);
   if (r.ok) {
     pendingAuth = { region, account, token: r.token, uid: r.uid };
   }
-  return r;
+  return localizeResult(r);
 });
 
 // ---- 云端粗粒度状态轮询（§Task 5）----
@@ -1149,7 +1165,7 @@ function startCloudPoll() {
 // 设一台为当前并切到 live —— 不关闭设置窗（用户停留在「打印机」区域看到已同步的列表）。
 ipcMain.handle('bambu:completeCloudLogin', async () => {
   const { region, token, uid } = resolveActiveToken();
-  if (!token) return { ok: false, error: '登录已失效，请重新登录' };
+  if (!token) return { ok: false, error: t(store.get('locale', 'zh-CN'), 'settings.errAuthExpired') };
   const existingAccount = store.get('bambuAccount', {});
   store.set('bambuAccount', {
     region,
@@ -1500,7 +1516,7 @@ ipcMain.handle('app:info', () => {
 
 ipcMain.handle('app:checkUpdate', async () => {
   const pkg = require('../package.json');
-  return checkForUpdates(pkg.version, undefined, netGetRaw);
+  return localizeResult(await checkForUpdates(pkg.version, undefined, netGetRaw));
 });
 
 ipcMain.handle('app:openExternal', (_e, url) => {

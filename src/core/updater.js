@@ -48,7 +48,8 @@ function httpsGetRaw(host, path) {
       },
     );
     req.on('error', reject);
-    req.setTimeout(15000, () => { req.destroy(); reject(new Error('请求超时')); });
+    // '超时' 关键字被 humanizeError 归为 updater.errNetwork（网络错误 key）
+    req.setTimeout(15000, () => { req.destroy(); reject(new Error('ETIMEDOUT: 请求超时')); });
   });
 }
 
@@ -63,7 +64,7 @@ async function fetchGithubJson(getRaw, host, path) {
   const { statusCode, headers, body } = await getRaw(host, path);
   // 限流检测
   if (statusCode === 403 && headerValue(headers, 'x-ratelimit-remaining') === '0') {
-    throw new Error('GitHub API 限流，请稍后再试');
+    throw new Error('updater.errRateLimited');
   }
   if (statusCode >= 400) {
     throw new Error(`HTTP ${statusCode}: ${String(body).slice(0, 200)}`);
@@ -93,13 +94,13 @@ async function checkForUpdates(currentVersion, repoUrl, getRaw = httpsGetRaw) {
     } catch { /* ignore */ }
   }
   if (!repoUrl) {
-    return { hasUpdate: false, currentVersion, latestVersion: null, releaseUrl: null, releaseName: null, error: '未配置仓库地址' };
+    return { hasUpdate: false, currentVersion, latestVersion: null, releaseUrl: null, releaseName: null, error: 'updater.errNoRepo' };
   }
 
   // 2. 从 URL 提取 owner/repo
   const m = repoUrl.match(/github\.com[:/]([^/]+)\/([^/.]+?)(?:\.git)?$/i);
   if (!m) {
-    return { hasUpdate: false, currentVersion, latestVersion: null, releaseUrl: null, releaseName: null, error: '无法解析仓库地址' };
+    return { hasUpdate: false, currentVersion, latestVersion: null, releaseUrl: null, releaseName: null, error: 'updater.errBadRepo' };
   }
   const owner = m[1];
   const repo = m[2];
@@ -116,7 +117,7 @@ async function checkForUpdates(currentVersion, repoUrl, getRaw = httpsGetRaw) {
   // 4. 提取版本号
   const tag = (latest && latest.tag_name) || '';
   if (!tag || !isValidSemverLike(tag)) {
-    return { hasUpdate: false, currentVersion, latestVersion: tag || null, releaseUrl: latest && latest.html_url || null, releaseName: latest && latest.name || null, error: tag ? '发布 tag 格式不支持' : '未找到发布版本' };
+    return { hasUpdate: false, currentVersion, latestVersion: tag || null, releaseUrl: latest && latest.html_url || null, releaseName: latest && latest.name || null, error: tag ? 'updater.errBadTag' : 'updater.errNoRelease' };
   }
 
   const latestVer = String(tag).replace(/^v/i, '');
@@ -132,10 +133,11 @@ async function checkForUpdates(currentVersion, repoUrl, getRaw = httpsGetRaw) {
   };
 }
 
+// 已知网络错误归一成 locale key（updater.errNetwork，主进程用 t() 翻译后再给 UI），未知原样透传。
 function humanizeError(msg) {
   // 覆盖 Node（ECONNRESET / socket disconnected / secure TLS）与 Electron net（net::ERR_*）两类网络错误。
   if (/ENOTFOUND|ECONNREFUSED|ECONNRESET|ETIMEDOUT|EPIPE|getaddrinfo|socket disconnected|secure TLS|TLS connection|net::ERR|超时/i.test(msg)) {
-    return '网络连接失败，请检查网络或代理';
+    return 'updater.errNetwork';
   }
   return msg;
 }

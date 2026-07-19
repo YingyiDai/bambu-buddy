@@ -20,6 +20,7 @@ function applyLocaleText(node, text) {
 function renderLocale() {
   document.querySelectorAll('[data-i18n]').forEach((n) => applyLocaleText(n, t(n.dataset.i18n)));
   document.querySelectorAll('[data-i18n-title]').forEach((n) => { n.title = t(n.dataset.i18nTitle); });
+  document.querySelectorAll('[data-i18n-aria]').forEach((n) => { n.setAttribute('aria-label', t(n.dataset.i18nAria)); });
 }
 async function loadLocales() {
   localeStrings = await window.bambu.getLocaleStrings();
@@ -260,10 +261,14 @@ function buildAccountCard(st) {
       (region ? '<div class="util-kv"><span class="util-k">' + escapeHtml(t('settings.region')) + '</span><span class="util-v">' + escapeHtml(region) + '</span></div>' : '') +
       '<button class="btn btn-danger ac-logout">' + escapeHtml(t('settings.logout')) + '</button>';
   } else {
-    // 默认区域：中国大陆（列在首位即默认选中）。中国区默认走短信验证码登录。
+    // 默认区域跟随界面语言：中文 → 中国大陆在首位（默认选中，默认短信验证码登录）；
+    // 其它语言 → 全球区在首位（默认密码登录）。首位即 <select> 默认值。
+    const optChina = '<option value="china">' + escapeHtml(t('settings.regionChinaFull')) + '</option>';
+    const optGlobal = '<option value="global">' + escapeHtml(t('settings.regionGlobalFull')) + '</option>';
+    const regionOpts = String(currentLocale).startsWith('zh') ? optChina + optGlobal : optGlobal + optChina;
     body =
       '<p class="add-note">' + escapeHtml(t('printers.loginIntro')) + '</p>' +
-      '<label><select class="ac-region"><option value="china">' + escapeHtml(t('settings.regionChinaFull')) + '</option><option value="global">' + escapeHtml(t('settings.regionGlobalFull')) + '</option></select></label>' +
+      '<label><select class="ac-region">' + regionOpts + '</select></label>' +
       // 登录方式切换：仅中国区显示（海外区无短信通道，强制密码登录）
       '<div class="ac-mode-switch seg">' +
         '<button type="button" class="seg-tab ac-tab-code is-active">' + escapeHtml(t('settings.loginModeCode')) + '</button>' +

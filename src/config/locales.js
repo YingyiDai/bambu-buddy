@@ -269,6 +269,39 @@ const STRINGS = {
     'settings.sumSerial': '序列号',
     'settings.sumRegion': '区域',
 
+    // ── 运行期错误（bambu-auth / updater 等纯逻辑模块返回 key，主进程翻译后跨 IPC）──
+    'auth.errAccountPasswordRequired': '请输入账号和密码',
+    'auth.errNoToken': '登录响应异常（缺少 token）',
+    'auth.errLoginRetry': '登录失败，请重试',
+    'auth.errPhoneCodeRequired': '请输入手机号和验证码',
+    'auth.errCodeExpired': '验证码已过期，请重新获取',
+    'auth.errCodeWrong': '验证码错误，请重新输入',
+    'auth.errNotLoggedIn': '未登录',
+    'auth.errUidMissing': '登录响应异常（缺少 uid）',
+    'auth.errBadCredentials': '账号或密码错误',
+    'auth.errRequestFailed': '请求失败：{msg}',
+    'auth.errNetwork': '网络连接失败，请检查网络',
+    'auth.errSmsTooMany': '验证码发送过于频繁，请稍后再试',
+    'auth.errSmsBlocked': '发送失败：请求被服务端安全策略拦截（403），请稍后重试',
+    'auth.errSmsBadPhone': '发送失败：手机号未注册或格式不正确（400）',
+    'auth.errSmsHttp': '发送失败（HTTP {status}）',
+    'updater.errRateLimited': 'GitHub API 限流，请稍后再试',
+    'updater.errNoRepo': '未配置仓库地址',
+    'updater.errBadRepo': '无法解析仓库地址',
+    'updater.errBadTag': '发布 tag 格式不支持',
+    'updater.errNoRelease': '未找到发布版本',
+    'updater.errNetwork': '网络连接失败，请检查网络或代理',
+
+    // 托盘状态行（冒号随语言：中文全角、英文半角）
+    'tray.statusLine': '状态：{status}',
+
+    // 轮播箭头无障碍标签
+    'settings.carPrev': '上一张',
+    'settings.carNext': '下一张',
+
+    // 非官方声明（关于页）
+    'settings.aboutDisclaimer': '非官方第三方项目，与 Bambu Lab（拓竹科技）无从属或合作关系。',
+
     // Mock scenario labels
     'mock.offline': '未连接',
     'mock.idle': '空闲',
@@ -349,7 +382,7 @@ const STRINGS = {
     // Time text of the panda label's compact progress segment (layers are joined as {layer}/{total} in the renderer).
     'label.remainTime': '{time} left',
     // Estimated completion clock time (computer's timezone, e.g. "done 14:30"), computed in the renderer from remainMins + local time.
-    'label.finishTime': 'done {time}',
+    'label.finishTime': 'Done {time}',
     'label.changingFilament': 'Changing filament',
     'label.paused': 'Paused by the user',
     'label.paused.generic': 'Paused',
@@ -596,6 +629,39 @@ const STRINGS = {
     'settings.sumName': 'Name',
     'settings.sumSerial': 'Serial',
     'settings.sumRegion': 'Region',
+
+    // ── Runtime errors (bambu-auth / updater return keys; main process translates before IPC) ──
+    'auth.errAccountPasswordRequired': 'Enter your account and password',
+    'auth.errNoToken': 'Unexpected login response (missing token)',
+    'auth.errLoginRetry': 'Login failed — please try again',
+    'auth.errPhoneCodeRequired': 'Enter phone number and verification code',
+    'auth.errCodeExpired': 'Verification code expired — request a new one',
+    'auth.errCodeWrong': 'Wrong verification code — try again',
+    'auth.errNotLoggedIn': 'Not signed in',
+    'auth.errUidMissing': 'Unexpected login response (missing uid)',
+    'auth.errBadCredentials': 'Incorrect account or password',
+    'auth.errRequestFailed': 'Request failed: {msg}',
+    'auth.errNetwork': 'Network error — check your connection',
+    'auth.errSmsTooMany': 'Too many code requests — try again later',
+    'auth.errSmsBlocked': 'Send failed: blocked by server security policy (403) — try again later',
+    'auth.errSmsBadPhone': 'Send failed: phone number not registered or invalid (400)',
+    'auth.errSmsHttp': 'Send failed (HTTP {status})',
+    'updater.errRateLimited': 'GitHub API rate limit reached — try again later',
+    'updater.errNoRepo': 'Repository URL not configured',
+    'updater.errBadRepo': 'Could not parse repository URL',
+    'updater.errBadTag': 'Unsupported release tag format',
+    'updater.errNoRelease': 'No release found',
+    'updater.errNetwork': 'Network error — check your connection or proxy',
+
+    // Tray status line (colon follows language: full-width in zh, ASCII in en)
+    'tray.statusLine': 'Status: {status}',
+
+    // Carousel arrow accessibility labels
+    'settings.carPrev': 'Previous',
+    'settings.carNext': 'Next',
+
+    // Unofficial disclaimer (About page)
+    'settings.aboutDisclaimer': 'Unofficial community project — not affiliated with or endorsed by Bambu Lab.',
 
     // Mock scenario labels
     'mock.offline': 'Offline',
