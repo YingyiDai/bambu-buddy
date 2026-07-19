@@ -182,7 +182,12 @@ function resolveStateCore(report = {}) {
   //    （用户取消已在第 2.5 步分流为空闲，不会走到这里。）
   //    ⚠️ 不把 print_error 当作失败依据 —— 它是持续型诊断码，断料等可恢复情形也会置非零，
   //    且在增量报文合并后会跨帧残留，据此判失败会让状态长期卡在「失败」。
-  if (gcode === GCODE.FAILED || hasFatalHms(hms)) {
+  //    同理防残留 HMS 卡死：致命 HMS 不覆盖打印机自报的 IDLE。gcode_state=IDLE 表示打印机
+  //    已就绪（真故障会把 gcode 粘在 FAILED，绝不会回 IDLE），此时若还判失败，只可能是
+  //    hms 残留 —— hms 是持续字段、且增量报文浅合并会跨帧保留旧条目，hasFatalHms 的严重度
+  //    判定又未经真机验证。曾出现：真机清除失败任务、屏幕已回就绪，但熊猫因残留 HMS 长期
+  //    卡在「打印失败」不动。（RUNNING 中的致命 HMS 仍升级为失败 —— 那是真·打印中故障。）
+  if (gcode === GCODE.FAILED || (hasFatalHms(hms) && gcode !== GCODE.IDLE)) {
     // 统一返回通用 label.failed；「打印失败 · 大类」的大类由主进程用官方码表在此之上注入
     // （state-machine 是纯函数、拿不到需异步下载的官方表，故大类增强放主进程，见 main.js#applyReport）。
     return { stateKey: 'failed', videoFile: VIDEO.failed, labelKey: 'label.failed', labelParams: {} };

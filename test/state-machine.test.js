@@ -47,6 +47,24 @@ test('RUNNING 带残留 print_error → 仍是打印中', () => {
   assert.equal(r.stateKey, 'printing_0');
 });
 
+// 回归：打印失败后用户在机上清除失败任务，打印机回到就绪（gcode_state=IDLE），但 hms 是持续
+// 字段、且增量报文浅合并会跨帧保留旧的致命条目 —— 曾导致熊猫因残留 HMS 长期卡在「打印失败」。
+// gcode_state=IDLE 表示打印机已就绪（真故障绝不会回 IDLE），此时残留致命 HMS 不得升级为失败。
+// 与机型无关（共享路径），非 P1S 专属。
+test('IDLE 带残留致命 HMS（失败已清除、打印机就绪）→ idle，不再卡失败', () => {
+  const r = resolveState({ connected: true, gcode_state: 'IDLE', hms: [{ code: 'HMS_0300', severity: 'fatal' }] });
+  assert.equal(r.stateKey, 'idle');
+  assert.equal(r.labelKey, 'label.idle');
+  assert.equal(r.videoFile, 'idle.webm');
+});
+
+// 边界：真·打印中（RUNNING）出现致命 HMS 仍应升级为失败——那是进行中的真故障，
+// 不能被上面的 IDLE 放行规则误伤。
+test('RUNNING 中致命 HMS 仍判 failed（进行中真故障不放行）', () => {
+  const r = resolveState({ connected: true, gcode_state: 'RUNNING', mc_percent: 10, hms: [{ severity: 'fatal' }] });
+  assert.equal(r.stateKey, 'failed');
+});
+
 // 终止失败：state-machine 统一返回通用 label.failed；「打印失败 · 大类」的大类由主进程用官方码表
 // 在此之上注入（见 main.js#applyReport + bambu-error-codes 分类），纯函数层不做也不测大类。
 test('FAILED → 通用 label.failed（大类由主进程注入）', () => {
