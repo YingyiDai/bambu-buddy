@@ -152,6 +152,8 @@ const STRINGS = {
     // 连接 Tab（保持原样，复用旧文案）
     'settings.region': '区域',
     'settings.account': '账号（邮箱或手机号）',
+    // 海外区密码登录只认邮箱（手机号是中国区独有），placeholder 随区域切换
+    'settings.accountEmail': '邮箱',
     'settings.password': '密码',
     'settings.login': '登录',
     'settings.verifyHint': '已向你的账号发送验证码，请输入：',
@@ -520,6 +522,8 @@ const STRINGS = {
     'settings.tabAbout': 'About',
     'settings.region': 'Region',
     'settings.account': 'Account (Email or Phone)',
+    // Global accounts are email-only (phone sign-in is China-specific)
+    'settings.accountEmail': 'Email',
     'settings.password': 'Password',
     'settings.login': 'Login',
     'settings.verifyHint': 'A verification code has been sent to your account:',

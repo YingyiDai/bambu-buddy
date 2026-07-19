@@ -337,6 +337,9 @@ function applyRegionUI(card) {
   card.querySelector('.ac-browserlogin')?.classList.toggle('hidden', isChina);
   card.querySelector('.ac-browserlogin-hint')?.classList.toggle('hidden', isChina);
   card.querySelector('.ac-browserlogin-or')?.classList.toggle('hidden', isChina);
+  // 账号框 placeholder 随区域：海外只认邮箱，中国区邮箱/手机号皆可
+  const acct = card.querySelector('.ac-account');
+  if (acct) acct.placeholder = t(isChina ? 'settings.account' : 'settings.accountEmail');
   setLoginMode(card, isChina ? 'code' : 'password');
 }
 
