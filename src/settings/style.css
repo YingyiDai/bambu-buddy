@@ -433,14 +433,22 @@ select {
 .ac-browserlogin { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
 .ac-browserlogin .ac-glyph { width: 15px; height: 15px; flex-shrink: 0; }
 /* 品牌图标行：紧贴按钮正下方（负外边距抵消按钮的 margin-top，成一组），居中克制 */
-.ac-providers { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 9px 0 0; }
+.ac-providers { display: flex; align-items: center; justify-content: center; gap: 7px; margin: 9px 0 0; }
 /* line-height:1 让文字盒子紧贴字形，align-items:center 才能把字形视觉中线与图标对齐
    （默认行高使盒子偏高，字形被顶偏，与图标中线错开）。 */
 .ac-providers-lead { font-size: 11px; line-height: 1; color: var(--text-dim); margin-right: 1px; }
-/* 品牌图标属辅助说明量级——尺寸压到贴近前导词字号，不喧宾夺主。 */
-.ac-providers .ac-brand { width: 13px; height: 13px; display: block; }
-/* Apple 是留白剪影，Google/Facebook 近实心圆——同尺寸下苹果视觉偏小，放大配平。 */
-.ac-providers .ac-brand-apple { width: 15px; height: 15px; }
+/* 三个品牌标记统一套进等大的中性圆形徽章——形状一致，不再有 Apple 剪影夹在两圆间的违和。
+   徽章保持辅助量级：小尺寸、浅底细边、随主题变。 */
+.ac-providers .ac-chip {
+  width: 18px; height: 18px; border-radius: 50%; flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--field-bg); border: 1px solid var(--border);
+}
+.ac-providers .ac-chip svg { display: block; }
+/* 各字标在其 viewBox 内留白不同，逐个定尺寸让圆内视觉大小一致 */
+.ac-providers .ac-brand { width: 11px; height: 11px; }
+.ac-providers .ac-brand-apple { width: 12px; height: 12px; }
+.ac-providers .ac-brand-fb { width: auto; height: 11px; }
 /* 提示作为脚注沉到卡片底部，与上方动作组拉开层次——顶部一组操作、底部一条说明，
    两端锚定，中间留白均衡，不再是所有元素挤在上方漂着。 */
 .ac-pane-browser .ac-browserlogin-hint { margin: auto 0 0; padding-top: 12px; text-align: center; }
