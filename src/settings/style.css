@@ -433,11 +433,12 @@ select {
 .ac-browserlogin { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
 .ac-browserlogin .ac-glyph { width: 15px; height: 15px; flex-shrink: 0; }
 /* 品牌图标行：紧贴按钮正下方（负外边距抵消按钮的 margin-top，成一组），居中克制 */
-.ac-providers { display: flex; align-items: center; justify-content: center; gap: 9px; margin: 9px 0 0; }
+.ac-providers { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 9px 0 0; }
 .ac-providers-lead { font-size: 11px; color: var(--text-dim); margin-right: 1px; }
-.ac-providers .ac-brand { width: 16px; height: 16px; display: block; }
+/* 品牌图标属辅助说明量级——尺寸压到贴近前导词字号，不喧宾夺主。 */
+.ac-providers .ac-brand { width: 13px; height: 13px; display: block; }
 /* Apple 是留白剪影，Google/Facebook 近实心圆——同尺寸下苹果视觉偏小，放大配平。 */
-.ac-providers .ac-brand-apple { width: 19px; height: 19px; }
+.ac-providers .ac-brand-apple { width: 15px; height: 15px; }
 /* 提示作为脚注沉到卡片底部，与上方动作组拉开层次——顶部一组操作、底部一条说明，
    两端锚定，中间留白均衡，不再是所有元素挤在上方漂着。 */
 .ac-pane-browser .ac-browserlogin-hint { margin: auto 0 0; padding-top: 12px; text-align: center; }
