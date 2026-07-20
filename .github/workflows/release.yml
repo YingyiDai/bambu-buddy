@@ -25,11 +25,16 @@ on:
       ref:
         description: '构建用的 commit/ref（默认即 tag；补建旧版可填 main）'
         required: false
+      draft:
+        description: '建成草稿 Release（测试包用：不公开、不影响老用户自动更新，验完在页面点 Publish 即转正）'
+        type: boolean
+        default: false
 
-# tag 名（Release 标识）；构建用的 ref（默认与 tag 相同）
+# tag 名（Release 标识）；构建用的 ref（默认与 tag 相同）；是否草稿（仅手动触发可选，推 tag 恒为正式发布）
 env:
   TAG_NAME: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   BUILD_REF: ${{ github.event_name == 'workflow_dispatch' && (inputs.ref || inputs.tag) || github.ref_name }}
+  DRAFT: ${{ github.event_name == 'workflow_dispatch' && inputs.draft || false }}
 
 jobs:
   build-mac:
@@ -106,10 +111,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ env.TAG_NAME }}
           REPO: ${{ github.repository }}
+          DRAFT: ${{ env.DRAFT }}
+          TARGET: ${{ env.BUILD_REF }}
         run: |
           set -e
-          # Release 不存在则创建（带自动生成说明；已存在则跳过，保留手写说明）
-          gh release create "$TAG" --repo "$REPO" --title "Bambu Buddy $TAG" --generate-notes || true
+          # Release 不存在则创建（带自动生成说明；已存在则跳过，保留手写说明）。
+          # 草稿模式（DRAFT=true，仅手动触发）：加 --draft 建成草稿——不公开、不进 releases API，
+          # 故不会被老版本应用的自动更新当成「最新版」拉走。用 --target 让草稿关联到本次构建的
+          # 那个 commit，将来在页面点 Publish 转正时 tag 就落在实测过的代码上。
+          CREATE_ARGS=(--repo "$REPO" --title "Bambu Buddy $TAG" --generate-notes)
+          if [ "$DRAFT" = "true" ]; then
+            CREATE_ARGS+=(--draft --target "$TARGET")
+          fi
+          gh release create "$TAG" "${CREATE_ARGS[@]}" || true
           # 上传/覆盖 mac + win 安装包，以及应用内自动更新所需的 zip / latest*.yml / blockmap
           # （dmg.blockmap 除外：mac 更新只走 zip，用不上）
           find artifacts -type f \( -name '*.dmg' -o -name '*.exe' -o -name '*.zip' \

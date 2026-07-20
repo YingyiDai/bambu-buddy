@@ -50,6 +50,35 @@
 > 若想完全用手写说明，可在推 tag 前先 `gh release create v0.1.3 --notes-file ... --draft`，
 > CI 只负责上传资产、不会覆盖你的说明。
 
+## 先出测试包（草稿 Release，可选）
+
+想在正式发版前先拿到全平台安装包自测、但**不想落到公开 Releases 页、也不想惊动老用户的
+自动更新**时，用「草稿模式」跑一遍：
+
+1. 仓库 **Actions** 页 → 选 `release` 工作流 → **Run workflow**。
+2. `tag` 填测试 tag（如 `v0.4.1-test`）。
+3. `ref` 填要打包的 commit/分支（如 `main`，或 `claude/xxx` 特性分支）。
+4. **勾选 `draft`**（建成草稿 Release）。
+5. 运行结束后，Release 以**草稿**形式存在：只有仓库协作者能在 Releases 页看到（带
+   「Draft」标记），**不进公开 releases API**，所以**老版本应用的自动更新不会把它当成最新版拉走**。
+
+命令行触发同理：
+```bash
+gh workflow run release.yml -f tag=v0.4.1-test -f ref=main -f draft=true
+```
+
+自测通过后：
+- **要转正**：直接在草稿 Release 页面点 **Publish release** 即可——因为建草稿时用了
+  `--target <本次构建的 commit>`，转正时 tag 正好落在你实测过的那份代码上，无需重打。
+- **不要了**：在页面删掉这个草稿 Release（连带其关联的测试 tag）即可，不留痕迹。
+
+> 说明：
+> - 草稿模式只在 **手动 Run workflow** 时可选；**推 `v*` tag 恒为正式发布**（不经草稿）。
+> - 草稿里同样会带 `latest*.yml` 等自动更新资产，但草稿不进 releases API，故对线上用户
+>   自动更新无影响——这正是用草稿而非 prerelease 做测试包的原因。
+> - 说明顶部「📥 下载」引导里的直链在草稿阶段还打不开（资产要 Publish 后才有公开下载地址），
+>   转正后即生效；自测阶段可直接从草稿页的资产列表下载。
+
 ## 补建 / 重跑某个版本
 
 若某个版本的安装包缺失或需重打（例如本次 v0.1.2 漏了 Windows）：
