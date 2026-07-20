@@ -297,7 +297,7 @@ const STRINGS = {
     'settings.browserLogin': '浏览器登录',
     // 第三方账号入口用图标表达（Google/Apple/Facebook），此为图标行前导词。
     'settings.browserLoginWith': '支持',
-    'settings.browserLoginPasskeyHint': '暂不支持 Passkey，如遇验证请选「Try another way」',
+    'settings.browserLoginPasskeyHint': '登录窗内暂不支持通行密钥，如提示验证请改用密码或手机',
     'auth.errBrowserLoginBusy': '浏览器登录窗口已打开，请在该窗口中完成登录',
     'auth.errBrowserLoginRegion': '当前区域暂不支持浏览器登录',
 
@@ -667,7 +667,7 @@ const STRINGS = {
     'settings.browserLogin': 'Sign in with browser',
     // Third-party account entry conveyed via icons (Google/Apple/Facebook); lead-in word for that icon row.
     'settings.browserLoginWith': 'Works with',
-    'settings.browserLoginPasskeyHint': 'Passkey isn\'t supported here — pick "Try another way" if prompted',
+    'settings.browserLoginPasskeyHint': 'Passkey isn\'t supported here — use your password or phone if prompted',
     'auth.errBrowserLoginBusy': 'A sign-in window is already open — please finish there',
     'auth.errBrowserLoginRegion': 'Browser sign-in is not available for this region',
 
