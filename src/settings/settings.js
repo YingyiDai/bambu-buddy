@@ -54,6 +54,14 @@ let carInitialized = false; // 首次渲染时把焦点定位到第一张卡
 const RENAME_ICON = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 const CONFIRM_ICON = '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
 
+// 浏览器登录按钮内的地球图标（currentColor，随按钮文字取白色）。
+const GLOBE_ICON = '<svg class="ac-glyph" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>';
+// 第三方平台品牌图标（用于按钮下方「支持 …」图标行，替代原按钮里的三行文案）。
+// Google 用官方四色 G；Facebook 用品牌蓝 f；Apple 用 currentColor 以适配深浅主题。
+const GOOGLE_ICON = '<svg class="ac-brand" viewBox="0 0 48 48" role="img" aria-label="Google"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>';
+const APPLE_ICON = '<svg class="ac-brand" viewBox="0 0 24 24" fill="currentColor" role="img" aria-label="Apple"><path d="M17.05 12.53c-.03-2.42 1.98-3.58 2.07-3.64-1.13-1.65-2.89-1.88-3.51-1.9-1.49-.15-2.91.88-3.67.88-.76 0-1.93-.86-3.17-.83-1.63.02-3.13.95-3.97 2.41-1.69 2.94-.43 7.29 1.21 9.68.8 1.17 1.76 2.48 3.01 2.43 1.21-.05 1.67-.78 3.13-.78 1.46 0 1.87.78 3.15.75 1.3-.02 2.12-1.19 2.92-2.36.92-1.35 1.3-2.66 1.32-2.73-.03-.01-2.53-.97-2.56-3.86zM14.62 5.09c.67-.81 1.12-1.94.99-3.06-.96.04-2.13.64-2.82 1.45-.62.72-1.16 1.87-1.02 2.97 1.07.08 2.17-.54 2.85-1.36z"/></svg>';
+const FACEBOOK_ICON = '<svg class="ac-brand" viewBox="0 0 24 24" role="img" aria-label="Facebook"><path fill="#1877F2" d="M24 12.07C24 5.4 18.63 0 12 0S0 5.4 0 12.07C0 18.1 4.39 23.1 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.95.93-1.95 1.88v2.26h3.32l-.53 3.49h-2.79V24C19.61 23.1 24 18.1 24 12.07z"/></svg>';
+
 // 型号 → 照片：归一化型号字符串后匹配 assets/printer 下的文件名。
 // 顺序敏感：更具体的关键字（a1mini / x1carbon）必须排在宽泛的（a1 / x1）之前。
 // 兜底：型号缺失/未识别（多见于本地打印机——绑定表单不填型号）时统一用 X1C 照片，
@@ -275,7 +283,9 @@ function buildAccountCard(st) {
       // 点了无反应；iCloud 现成 passkey 需要 Apple 只发给真浏览器的特权，升
       // Electron 也解不了 → 引导走替代验证。
       '<div class="ac-pane ac-pane-browser hidden">' +
-        '<button class="btn btn-primary ac-browserlogin">' + escapeHtml(t('settings.browserLogin')) + '</button>' +
+        '<button class="btn btn-primary ac-browserlogin">' + GLOBE_ICON + '<span>' + escapeHtml(t('settings.browserLogin')) + '</span></button>' +
+        // 精简：按钮只留「浏览器登录」一行；第三方平台改用品牌图标行表达（原来三行文案挤在按钮里，又高又丑）。
+        '<div class="ac-providers"><span class="ac-providers-lead">' + escapeHtml(t('settings.browserLoginWith')) + '</span>' + GOOGLE_ICON + APPLE_ICON + FACEBOOK_ICON + '</div>' +
         '<p class="add-note ac-browserlogin-hint">' + escapeHtml(t('settings.browserLoginPasskeyHint')) + '</p>' +
       '</div>' +
       // 登录方式切换：仅中国区显示（海外区无短信通道；密码/短信表单均为中国区专用）
