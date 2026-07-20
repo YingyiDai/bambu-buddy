@@ -294,8 +294,10 @@ const STRINGS = {
     'updater.errNetwork': '网络连接失败，请检查网络或代理',
 
     // 浏览器登录（海外区第三方账号）
-    'settings.browserLogin': '通过浏览器登录（支持 Google / Apple / Facebook）',
-    'settings.browserLoginPasskeyHint': '登录窗内暂不支持指纹 Passkey；遇到 Passkey 验证请点「Try another way」，改用密码或手机确认',
+    'settings.browserLogin': '浏览器登录',
+    // 第三方账号入口用图标表达（Google/Apple/Facebook），此为图标行前导词。
+    'settings.browserLoginWith': '支持',
+    'settings.browserLoginPasskeyHint': '登录窗内暂不支持通行密钥，如提示验证请改用密码或手机',
     'auth.errBrowserLoginBusy': '浏览器登录窗口已打开，请在该窗口中完成登录',
     'auth.errBrowserLoginRegion': '当前区域暂不支持浏览器登录',
 
@@ -662,8 +664,10 @@ const STRINGS = {
     'updater.errNetwork': 'Network error — check your connection or proxy',
 
     // Browser login (overseas third-party accounts)
-    'settings.browserLogin': 'Sign in with browser (Google / Apple / Facebook)',
-    'settings.browserLoginPasskeyHint': 'Fingerprint passkeys are not supported in this window — if asked for a passkey, choose "Try another way" and verify with your password or phone',
+    'settings.browserLogin': 'Sign in with browser',
+    // Third-party account entry conveyed via icons (Google/Apple/Facebook); lead-in word for that icon row.
+    'settings.browserLoginWith': 'Works with',
+    'settings.browserLoginPasskeyHint': 'Passkey isn\'t supported here — use your password or phone if prompted',
     'auth.errBrowserLoginBusy': 'A sign-in window is already open — please finish there',
     'auth.errBrowserLoginRegion': 'Browser sign-in is not available for this region',
 
