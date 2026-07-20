@@ -36,7 +36,8 @@ test('每个把玩场景都有 name 与 desc（中英）', () => {
 test('bambu-auth/updater 返回的错误 key 在中英词表中均存在', () => {
   const fs = require('node:fs');
   const src = fs.readFileSync(require.resolve('../src/core/bambu-auth.js'), 'utf8')
-    + fs.readFileSync(require.resolve('../src/core/updater.js'), 'utf8');
+    + fs.readFileSync(require.resolve('../src/core/updater.js'), 'utf8')
+    + fs.readFileSync(require.resolve('../src/core/browser-login.js'), 'utf8');
   const keys = [...new Set([...src.matchAll(/'((?:auth|updater|settings)\.err[A-Za-z]+)'/g)].map((m) => m[1]))];
   assert.ok(keys.length >= 10, `应扫出至少 10 个错误 key，实际 ${keys.length}`);
   for (const k of keys) {

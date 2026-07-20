@@ -192,7 +192,10 @@ select {
 
 .err { margin-top: 12px; padding: 9px 12px; background: var(--danger-weak); border: 1px solid color-mix(in srgb, var(--danger) 32%, transparent); border-radius: var(--radius-sm); color: var(--danger); font-size: 12px; }
 .err.hidden { display: none; }
-.hidden { display: none; }
+/* !important：.hidden 必须压过所有后声明的 display 规则（曾被 .seg{display:flex}
+   同优先级后来居上盖掉，导致海外区选中后 SMS/密码 tab 仍显示；.ac-pane.hidden
+   的补丁就是这个坑的旧痕迹）。语义上 hidden 就该无条件隐藏。 */
+.hidden { display: none !important; }
 
 /* ── 滑杆（volume 风格：填充轨道 + 描边圆点）── */
 .slider {

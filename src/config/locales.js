@@ -151,6 +151,7 @@ const STRINGS = {
     'settings.tabAbout': '关于',
     // 连接 Tab（保持原样，复用旧文案）
     'settings.region': '区域',
+    // 仅中国区密码 tab 使用（海外区登录全走官方页面，无本地表单）
     'settings.account': '账号（邮箱或手机号）',
     'settings.password': '密码',
     'settings.login': '登录',
@@ -291,6 +292,12 @@ const STRINGS = {
     'updater.errBadTag': '发布 tag 格式不支持',
     'updater.errNoRelease': '未找到发布版本',
     'updater.errNetwork': '网络连接失败，请检查网络或代理',
+
+    // 浏览器登录（海外区第三方账号）
+    'settings.browserLogin': '通过浏览器登录（支持 Google / Apple / Facebook）',
+    'settings.browserLoginPasskeyHint': '登录窗内暂不支持指纹 Passkey；遇到 Passkey 验证请点「Try another way」，改用密码或手机确认',
+    'auth.errBrowserLoginBusy': '浏览器登录窗口已打开，请在该窗口中完成登录',
+    'auth.errBrowserLoginRegion': '当前区域暂不支持浏览器登录',
 
     // 托盘状态行（冒号随语言：中文全角、英文半角）
     'tray.statusLine': '状态：{status}',
@@ -512,6 +519,7 @@ const STRINGS = {
     'settings.tabAppearance': 'Appearance',
     'settings.tabAbout': 'About',
     'settings.region': 'Region',
+    // China-region password tab only (overseas sign-in goes through the official page)
     'settings.account': 'Account (Email or Phone)',
     'settings.password': 'Password',
     'settings.login': 'Login',
@@ -652,6 +660,12 @@ const STRINGS = {
     'updater.errBadTag': 'Unsupported release tag format',
     'updater.errNoRelease': 'No release found',
     'updater.errNetwork': 'Network error — check your connection or proxy',
+
+    // Browser login (overseas third-party accounts)
+    'settings.browserLogin': 'Sign in with browser (Google / Apple / Facebook)',
+    'settings.browserLoginPasskeyHint': 'Fingerprint passkeys are not supported in this window — if asked for a passkey, choose "Try another way" and verify with your password or phone',
+    'auth.errBrowserLoginBusy': 'A sign-in window is already open — please finish there',
+    'auth.errBrowserLoginRegion': 'Browser sign-in is not available for this region',
 
     // Tray status line (colon follows language: full-width in zh, ASCII in en)
     'tray.statusLine': 'Status: {status}',

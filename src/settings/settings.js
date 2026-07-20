@@ -269,7 +269,16 @@ function buildAccountCard(st) {
     body =
       '<p class="add-note">' + escapeHtml(t('printers.loginIntro')) + '</p>' +
       '<label><select class="ac-region">' + regionOpts + '</select></label>' +
-      // 登录方式切换：仅中国区显示（海外区无短信通道，强制密码登录）
+      // 海外区唯一登录入口：官方登录页浏览器登录（邮箱密码、Google/Apple/Facebook
+      // 全在官方页面里完成，本应用不再维护海外登录表单——密码不经过本应用代码）。
+      // Passkey 提示：Electron 内容层无平台认证器（electron#24573），指纹 Passkey
+      // 点了无反应；iCloud 现成 passkey 需要 Apple 只发给真浏览器的特权，升
+      // Electron 也解不了 → 引导走替代验证。
+      '<div class="ac-pane ac-pane-browser hidden">' +
+        '<button class="btn btn-primary ac-browserlogin">' + escapeHtml(t('settings.browserLogin')) + '</button>' +
+        '<p class="add-note ac-browserlogin-hint">' + escapeHtml(t('settings.browserLoginPasskeyHint')) + '</p>' +
+      '</div>' +
+      // 登录方式切换：仅中国区显示（海外区无短信通道；密码/短信表单均为中国区专用）
       '<div class="ac-mode-switch seg">' +
         '<button type="button" class="seg-tab ac-tab-code is-active">' + escapeHtml(t('settings.loginModeCode')) + '</button>' +
         '<button type="button" class="seg-tab ac-tab-pw">' + escapeHtml(t('settings.loginModePassword')) + '</button>' +
@@ -284,7 +293,7 @@ function buildAccountCard(st) {
         '<input class="ac-smscode util-field" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="' + escapeHtml(t('settings.verifyCode')) + '" />' +
         '<button class="btn btn-primary ac-codelogin">' + escapeHtml(t('settings.login')) + '</button>' +
       '</div>' +
-      // 账号密码登录表单（含 2FA/邮箱验证码二次确认）
+      // 账号密码登录表单（含 2FA/邮箱验证码二次确认）。仅中国区「密码登录」tab 使用。
       '<div class="ac-pane ac-pane-pw hidden">' +
         '<input class="ac-account util-field" type="text" autocomplete="username" placeholder="' + escapeHtml(t('settings.account')) + '" />' +
         '<input class="ac-password util-field" type="password" autocomplete="current-password" placeholder="' + escapeHtml(t('settings.password')) + '" />' +
@@ -320,13 +329,22 @@ function setLoginMode(card, mode) {
   clearError();
 }
 
-// 区域决定可用登录方式：海外区无短信通道 → 隐藏切换、强制密码登录；中国区默认验证码。
+// 区域决定登录方式：海外区只有浏览器登录（邮箱密码/三方账号都在官方页面里，
+// 本应用不再维护海外登录表单）；中国区维持短信/密码 tab，默认短信验证码。
 function applyRegionUI(card) {
   const sel = card.querySelector('.ac-region');
   if (!sel) return;
   const isChina = sel.value === 'china';
+  card.querySelector('.ac-pane-browser')?.classList.toggle('hidden', isChina);
   card.querySelector('.ac-mode-switch')?.classList.toggle('hidden', !isChina);
-  setLoginMode(card, isChina ? 'code' : 'password');
+  if (isChina) {
+    setLoginMode(card, 'code');
+  } else {
+    // 海外区：短信/密码表单全部隐藏（setLoginMode 只用于中国区两个 tab 的互斥）
+    card.querySelector('.ac-pane-code')?.classList.add('hidden');
+    card.querySelector('.ac-pane-pw')?.classList.add('hidden');
+    clearError();
+  }
 }
 
 // 发码按钮 60s 倒计时（防重复发送）
@@ -383,6 +401,18 @@ function wireAccountCard(card) {
     setBusy(false);
     if (r.ok) { await afterLogin(); return; }
     showError(r.error || t('settings.errVerifyInvalid'));
+  });
+
+  // 浏览器登录（海外区）：主进程弹官方登录页并等 token cookie；用户关窗＝取消（不报错）
+  const browserBtn = card.querySelector('.ac-browserlogin');
+  if (browserBtn) browserBtn.addEventListener('click', async (e) => {
+    e.stopPropagation(); clearError();
+    pending.region = card.querySelector('.ac-region').value;
+    setBusy(true);
+    const r = await window.bambu.browserLogin(pending.region);
+    setBusy(false);
+    if (r.ok) { await afterLogin(); return; }
+    if (!r.canceled) showError(r.error || t('settings.errLoginFailed'));
   });
 
   const loginBtn = card.querySelector('.ac-login');

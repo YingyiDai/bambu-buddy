@@ -1,6 +1,6 @@
 // Electron 主进程：透明置顶窗口、托盘、IPC、位置记忆、数据源驱动（§5）。
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, safeStorage, shell, dialog, net } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, safeStorage, shell, dialog, net, session } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 
@@ -13,6 +13,7 @@ const { buildLiveTelemetry } = require('./core/live-telemetry');
 const { MockDataSource } = require('./core/mock');
 const { BambuCloudDataSource, BambuLanDataSource, classifyLanProbe } = require('./core/bambu-mqtt');
 const bambuAuth = require('./core/bambu-auth');
+const browserLogin = require('./core/browser-login');
 const { t, STRINGS } = require('./config/locales');
 const { checkForUpdates, compareSemver, humanizeError } = require('./core/updater');
 const { autoUpdater } = require('electron-updater');
@@ -1103,6 +1104,111 @@ function localizeResult(r) {
   return r && r.error ? { ...r, error: localizeMsg(r.error, r.errorParams) } : r;
 }
 
+// ---- 浏览器登录（海外区，支持 Google / Apple / Facebook 第三方账号）----
+// 原理与红线（绝不注入 JS、只读会话 cookie）见 core/browser-login.js。
+// 会话放独立持久分区：与应用其它窗口完全隔离，退出登录时整体清掉；
+// 分区持久化的收益是 token 过期后重开通常还带着 Bambu 网页会话 → 免输密码快速续登。
+const BROWSER_LOGIN_PARTITION = 'persist:bambu-web-login';
+let browserLoginWin = null;
+
+async function openBrowserLogin(region) {
+  if (browserLoginWin && !browserLoginWin.isDestroyed()) {
+    browserLoginWin.focus();
+    return { ok: false, error: browserLogin.ERR_BUSY };
+  }
+  const url = browserLogin.LOGIN_URLS[region];
+  if (!url) return { ok: false, error: browserLogin.ERR_UNSUPPORTED_REGION };
+  const ses = session.fromPartition(BROWSER_LOGIN_PARTITION);
+  // UA 净化设在会话级：对分区里所有请求生效，包括 OAuth window.open 弹出的子窗
+  //（per-webContents 设置盖不到子窗，Google 会在弹窗里拒绝内嵌 webview）。
+  ses.setUserAgent(browserLogin.sanitizeUserAgent(ses.getUserAgent(), app.getName()));
+
+  // cookie 里的 token 必须校验真实可用才算数（持久分区可能留着过期 token，
+  // 校验失败继续走窗口流程）；顺带取 uid / handle 供账号卡展示。
+  const validate = async (token) => {
+    const u = await bambuAuth.getUid(region, token);
+    return u.ok ? { ok: true, token, uid: u.uid, account: u.handle || '' } : null;
+  };
+
+  // 分区里可能还留着上次的有效会话 → 免弹窗静默续登
+  const existing = browserLogin.pickTokenCookie(await ses.cookies.get({}));
+  if (existing) {
+    const r = await validate(existing.value);
+    if (r) return r;
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (r) => {
+      if (settled) return;
+      settled = true;
+      try { ses.cookies.off('changed', onCookieChanged); } catch { /* 已移除 */ }
+      const w = browserLoginWin;
+      browserLoginWin = null;
+      if (w && !w.isDestroyed()) { w.removeAllListeners('closed'); w.close(); }
+      resolve(r);
+    };
+
+    // token cookie 出现 → 校验 → 成功即收尾。checking 挡校验期间的重复触发。
+    let checking = false;
+    const tryToken = async (value) => {
+      if (checking || settled) return;
+      checking = true;
+      try {
+        const r = await validate(value);
+        if (r) finish(r);
+      } finally { checking = false; }
+    };
+
+    const onCookieChanged = (_e, cookie, _cause, removed) => {
+      if (!removed && browserLogin.isTokenCookie(cookie)) tryToken(cookie.value);
+    };
+    ses.cookies.on('changed', onCookieChanged);
+
+    browserLoginWin = new BrowserWindow({
+      width: 1024,
+      height: 780,
+      parent: settingsWin && !settingsWin.isDestroyed() ? settingsWin : undefined,
+      title: 'Bambu Lab',
+      autoHideMenuBar: true,
+      webPreferences: {
+        partition: BROWSER_LOGIN_PARTITION,
+        nodeIntegration: false,
+        contextIsolation: true,
+        sandbox: true,
+        // ⚠️ 无 preload、绝不 executeJavaScript——见 core/browser-login.js 红线
+      },
+    });
+    // OAuth 提供方（Google / Facebook）可能 window.open 弹授权窗：同分区新窗承载，
+    // 同样无 node 能力；分区级 UA 已生效。
+    browserLoginWin.webContents.setWindowOpenHandler(() => ({
+      action: 'allow',
+      overrideBrowserWindowOptions: {
+        autoHideMenuBar: true,
+        webPreferences: {
+          partition: BROWSER_LOGIN_PARTITION, nodeIntegration: false, contextIsolation: true, sandbox: true,
+        },
+      },
+    }));
+    // 兜底：cookies 'changed' 事件之外，每次导航完成后也主动查一次
+    //（登录成功后站点必然跳转，即使 changed 事件因时序漏掉也能在这里补上）。
+    browserLoginWin.webContents.on('did-navigate', async () => {
+      const c = browserLogin.pickTokenCookie(await ses.cookies.get({}));
+      if (c) tryToken(c.value);
+    });
+    browserLoginWin.on('closed', () => finish({ ok: false, canceled: true }));
+    browserLoginWin.loadURL(url);
+  });
+}
+
+ipcMain.handle('bambu:browserLogin', async (_e, region) => {
+  const r = await openBrowserLogin(region || 'global');
+  if (r.ok) {
+    pendingAuth = { region: region || 'global', account: r.account || '', token: r.token, uid: r.uid };
+  }
+  return localizeResult(r);
+});
+
 ipcMain.handle('bambu:login', async (_e, region, account, password) => {
   const r = await bambuAuth.login(region, account, password);
   if (r.ok) {
@@ -1341,6 +1447,8 @@ ipcMain.handle('bambu:logout', async () => {
   store.delete('bambuAccount');
   store.delete('bambuPrinters');
   pendingAuth = null;
+  // 浏览器登录的网页会话一并清掉（隐私：退出即不留 Bambu 网页 cookie）
+  try { await session.fromPartition(BROWSER_LOGIN_PARTITION).clearStorageData(); } catch { /* 分区未用过 */ }
   if (store.get('dataSource', 'mock') === 'live') rebuildDataSources(); // 断开云端台，仅剩 LAN 台
   return { ok: true };
 });
