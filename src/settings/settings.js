@@ -275,7 +275,7 @@ function buildAccountCard(st) {
     const optGlobal = '<option value="global">' + escapeHtml(t('settings.regionGlobalFull')) + '</option>';
     const regionOpts = String(currentLocale).startsWith('zh') ? optChina + optGlobal : optGlobal + optChina;
     body =
-      '<p class="add-note">' + escapeHtml(t('printers.loginIntro')) + '</p>' +
+      '<p class="add-note ac-intro">' + escapeHtml(t('printers.loginIntro')) + '</p>' +
       '<label><select class="ac-region">' + regionOpts + '</select></label>' +
       // 海外区唯一登录入口：官方登录页浏览器登录（邮箱密码、Google/Apple/Facebook
       // 全在官方页面里完成，本应用不再维护海外登录表单——密码不经过本应用代码）。

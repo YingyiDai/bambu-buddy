@@ -426,16 +426,21 @@ select {
 .util-v { color: var(--text); text-align: right; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .add-note { font-size: 11px; color: var(--text-dim); line-height: 1.45; margin: 0 0 8px; }
 
-/* 浏览器登录（海外区）：按钮单行 + 地球图标；第三方平台用品牌图标行表达 */
+/* 浏览器登录（海外区）：统一居中轴线 + 紧凑成组，消除「散」。
+   —— 副标题原本左对齐、其余居中，轴线不一致是散的主因之一，故账号卡副标题也居中。 */
+.ac-intro { text-align: center; }
+/* 按钮单行 + 地球图标 */
 .ac-browserlogin { display: inline-flex; align-items: center; justify-content: center; gap: 7px; }
 .ac-browserlogin .ac-glyph { width: 15px; height: 15px; flex-shrink: 0; }
-/* 品牌图标行：按钮下方一行「支持 [G][][f]」，居中、克制 */
-.ac-providers { display: flex; align-items: center; justify-content: center; gap: 9px; margin: 9px 0 4px; }
+/* 品牌图标行：紧贴按钮正下方（负外边距抵消按钮的 margin-top，成一组），居中克制 */
+.ac-providers { display: flex; align-items: center; justify-content: center; gap: 9px; margin: 9px 0 0; }
 .ac-providers-lead { font-size: 11px; color: var(--text-dim); margin-right: 1px; }
 .ac-providers .ac-brand { width: 16px; height: 16px; display: block; }
 /* Apple 是留白剪影，Google/Facebook 近实心圆——同尺寸下苹果视觉偏小，放大配平。 */
 .ac-providers .ac-brand-apple { width: 19px; height: 19px; }
-.ac-browserlogin-hint { margin-top: 8px; }
+/* 提示作为脚注沉到卡片底部，与上方动作组拉开层次——顶部一组操作、底部一条说明，
+   两端锚定，中间留白均衡，不再是所有元素挤在上方漂着。 */
+.ac-pane-browser .ac-browserlogin-hint { margin: auto 0 0; padding-top: 12px; text-align: center; }
 .add-msg { font-size: 11px; color: var(--text-faint); margin: 8px 0 0; min-height: 14px; }
 .ac-verify { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--row-border); }
 
