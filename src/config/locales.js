@@ -30,7 +30,12 @@ const STRINGS = {
     'label.paused.tempAbnormal': '暂停（温控异常）',
     'label.doorOpen': '舱门已打开',
     'label.finished': '打印成功',
-    'label.finishedAt': '完成于 {time}',
+    // 完成时刻标签用「相对时间」显示（与第一行打印中的「完成 {绝对时刻}」在格式上区分，避免看错时态）。
+    // 由渲染层/托盘按显示那一刻的当前时间选下面三条之一；label.finishedAt 仅作缺时间戳时的兜底。
+    'label.finishedAt': '已完成',
+    'label.finishedJustNow': '刚刚完成',
+    'label.finishedMinAgo': '{m} 分钟前完成',
+    'label.finishedHourAgo': '{h} 小时前完成',
     'label.failed': '打印失败',
     'label.failed.runout': '打印失败 · 断料',
     'label.failed.clog': '打印失败 · 堵头',
@@ -401,7 +406,12 @@ const STRINGS = {
     'label.paused.tempAbnormal': 'Pause (temperature malfunction)',
     'label.doorOpen': 'Door Open',
     'label.finished': 'Print successful',
-    'label.finishedAt': 'Finished at {time}',
+    // Completion shown as relative time (distinct format from the printing row's absolute "Done {clock}").
+    // The renderer/tray pick one of the three below at display time; label.finishedAt is only a fallback.
+    'label.finishedAt': 'Finished',
+    'label.finishedJustNow': 'Finished just now',
+    'label.finishedMinAgo': 'Finished {m}m ago',
+    'label.finishedHourAgo': 'Finished {h}h ago',
     'label.failed': 'Print Failed',
     'label.failed.runout': 'Print Failed · Runout',
     'label.failed.clog': 'Print Failed · Clog',
