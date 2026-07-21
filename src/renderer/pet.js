@@ -61,6 +61,16 @@ function fmtFinishClock(remainMins) {
   return fmtClock(Date.now() + remainMins * 60000);
 }
 
+// 已完成的**相对时间**：刚刚 / X 分钟前 / X 小时前（跟随 locale）。就地按当前时间算——完成记忆
+// 上限 24 小时，故最多「23 小时前」。与打印中那行的绝对「完成 {时刻}」在格式上区分，避免看错时态。
+function fmtFinishedRelative(locale, finishedAt) {
+  const sec = Math.max(0, Math.floor((Date.now() - finishedAt) / 1000));
+  if (sec < 60) return t(locale, 'label.finishedJustNow');
+  const min = Math.floor(sec / 60);
+  if (min < 60) return t(locale, 'label.finishedMinAgo', { m: min });
+  return t(locale, 'label.finishedHourAgo', { h: Math.floor(min / 60) });
+}
+
 // 拼一行的**状态文案**（不含打印机名）：主体是状态本身（打印中时即「打印中 {p}%」）；
 // 打印中且开关开启时，用统一的「 · 」把层数段、剩余时间段平级追加，例：
 //   中文 打印中 50% · 100/200 · 剩余45m    英文 Printing 50% · 100/200 · 45m left
@@ -69,9 +79,9 @@ function fmtFinishClock(remainMins) {
 // 数据由 resolveState 放进 labelParams（remain 已是 locale 无关的紧凑 token），切 locale / 切开关都能就地重绘。
 function statusText(line) {
   const p = line.labelParams || {};
-  // label.finishedAt 携带原始时间戳 finishedAt，就地格式化为 {time}（跟随系统 24/12 小时）。
-  const params = p.finishedAt != null ? { ...p, time: fmtClock(p.finishedAt) } : p;
-  const parts = [t(currentLocale, line.labelKey, params)];
+  // 完成态携带原始时间戳 finishedAt：就地生成相对完成文案（刚刚/X 分钟前/X 小时前），无后续指标段。
+  if (p.finishedAt != null) return fmtFinishedRelative(currentLocale, p.finishedAt);
+  const parts = [t(currentLocale, line.labelKey, p)];
   if (showLayer && p.layer != null && p.total != null) parts.push(`${p.layer}/${p.total}`);
   if (showTime && p.remain != null) parts.push(t(currentLocale, 'label.remainTime', { time: p.remain }));
   if (showFinishTime && p.remainMins != null) {

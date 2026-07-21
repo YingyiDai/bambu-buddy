@@ -482,7 +482,7 @@ function clearCompletionTimer(rt) {
   rt.completionTimer = null;
 }
 
-// 完成态展示边界（20 分钟成功动画 / 24 小时完成时刻）的定时刷新——按台各自一个定时器。
+// 完成态定时刷新——按台各自一个定时器：既跨过 1 小时成功动画边界，也让相对完成时间按分钟/小时跳字。
 function scheduleCompletionUpdate(serial, rt, nextUpdateAt) {
   clearCompletionTimer(rt);
   if (!Number.isFinite(nextUpdateAt)) return;
@@ -721,11 +721,20 @@ function fmtClock(ms) {
   return new Date(ms).toLocaleTimeString(undefined, opts);
 }
 
-// 渲染某台状态文案：label.finishedAt 携带原始时间戳 finishedAt，就地格式化为 {time}。
+// 已完成的相对时间：刚刚 / X 分钟前 / X 小时前（跟随 locale，按当前时间算，最多 23 小时前）。
+function fmtFinishedRelative(locale, finishedAt) {
+  const sec = Math.max(0, Math.floor((Date.now() - finishedAt) / 1000));
+  if (sec < 60) return t(locale, 'label.finishedJustNow');
+  const min = Math.floor(sec / 60);
+  if (min < 60) return t(locale, 'label.finishedMinAgo', { m: min });
+  return t(locale, 'label.finishedHourAgo', { h: Math.floor(min / 60) });
+}
+
+// 渲染某台状态文案：完成态携带原始时间戳 finishedAt，就地生成相对完成文案。
 function renderStatusLabel(locale, labelKey, labelParams) {
   const p = labelParams || {};
-  const params = p.finishedAt != null ? { ...p, time: fmtClock(p.finishedAt) } : p;
-  return t(locale, labelKey, params);
+  if (p.finishedAt != null) return fmtFinishedRelative(locale, p.finishedAt);
+  return t(locale, labelKey, p);
 }
 
 // 某台的托盘状态文案（未收到首帧时为「启动中…」）。
