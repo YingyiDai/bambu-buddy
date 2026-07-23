@@ -34,6 +34,7 @@ Bambu Buddy turns your printer's status into a little animated panda that lives 
 - 🎬 **11 hand-crafted moods** — from idle and printing to filament change, success, and failure, each with its own expression.
 - 🖨️ **Cloud & LAN** — sign in with your Bambu account, including **Google / Apple / Facebook** accounts (login happens on the official Bambu page — your password never touches this app), or connect directly via IP + access code on your local network.
 - 🔀 **Multi-printer** — cloud and local printers merge into one list, switch from the tray menu.
+- 🚀 **Launch at login** — turn on "Launch at login" from the tray menu and the panda comes back to your desktop after you sign in. Off by default, so users who don't want it are never bothered.
 
 ---
 

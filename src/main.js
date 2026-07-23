@@ -693,6 +693,23 @@ function applyDockVisibility(visible) {
   }
 }
 
+// 开机自启动（登录项）：macOS / Windows 由 Electron 原生登录项管理；Linux 无统一登录项 API
+// （且本应用只打包 mac/win），故不提供——托盘项亦仅在受支持平台展示。
+const SUPPORTS_LAUNCH_AT_LOGIN = process.platform === 'darwin' || process.platform === 'win32';
+
+// 按偏好开/关登录项。每次启动都据 store 重新登记一次（applyLaunchAtLogin(store 值)）：
+// 应用被移动/重装后可刷新登记的可执行文件路径，避免旧路径失效。
+// openAsHidden 仅 macOS 生效——登录时静默启动、不激活到前台（本就是 LSUIElement 菜单栏应用，
+// 不弹 Dock/窗口）；Windows 忽略该键。默认关闭（见 pref 默认值）——不擅自替用户开机自启。
+function applyLaunchAtLogin(enabled) {
+  if (!SUPPORTS_LAUNCH_AT_LOGIN) return;
+  try {
+    app.setLoginItemSettings({ openAtLogin: !!enabled, openAsHidden: !!enabled });
+  } catch (e) {
+    console.warn('[launch] 设置开机自启动失败:', e && (e.message || e));
+  }
+}
+
 // macOS 的「24 小时制」是 Cocoa 级设置，Node/ICU 读不到（LANG 缺省时会回落 en-US → 12 小时）。
 // 托盘在主进程渲染，需显式读取一次此设置，才能与渲染进程（Chromium 能读到系统设置）显示一致。
 // 返回 false=强制 24 小时、true=强制 12 小时、undefined=跟随 locale（非 macOS 或读取失败时）。
@@ -879,6 +896,16 @@ function buildMenuTemplate() {
         applyDockVisibility(mi.checked);
       },
     },
+    // 开机自启动：与「在菜单栏/程序坞显示」同属系统行为开关，故并列于此。仅受支持平台展示。
+    ...(SUPPORTS_LAUNCH_AT_LOGIN ? [{
+      label: t(locale, 'tray.launchAtLogin'),
+      type: 'checkbox',
+      checked: store.get('launchAtLogin', false),
+      click: (mi) => {
+        store.set('launchAtLogin', mi.checked);
+        applyLaunchAtLogin(mi.checked);
+      },
+    }] : []),
     { type: 'separator' },
     {
       // 临时显示/隐藏熊猫，不必退出整个应用。文字随当前状态翻转（显示中→「隐藏熊猫」）。
@@ -1589,6 +1616,7 @@ ipcMain.handle('pref:getAll', () => ({
   matchFilamentColor: store.get('matchFilamentColor', true),
   showInMenuBar: store.get('showInMenuBar', true),
   showInDock: store.get('showInDock', true),
+  launchAtLogin: store.get('launchAtLogin', false),
   locale: store.get('locale', 'zh-CN'),
   autoCheckUpdate: store.get('autoCheckUpdate', true),
 }));
@@ -1614,6 +1642,7 @@ ipcMain.handle('pref:set', (_e, key, value) => {
     else { if (tray) { tray.destroy(); tray = null; } }
   }
   if (key === 'showInDock') applyDockVisibility(value);
+  if (key === 'launchAtLogin') applyLaunchAtLogin(value);
   if (key === 'labelFontSize' || key === 'locale' || key === 'showLabel') rebuildTray();
   return { ok: true };
 });
@@ -1672,6 +1701,8 @@ app.whenReady().then(() => {
   applyDockVisibility(store.get('showInDock', true));
   // 全屏时自动隐藏：默认开启。Windows 启动轮询；macOS 已在 createWindow 设好 Space 可见性。
   applyHideOnFullscreen(store.get('hideOnFullscreen', true));
+  // 开机自启动：据偏好重新登记登录项（默认关闭）。每次启动同步一次，使登记的路径随应用移动/重装刷新。
+  applyLaunchAtLogin(store.get('launchAtLogin', false));
   if (store.get('showInMenuBar', true)) createTray();
   rebuildDataSources();
   refreshCloudPrinters();
