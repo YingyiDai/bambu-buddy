@@ -15,7 +15,7 @@ const { BambuCloudDataSource, BambuLanDataSource, classifyLanProbe } = require('
 const bambuAuth = require('./core/bambu-auth');
 const browserLogin = require('./core/browser-login');
 const { t, STRINGS } = require('./config/locales');
-const { checkForUpdates, compareSemver, humanizeError } = require('./core/updater');
+const { checkForUpdates, humanizeError, planUpdateDownload } = require('./core/updater');
 const { autoUpdater } = require('electron-updater');
 const errorCodes = require('./core/bambu-error-codes');
 const fs = require('fs');
@@ -1036,14 +1036,20 @@ function setupAutoUpdater() {
 // 自动路径（runAutoUpdateCheck）忽略返回值——失败静默；手动路径（update:download）把返回值给关于页展示。
 async function startUpdateDownload() {
   if (!app.isPackaged) return { ok: false, reason: 'unsupported' };
+  // 正在下载：只回推进度、不重复发起（再入守卫，放在网络请求之前）。
   if (updatePhase === 'downloading') { pushUpdateState({ phase: 'downloading', percent: updatePercent }); return { ok: true }; }
-  if (updatePhase === 'downloaded') { pushUpdateState({ phase: 'downloaded', version: updateVersion }); return { ok: true }; }
   try {
     // electron-updater 要求先 checkForUpdates 再 downloadUpdate。它读的是最新 Release 的
     // latest*.yml；老版本 Release 没有该文件时这里会抛错，关于页回退展示「查看发布页」手动下载。
     const r = await autoUpdater.checkForUpdates();
     const latest = r && r.updateInfo && r.updateInfo.version;
-    if (!latest || compareSemver(app.getVersion(), latest) >= 0) return { ok: false, reason: 'noUpdate' };
+    // 拿到最新版本号后再决定：已下载的若仍是最新版则短路；若期间又发布了更新版本则重新下载。
+    // （不能在 checkForUpdates 之前就对 'downloaded' 短路，否则永远发现不了更新版本。）
+    const plan = planUpdateDownload({
+      appVersion: app.getVersion(), latestVersion: latest, phase: updatePhase, downloadedVersion: updateVersion,
+    });
+    if (plan === 'noUpdate') return { ok: false, reason: 'noUpdate' };
+    if (plan === 'upToDate') { pushUpdateState({ phase: 'downloaded', version: updateVersion }); return { ok: true }; }
     updatePhase = 'downloading';
     updatePercent = 0;
     updateVersion = latest;

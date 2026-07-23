@@ -133,6 +133,19 @@ async function checkForUpdates(currentVersion, repoUrl, getRaw = httpsGetRaw) {
   };
 }
 
+// electron-updater 拿到「最新可用版本号」后，决定该做什么（纯逻辑，供 main.js 的 startUpdateDownload 复用）。
+// - 无最新号 / 最新号 <= 当前运行版本            → 'noUpdate'（无需更新）
+// - 已下载的正是最新版（downloadedVersion >= latest） → 'upToDate'（短路，不重复下载）
+// - 其余（未下载，或已下载但期间又发布了更新版本） → 'download'（发起/重新发起下载）
+// 关键点：已下载 0.4.1 后又出 0.4.2 时返回 'download'，避免卡在旧版本、被迫先装中间版。
+function planUpdateDownload({ appVersion, latestVersion, phase, downloadedVersion }) {
+  if (!latestVersion || compareSemver(appVersion, latestVersion) >= 0) return 'noUpdate';
+  if (phase === 'downloaded' && downloadedVersion && compareSemver(downloadedVersion, latestVersion) >= 0) {
+    return 'upToDate';
+  }
+  return 'download';
+}
+
 // 已知网络错误归一成 locale key（updater.errNetwork，主进程用 t() 翻译后再给 UI），未知原样透传。
 function humanizeError(msg) {
   // 覆盖 Node（ECONNRESET / socket disconnected / secure TLS）与 Electron net（net::ERR_*）两类网络错误。
@@ -142,4 +155,4 @@ function humanizeError(msg) {
   return msg;
 }
 
-module.exports = { checkForUpdates, compareSemver, humanizeError };
+module.exports = { checkForUpdates, compareSemver, humanizeError, planUpdateDownload };
