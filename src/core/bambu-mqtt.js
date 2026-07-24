@@ -159,8 +159,10 @@ class BambuMQTTBase {
       console.log('[bambu-mqtt] print:', JSON.stringify(print));
     }
 
-    // 报文为增量更新，合并进最新状态。ams / vt_tray 是嵌套子树且增量帧常只带部分字段，
-    // 需深合并保住 tray_now / tray_color 等已知值（否则耗材颜色会周期性丢失，见上方注释）。
+    // 报文为增量更新，合并进最新状态。ams / vt_tray / device 是嵌套子树且增量帧常只带部分字段，
+    // 需深合并保住 tray_now / tray_color / extruder.info 等已知值（否则耗材颜色会周期性丢失，见上方注释）。
+    // device：双喷头（X2D）靠 device.extruder.info[].snow 定位主喷头耗材色，但真机 device 增量帧
+    //   绝大多数只带 {cam}/{fan}，浅合并会整块冲掉 extruder → 颜色跳回 tray_now 指错的另一喷头色。
     const prev = this._latest;
     this._latest = { ...prev, ...print, connected: true };
     if (isPlainObject(print.ams)) {
@@ -168,6 +170,9 @@ class BambuMQTTBase {
     }
     if (isPlainObject(print.vt_tray)) {
       this._latest.vt_tray = deepMergePatch(prev.vt_tray, print.vt_tray);
+    }
+    if (isPlainObject(print.device)) {
+      this._latest.device = deepMergePatch(prev.device, print.device);
     }
 
     // 「本次终止是否为用户取消」的持久标记。取消事件是瞬时的（只在某一帧带 command=print_canceled），

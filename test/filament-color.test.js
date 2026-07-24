@@ -46,6 +46,78 @@ test('字段缺失：无 ams / 无 tray_now / 槽位不存在 / 颜色缺失均�
   assert.equal(resolveFilamentColor({ ams: { tray_now: '254' } }), null);
 });
 
+// 双喷头（X2D / H2D）：两卷料同时在走，ams.tray_now 只反映其中一个喷头，
+// 不能代表正在出料的主喷头。须认 device.extruder.info[].snow（真机抓包实证）：
+//   snow = 高字节 ams_id | 低字节 tray_id，0xFFFF=空槽；stat 非 0 = 该喷头在出料。
+// 下面这帧是真机 X2D 报文的精简还原：tray_now=1 指向 AMS0 槽1（紫 a03cf7，另一喷头选中的槽），
+// 但实际在打的是 extruder id=1 → snow=257(0x0101)=AMS1 槽1（粉 f55a74）。
+test('双喷头：按正在出料的 extruder.snow 取色，而非 tray_now 指向的另一喷头', () => {
+  const report = {
+    ams: {
+      tray_now: '1', // AMS0 槽1 = 紫，另一喷头选中的槽，不是主打色
+      ams: [
+        { id: '0', tray: [
+          { id: '0', tray_color: '959698FF' },
+          { id: '1', tray_color: 'A03CF7FF' }, // 紫
+          { id: '2', tray_color: '00AE42FF' },
+          { id: '3', tray_color: '000000FF' },
+        ] },
+        { id: '1', tray: [
+          { id: '0', tray_color: 'FEC600FF' },
+          { id: '1', tray_color: 'F55A74FF' }, // 粉，主喷头正在打
+          { id: '2', tray_color: 'DBC8B6FF' },
+          { id: '3', tray_color: 'FFFFFFFF' },
+        ] },
+      ],
+    },
+    device: {
+      extruder: {
+        info: [
+          { id: 0, snow: 65535, stat: 0 },      // 空槽、未出料
+          { id: 1, snow: 257, stat: 197376 },   // AMS1 槽1，正在出料
+        ],
+      },
+    },
+  };
+  assert.equal(resolveFilamentColor(report), '#f55a74');
+});
+
+test('双喷头：无 extruder.info 时回退到 tray_now（兼容单喷头报文形状）', () => {
+  const report = {
+    ams: {
+      tray_now: '5',
+      ams: [
+        { id: '0', tray: [{ id: '0', tray_color: '000000FF' }] },
+        { id: '1', tray: [{ id: '0', tray_color: '112233FF' }, { id: '1', tray_color: 'F95959FF' }] },
+      ],
+    },
+    device: {},
+  };
+  assert.equal(resolveFilamentColor(report), '#f95959');
+});
+
+test('双喷头：两喷头都在出料时取任一在打的喷头（不回落到错误的 tray_now）', () => {
+  const report = {
+    ams: {
+      tray_now: '0', // AMS0 槽0 = 黑，两喷头都不在这
+      ams: [
+        { id: '0', tray: [{ id: '0', tray_color: '000000FF' }, { id: '1', tray_color: 'A03CF7FF' }] },
+        { id: '1', tray: [{ id: '0', tray_color: 'FEC600FF' }, { id: '1', tray_color: 'F55A74FF' }] },
+      ],
+    },
+    device: {
+      extruder: {
+        info: [
+          { id: 0, snow: 1, stat: 197376 },   // AMS0 槽1 = 紫，在出料
+          { id: 1, snow: 257, stat: 197376 }, // AMS1 槽1 = 粉，在出料
+        ],
+      },
+    },
+  };
+  // 两头都在打时取到其中一个装载的耗材色即可（这里是紫或粉），关键是不能回落到 tray_now 指向的黑
+  assert.ok(['#a03cf7', '#f55a74'].includes(resolveFilamentColor(report)));
+});
+
 test('非法颜色值返回 null（长度不足 / 非十六进制）', () => {
   assert.equal(resolveFilamentColor({ ams: { tray_now: '254' }, vt_tray: { tray_color: '0AE' } }), null);
   assert.equal(resolveFilamentColor({ ams: { tray_now: '254' }, vt_tray: { tray_color: 'GGHHIIFF' } }), null);
