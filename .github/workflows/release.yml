@@ -144,15 +144,15 @@ jobs:
           VER="${TAG#v}"                                   # 文件名用不带 v 的版本号
           BASE="https://github.com/$REPO/releases/download/$TAG"
           BODY=$(gh release view "$TAG" --repo "$REPO" --json body --jq '.body // ""')
-          if printf '%s' "$BODY" | grep -qF '## 📥 下载'; then
-            echo "下载引导已存在，跳过"; exit 0
+          if printf '%s' "$BODY" | grep -qF '## 📥 Download'; then
+            echo "Download guide already present, skipping"; exit 0
           fi
           {
-            printf '## 📥 下载\n\n'
-            printf -- '- **macOS（Apple Silicon）**：[Bambu.Buddy-%s-macOS-arm64.dmg](%s/Bambu.Buddy-%s-macOS-arm64.dmg)\n' "$VER" "$BASE" "$VER"
-            printf -- '- **Windows（x64）**：[Bambu.Buddy-%s-Windows-x64.Setup.exe](%s/Bambu.Buddy-%s-Windows-x64.Setup.exe)\n\n' "$VER" "$BASE" "$VER"
-            printf '> 资产列表中的其余文件（`latest*.yml` / `*.zip` / `*.blockmap`）为应用内自动更新所需，普通用户无需理会。\n\n'
+            printf '## 📥 Download\n\n'
+            printf -- '- **macOS (Apple Silicon)**: [Bambu.Buddy-%s-macOS-arm64.dmg](%s/Bambu.Buddy-%s-macOS-arm64.dmg)\n' "$VER" "$BASE" "$VER"
+            printf -- '- **Windows (x64)**: [Bambu.Buddy-%s-Windows-x64.Setup.exe](%s/Bambu.Buddy-%s-Windows-x64.Setup.exe)\n\n' "$VER" "$BASE" "$VER"
+            printf '> The other files in the asset list (`latest*.yml` / `*.zip` / `*.blockmap`) are needed for in-app auto-update; regular users can ignore them.\n\n'
             printf -- '---\n\n'
             printf '%s' "$BODY"
           } | gh release edit "$TAG" --repo "$REPO" --notes-file -
-          echo "已注入下载引导"
+          echo "Download guide injected"
