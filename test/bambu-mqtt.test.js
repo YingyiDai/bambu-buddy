@@ -84,6 +84,38 @@ test('tray 条目只剩 id = 该槽已退料，旧颜色整条清除（对齐 py
   assert.equal(resolveFilamentColor(r), null, '空槽不应残留旧 tray_color');
 });
 
+// 双喷头（X2D）：耗材色靠 device.extruder.info[].snow 定位（见 filament-color）。
+// 真机 device 增量帧绝大多数只带 {cam} / {fan}，顶层浅合并会整块冲掉 device.extruder，
+// resolveFilamentColor 随之丢 extruder → 回落到会指错的 tray_now → 熊猫颜色周期性跳。
+// 与 ams 同理，device 子树须深合并保住 extruder.info。
+const X2D_FULL = {
+  ams: {
+    tray_now: '1', // AMS0 槽1（紫），另一喷头选中的槽，不是主打色
+    ams: [
+      { id: '0', tray: [{ id: '0', tray_color: '959698FF' }, { id: '1', tray_color: 'A03CF7FF' }] },
+      { id: '1', tray: [{ id: '0', tray_color: 'FEC600FF' }, { id: '1', tray_color: 'F55A74FF' }] },
+    ],
+  },
+  device: {
+    extruder: {
+      info: [
+        { id: 0, snow: 65535, stat: 0 },
+        { id: 1, snow: 257, stat: 197376 }, // AMS1 槽1（粉），正在出料
+      ],
+    },
+  },
+};
+
+test('双喷头：device 增量帧（仅 cam）不应冲掉 device.extruder → 颜色稳定为主喷头色', () => {
+  const base = new BambuMQTTBase();
+  let r = feed(base, { command: 'push_status', gcode_state: 'RUNNING', ...X2D_FULL });
+  assert.equal(resolveFilamentColor(r), '#f55a74', 'pushall 后应取主喷头粉色');
+  // 真机最常见的增量帧：device 只带摄像头状态
+  r = feed(base, { mc_percent: 32, device: { cam: { timelapse: 'disable' } } });
+  assert.equal(resolveFilamentColor(r), '#f55a74', '残缺 device 帧不应丢掉 extruder → 颜色不该跳回紫色');
+  assert.equal(r.device.cam.timelapse, 'disable', '增量字段应正常更新');
+});
+
 test('vt_tray（外挂料盘）增量帧同样深合并', () => {
   const base = new BambuMQTTBase();
   feed(base, { ams: { tray_now: '254' }, vt_tray: { tray_color: '00FF00FF', tray_type: 'PETG' } });
