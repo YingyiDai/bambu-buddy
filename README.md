@@ -16,6 +16,8 @@ English | <a href="README.zh-CN.md">简体中文</a>
 
 ### [⬇️ Download for macOS / Windows](https://github.com/YingyiDai/bambu-buddy/releases/latest)
 
+<sub>🇨🇳 In mainland China (GitHub slow/blocked)? Use the **mirror**: [macOS (Apple Silicon)](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-arm64.dmg) · [Windows (x64)](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-Windows-x64.Setup.exe) (always the latest)</sub>
+
 </div>
 
 ---
@@ -62,12 +64,14 @@ Bambu Buddy turns your printer's status into a little animated panda that lives 
 ### macOS
 
 1. Download the latest `.dmg` from **[Releases](https://github.com/YingyiDai/bambu-buddy/releases/latest)** (Apple Silicon / arm64).
+   Mainland China mirror: **[download macOS build](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-arm64.dmg)** (no GitHub needed, always the latest).
 2. Open the DMG and drag **Bambu Buddy** into Applications.
 3. Launch **Bambu Buddy** — it's Apple-signed (Developer ID) and notarized, so it opens normally with no security warning.
 
 ### Windows
 
 1. Download the latest `.exe` installer from **[Releases](https://github.com/YingyiDai/bambu-buddy/releases/latest)**.
+   Mainland China mirror: **[download Windows build](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-Windows-x64.Setup.exe)** (no GitHub needed, always the latest).
 2. Run the installer. If Windows SmartScreen warns that the publisher is unrecognized — the app isn't code-signed yet — click **More info › Run anyway**.
 
 ---
