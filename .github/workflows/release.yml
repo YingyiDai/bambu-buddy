@@ -103,7 +103,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      # 需要仓库代码：下面「镜像到阿里云 OSS」那步要跑 scripts/upload-oss.js。
+      # 需要仓库代码：下面「镜像到腾讯云 COS」那步要跑 scripts/upload-cos.js。
       # 必须排在 download-artifact 之前——checkout 会清空工作区。
       - uses: actions/checkout@v4
         with:
@@ -148,9 +148,9 @@ jobs:
           TAG: ${{ env.TAG_NAME }}
           REPO: ${{ github.repository }}
           DRAFT: ${{ env.DRAFT }}
-          # 拼中国大陆镜像链接用；未配 OSS 时为空 → 不注入镜像行（不出现死链）。
-          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
-          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          # 拼中国大陆镜像链接用；未配 COS 时为空 → 不注入镜像行（不出现死链）。
+          COS_BUCKET: ${{ secrets.COS_BUCKET }}
+          COS_REGION: ${{ secrets.COS_REGION }}
         run: |
           set -e
           VER="${TAG#v}"                                   # 文件名用不带 v 的版本号
@@ -159,48 +159,47 @@ jobs:
           if printf '%s' "$BODY" | grep -qF '## 📥 Download'; then
             echo "Download guide already present, skipping"; exit 0
           fi
-          # 中国大陆镜像用 OSS 的「版本化」路径（bambu-buddy/<tag>/…）：它只属于本版、
+          # 中国大陆镜像用 COS 的「版本化」路径（bambu-buddy/<tag>/…）：它只属于本版、
           # 永久归档，故放进本版说明里永远正确——即使将来出了新版、用户翻回旧版页面点它，
           # 下到的仍是本版（对外 README 用的是 download/ 固定链，那条永远指向最新版，
-          # 不能放进按版本归档的说明里）。仅在「非草稿 且 配了 OSS」时拼，否则留空：
-          # 草稿不镜像、未配 OSS 也没文件，避免注入指向不存在文件的死链。
-          OSS_BASE=""
-          if [ "$DRAFT" != "true" ] && [ -n "$OSS_BUCKET" ] && [ -n "$OSS_ENDPOINT" ]; then
-            EP="${OSS_ENDPOINT#http://}"; EP="${EP#https://}"; EP="${EP%/}"   # 归一化 endpoint
-            OSS_BASE="https://$OSS_BUCKET.$EP/bambu-buddy/$TAG"
+          # 不能放进按版本归档的说明里）。仅在「非草稿 且 配了 COS」时拼，否则留空：
+          # 草稿不镜像、未配 COS 也没文件，避免注入指向不存在文件的死链。
+          COS_BASE=""
+          if [ "$DRAFT" != "true" ] && [ -n "$COS_BUCKET" ] && [ -n "$COS_REGION" ]; then
+            COS_BASE="https://$COS_BUCKET.cos.$COS_REGION.myqcloud.com/bambu-buddy/$TAG"
           fi
           {
             printf '## 📥 Download\n\n'
             printf -- '- **macOS (Apple Silicon)**: [Bambu.Buddy-%s-macOS-arm64.dmg](%s/Bambu.Buddy-%s-macOS-arm64.dmg)\n' "$VER" "$BASE" "$VER"
             printf -- '- **Windows (x64)**: [Bambu.Buddy-%s-Windows-x64.Setup.exe](%s/Bambu.Buddy-%s-Windows-x64.Setup.exe)\n\n' "$VER" "$BASE" "$VER"
-            if [ -n "$OSS_BASE" ]; then
-              printf '> 🇨🇳 **China mainland mirror** (use if GitHub download is slow or blocked): [macOS](%s/Bambu.Buddy-%s-macOS-arm64.dmg) · [Windows](%s/Bambu.Buddy-%s-Windows-x64.Setup.exe)\n\n' "$OSS_BASE" "$VER" "$OSS_BASE" "$VER"
+            if [ -n "$COS_BASE" ]; then
+              printf '> 🇨🇳 **China mainland mirror** (use if GitHub download is slow or blocked): [macOS](%s/Bambu.Buddy-%s-macOS-arm64.dmg) · [Windows](%s/Bambu.Buddy-%s-Windows-x64.Setup.exe)\n\n' "$COS_BASE" "$VER" "$COS_BASE" "$VER"
             fi
             printf '> The other files in the asset list (`latest*.yml` / `*.zip` / `*.blockmap`) are needed for in-app auto-update; regular users can ignore them.\n\n'
             printf -- '---\n\n'
             printf '%s' "$BODY"
           } | gh release edit "$TAG" --repo "$REPO" --notes-file -
           echo "Download guide injected"
-      - name: 镜像到阿里云 OSS（中国大陆下载）
+      - name: 镜像到腾讯云 COS（中国大陆下载）
         # 大陆用户访问 GitHub 困难（下载不了安装包、应用内自动更新也连不上），
-        # 故把安装包与自动更新 feed 同步一份到 OSS。上传去向见 scripts/upload-oss.js。
+        # 故把安装包与自动更新 feed 同步一份到 COS。上传去向见 scripts/upload-cos.js。
         #
         # 草稿构建跳过：草稿是自测包，一旦覆盖 latest/ 会让线上用户自动更新到测试版，
         # 覆盖 download/ 会让公开直链指向测试版——两者都不能被没转正的包污染。
         #
-        # 未配置 OSS Secrets 时脚本自行跳过并正常退出，不会让发版流程变红
+        # 未配置 COS Secrets 时脚本自行跳过并正常退出，不会让发版流程变红
         # （方便先合这套改动、之后再补配 Secrets）。
         if: env.DRAFT != 'true'
         env:
-          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
-          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
-          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
-          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          COS_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
+          COS_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
+          COS_BUCKET: ${{ secrets.COS_BUCKET }}
+          COS_REGION: ${{ secrets.COS_REGION }}
           TAG: ${{ env.TAG_NAME }}
           ARTIFACTS_DIR: artifacts
         run: |
           set -e
-          # ali-oss 装到临时目录、经 NODE_PATH 引入：不碰仓库的 node_modules，
+          # cos-nodejs-sdk-v5 装到临时目录、经 NODE_PATH 引入：不碰仓库的 node_modules，
           # 免得在这个只做上传的 job 里把 electron 等重依赖一并装上。
-          npm i --prefix "$RUNNER_TEMP/ossdeps" ali-oss@6.23.0 --no-audit --no-fund --loglevel=error
-          NODE_PATH="$RUNNER_TEMP/ossdeps/node_modules" node scripts/upload-oss.js
+          npm i --prefix "$RUNNER_TEMP/cosdeps" cos-nodejs-sdk-v5@3.0.0 --no-audit --no-fund --loglevel=error
+          NODE_PATH="$RUNNER_TEMP/cosdeps/node_modules" node scripts/upload-cos.js
