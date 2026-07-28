@@ -103,6 +103,14 @@ jobs:
     permissions:
       contents: write
     steps:
+      # 需要仓库代码：下面「镜像到阿里云 OSS」那步要跑 scripts/upload-oss.js。
+      # 必须排在 download-artifact 之前——checkout 会清空工作区。
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BUILD_REF }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
@@ -156,3 +164,26 @@ jobs:
             printf '%s' "$BODY"
           } | gh release edit "$TAG" --repo "$REPO" --notes-file -
           echo "Download guide injected"
+      - name: 镜像到阿里云 OSS（中国大陆下载）
+        # 大陆用户访问 GitHub 困难（下载不了安装包、应用内自动更新也连不上），
+        # 故把安装包与自动更新 feed 同步一份到 OSS。上传去向见 scripts/upload-oss.js。
+        #
+        # 草稿构建跳过：草稿是自测包，一旦覆盖 latest/ 会让线上用户自动更新到测试版，
+        # 覆盖 download/ 会让公开直链指向测试版——两者都不能被没转正的包污染。
+        #
+        # 未配置 OSS Secrets 时脚本自行跳过并正常退出，不会让发版流程变红
+        # （方便先合这套改动、之后再补配 Secrets）。
+        if: env.DRAFT != 'true'
+        env:
+          OSS_ACCESS_KEY_ID: ${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET: ${{ secrets.OSS_ACCESS_KEY_SECRET }}
+          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
+          TAG: ${{ env.TAG_NAME }}
+          ARTIFACTS_DIR: artifacts
+        run: |
+          set -e
+          # ali-oss 装到临时目录、经 NODE_PATH 引入：不碰仓库的 node_modules，
+          # 免得在这个只做上传的 job 里把 electron 等重依赖一并装上。
+          npm i --prefix "$RUNNER_TEMP/ossdeps" ali-oss@6.23.0 --no-audit --no-fund --loglevel=error
+          NODE_PATH="$RUNNER_TEMP/ossdeps/node_modules" node scripts/upload-oss.js
