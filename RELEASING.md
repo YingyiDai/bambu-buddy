@@ -139,9 +139,14 @@ gh workflow run release.yml -f tag=v0.1.2 -f ref=main
 2. 建存储桶：地域选**大陆区域**（如上海 `ap-shanghai`，大陆下载最快），访问权限选
    **公有读私有写**。
    > 用 COS **默认域名**下载**不需要 ICP 备案**；备案只在绑自定义域名做网页时才需要。
-3. 建 **CAM 子账号**，授予 COS 写权限（最小权限见配置指南文末的自定义策略），生成
+3. **开启该桶的「全球加速」**（存储桶 → 域名与传输管理 → 全球加速 → 启用）。
+   > 为什么必须开：GitHub runner 在境外，直连大陆 COS 上传实测仅 ~0.3MB/s，350MB
+   > 要跑 20 分钟必然超时。CI 上传走全球加速域名后大幅提速；**用户下载仍走普通大陆
+   > 域名、不受影响、也不产生加速费**。加速流量只发生在 CI 上传（每次约 350MB，
+   > 服务端复制不占跨境流量），成本可忽略。
+4. 建 **CAM 子账号**，授予 COS 写权限（最小权限见配置指南文末的自定义策略），生成
    API 密钥（SecretId/SecretKey）。不要用主账号密钥。
-4. 在仓库 Settings → Secrets and variables → Actions 配置 4 个 Secret：
+5. 在仓库 Settings → Secrets and variables → Actions 配置 4 个 Secret：
 
    | Secret | 含义 | 示例 |
    |---|---|---|
