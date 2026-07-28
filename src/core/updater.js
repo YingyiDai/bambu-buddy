@@ -146,6 +146,54 @@ function planUpdateDownload({ appVersion, latestVersion, phase, downloadedVersio
   return 'download';
 }
 
+// ---- 中国大陆回退 feed ----
+// 大陆用户常连不上 GitHub（api.github.com 查版本、Release 下载都可能失败）。此时改从
+// 腾讯云 COS 上的镜像 feed 读取版本与安装包——地址即发版时 CI 上传的 latest/ 目录
+// （见 scripts/upload-cos.js、RELEASING.md）。这里存放的 latest*.yml 是 GitHub 产物的
+// 字节级副本，故 electron-updater 的 generic provider 校验（sha512 / mac 签名）都能通过。
+const CN_UPDATE_FEED = 'https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/latest/';
+
+// 从 electron-updater 的 latest.yml / latest-mac.yml 文本里取 version 字段（纯逻辑，可单测）。
+// yml 首行形如 `version: 0.4.2`（值可能带引号）。取不到返回 null。
+function parseFeedVersion(ymlText) {
+  const m = /^version:\s*['"]?([^'"\r\n]+)/m.exec(String(ymlText || ''));
+  return m ? m[1].trim() : null;
+}
+
+/**
+ * 大陆回退检查：从 COS feed 上的 latest*.yml 读版本、与当前版本比较。
+ * 形状对齐 checkForUpdates：getRaw 注入（main.js 传走系统代理的 netGetRaw），不抛异常。
+ * @param {string} currentVersion 当前运行版本，如 "0.4.2"
+ * @param {string} ymlName 平台清单文件名：win 传 "latest.yml"，mac 传 "latest-mac.yml"
+ * @param {(host:string, path:string)=>Promise<{statusCode:number, headers:object, body:string}>} getRaw
+ * @param {string} [feedUrl] feed 目录 URL，默认 CN_UPDATE_FEED
+ * @returns {Promise<{hasUpdate:boolean, latestVersion:string|null, error:string|null}>}
+ */
+async function checkCnFeed(currentVersion, ymlName, getRaw, feedUrl = CN_UPDATE_FEED) {
+  let host; let path;
+  try {
+    const u = new URL(ymlName, feedUrl); // feedUrl 以 / 结尾 → 拼成 .../latest/latest.yml
+    host = u.host;
+    path = u.pathname + u.search;
+  } catch {
+    return { hasUpdate: false, latestVersion: null, error: 'updater.errBadRepo' };
+  }
+  try {
+    const { statusCode, body } = await getRaw(host, path);
+    if (statusCode >= 400) {
+      return { hasUpdate: false, latestVersion: null, error: `HTTP ${statusCode}` };
+    }
+    const latest = parseFeedVersion(body);
+    if (!latest || !isValidSemverLike(latest)) {
+      return { hasUpdate: false, latestVersion: latest || null, error: 'updater.errNoRelease' };
+    }
+    return { hasUpdate: compareSemver(currentVersion, latest) < 0, latestVersion: latest, error: null };
+  } catch (e) {
+    const msg = e && e.message ? e.message : String(e);
+    return { hasUpdate: false, latestVersion: null, error: humanizeError(msg) };
+  }
+}
+
 // 已知网络错误归一成 locale key（updater.errNetwork，主进程用 t() 翻译后再给 UI），未知原样透传。
 function humanizeError(msg) {
   // 覆盖 Node（ECONNRESET / socket disconnected / secure TLS）与 Electron net（net::ERR_*）两类网络错误。
@@ -155,4 +203,7 @@ function humanizeError(msg) {
   return msg;
 }
 
-module.exports = { checkForUpdates, compareSemver, humanizeError, planUpdateDownload };
+module.exports = {
+  checkForUpdates, compareSemver, humanizeError, planUpdateDownload,
+  CN_UPDATE_FEED, parseFeedVersion, checkCnFeed,
+};

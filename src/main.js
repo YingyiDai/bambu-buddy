@@ -15,7 +15,7 @@ const { BambuCloudDataSource, BambuLanDataSource, classifyLanProbe } = require('
 const bambuAuth = require('./core/bambu-auth');
 const browserLogin = require('./core/browser-login');
 const { t, STRINGS } = require('./config/locales');
-const { checkForUpdates, humanizeError, planUpdateDownload } = require('./core/updater');
+const { checkForUpdates, humanizeError, planUpdateDownload, CN_UPDATE_FEED, checkCnFeed } = require('./core/updater');
 const { autoUpdater } = require('electron-updater');
 const errorCodes = require('./core/bambu-error-codes');
 const fs = require('fs');
@@ -984,7 +984,15 @@ async function runAutoUpdateCheck() {
   if (!store.get('autoCheckUpdate', true)) return;
   try {
     const pkg = require('../package.json');
-    const r = await checkForUpdates(pkg.version, undefined, netGetRaw);
+    let r = await checkForUpdates(pkg.version, undefined, netGetRaw);
+    // 大陆回退：GitHub 查版本失败（r.error，多为连不上 api.github.com）时，改从国内 COS
+    // feed 的 latest*.yml 读版本。成功则归一成同一形状继续走后台下载。
+    if (r.error) {
+      const ymlName = process.platform === 'darwin' ? 'latest-mac.yml' : 'latest.yml';
+      const cn = await checkCnFeed(pkg.version, ymlName, netGetRaw);
+      if (cn.error || !cn.hasUpdate) return;
+      r = { hasUpdate: true, latestVersion: cn.latestVersion, releaseUrl: CN_UPDATE_FEED, error: null };
+    }
     if (r.error || !r.hasUpdate) return;
     pendingUpdate = { version: r.latestVersion, url: r.releaseUrl };
     rebuildTray();
@@ -1041,7 +1049,16 @@ async function startUpdateDownload() {
   try {
     // electron-updater 要求先 checkForUpdates 再 downloadUpdate。它读的是最新 Release 的
     // latest*.yml；老版本 Release 没有该文件时这里会抛错，关于页回退展示「查看发布页」手动下载。
-    const r = await autoUpdater.checkForUpdates();
+    let r;
+    try {
+      r = await autoUpdater.checkForUpdates(); // 默认 GitHub provider（app-update.yml: publish github）
+    } catch (githubErr) {
+      // 大陆回退：连不上 GitHub → 切到国内 COS 的 generic feed 再试。setFeedURL 会持续生效，
+      // 故大陆用户后续检查也走 COS；海外用户 GitHub 正常、永远走不到这里。feed 里的
+      // latest*.yml + 安装包是 GitHub 产物的字节级副本，sha512 / mac 签名校验一致。
+      autoUpdater.setFeedURL({ provider: 'generic', url: CN_UPDATE_FEED });
+      r = await autoUpdater.checkForUpdates();
+    }
     const latest = r && r.updateInfo && r.updateInfo.version;
     // 拿到最新版本号后再决定：已下载的若仍是最新版则短路；若期间又发布了更新版本则重新下载。
     // （不能在 checkForUpdates 之前就对 'downloaded' 短路，否则永远发现不了更新版本。）
