@@ -80,12 +80,24 @@ async function main() {
   const region = process.env.COS_REGION.trim();   // 如 ap-shanghai
 
   const COS = require('cos-nodejs-sdk-v5');
-  const cos = new COS({
+  const creds = {
     SecretId: process.env.COS_SECRET_ID.trim(),
     SecretKey: process.env.COS_SECRET_KEY.trim(),
-  });
+  };
+  // 关键：GitHub runner 在境外，直连大陆 COS 上传被限速到 ~0.3MB/s（实测），大文件会超时。
+  // 上传客户端走「全球加速」域名（就近接入 + 腾讯骨干网回源），跨境上传快很多。
+  // 需在 COS 控制台为该桶开启「全球加速」（域名与传输管理 → 全球加速）。默认开启，
+  // 想关掉走普通域名可设 COS_USE_ACCELERATE=false（会慢）。
+  const useAccelerate = (process.env.COS_USE_ACCELERATE || 'true').toLowerCase() !== 'false';
+  const cosUp = new COS({ ...creds, UseAccelerate: useAccelerate, Timeout: 10 * 60 * 1000 });
+  // 复制客户端走普通（地域）域名：putObjectCopy 不支持全球加速端点，且复制在 COS 内部完成、
+  // 本就不跨境，无需加速。
+  const cosCopy = new COS({ ...creds, Timeout: 10 * 60 * 1000 });
 
   const publicBase = `https://${bucket}.cos.${region}.myqcloud.com`;
+  // CopySource 里对象键按段做 URLEncode（保留 /）。
+  const copySource = (key) => `${bucket}.cos.${region}.myqcloud.com/`
+    + key.split('/').map(encodeURIComponent).join('/');
 
   const files = walk(artifactsDir)
     .filter((f) => MIRRORED.test(f) && !DMG_BLOCKMAP.test(f));
@@ -95,7 +107,7 @@ async function main() {
   async function upload(localPath, key, extra) {
     const size = fs.statSync(localPath).size;
     const mb = (size / 1024 / 1024).toFixed(1);
-    await withRetry(`上传 ${key}`, () => cos.uploadFile({
+    await withRetry(`上传 ${key}`, () => cosUp.uploadFile({
       Bucket: bucket,
       Region: region,
       Key: key,
@@ -103,7 +115,21 @@ async function main() {
       SliceSize: 10 * 1024 * 1024, // >10MB 走分块
       ...extra,
     }));
-    console.log(`  ✓ ${key}  (${mb} MB)`);
+    console.log(`  ✓ 传 ${key}  (${mb} MB)`);
+  }
+
+  // 服务端复制：源和目标都在 COS 内部，不跨境、秒级完成。MetadataDirective:'Replaced'
+  // 让副本用新的 Cache-Control（latest//download/ 要 no-cache，与归档区的长缓存不同）。
+  async function copy(srcKey, dstKey, extra) {
+    await withRetry(`复制 ${dstKey}`, () => cosCopy.putObjectCopy({
+      Bucket: bucket,
+      Region: region,
+      Key: dstKey,
+      CopySource: copySource(srcKey),
+      MetadataDirective: 'Replaced',
+      ...extra,
+    }));
+    console.log(`  ✓ 复制 ${dstKey}`);
   }
 
   // 归档路径的内容永不变，可让浏览器长期缓存；
@@ -112,29 +138,35 @@ async function main() {
   const IMMUTABLE = { CacheControl: 'public, max-age=31536000, immutable' };
   const MUTABLE = { CacheControl: 'no-cache' };
 
-  console.log(`\n[1/3] 归档到 ${prefix}/${tag}/`);
+  // [1/3] 只在这里真正「跨境上传」——每个文件传一次到归档区，其余两处都从这里服务端复制。
+  console.log(`\n[1/3] 跨境上传到归档区 ${prefix}/${tag}/（加速=${useAccelerate}）`);
+  const archiveKey = {}; // basename → 归档区 key，供后续复制引用
   for (const f of files) {
-    await upload(f, `${prefix}/${tag}/${path.basename(f)}`, IMMUTABLE);
+    const key = `${prefix}/${tag}/${path.basename(f)}`;
+    await upload(f, key, IMMUTABLE);
+    archiveKey[path.basename(f)] = key;
   }
 
-  // 自动更新 feed：dmg 不参与（mac 更新走 zip），其余原名上传。
-  console.log(`\n[2/3] 自动更新 feed → ${prefix}/latest/`);
+  // [2/3] 自动更新 feed：从归档区服务端复制（dmg 不参与，mac 更新走 zip）。
+  console.log(`\n[2/3] 服务端复制 → 自动更新 feed ${prefix}/latest/`);
   for (const f of files.filter((f) => !/\.dmg$/i.test(f))) {
-    await upload(f, `${prefix}/latest/${path.basename(f)}`, MUTABLE);
+    const name = path.basename(f);
+    await copy(archiveKey[name], `${prefix}/latest/${name}`, MUTABLE);
   }
 
-  // 对外固定直链：把版本号从文件名里去掉，链接从此不再变化。
+  // [3/3] 对外固定直链：从归档区服务端复制，并把版本号从文件名里去掉，链接从此不再变化。
   // 例：Bambu.Buddy-0.4.3-macOS-arm64.dmg → Bambu.Buddy-macOS-arm64.dmg
-  console.log(`\n[3/3] 固定下载直链 → ${prefix}/download/`);
+  console.log(`\n[3/3] 服务端复制 → 固定下载直链 ${prefix}/download/`);
   const installers = files.filter((f) => /\.dmg$/i.test(f) || /Setup\.exe$/i.test(f));
   const links = {};
   for (const f of installers) {
-    const stable = path.basename(f).replace(`-${version}`, '');
-    if (stable === path.basename(f)) {
-      throw new Error(`文件名里找不到版本号 ${version}，无法生成固定直链：${path.basename(f)}`);
+    const name = path.basename(f);
+    const stable = name.replace(`-${version}`, '');
+    if (stable === name) {
+      throw new Error(`文件名里找不到版本号 ${version}，无法生成固定直链：${name}`);
     }
     const key = `${prefix}/download/${stable}`;
-    await upload(f, key, MUTABLE);
+    await copy(archiveKey[name], key, MUTABLE);
     links[/\.dmg$/i.test(f) ? 'macOS' : 'Windows'] = `${publicBase}/${key}`;
   }
 
