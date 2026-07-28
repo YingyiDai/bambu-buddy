@@ -159,12 +159,22 @@ gh workflow run release.yml -f tag=v0.1.2 -f ref=main
 | `bambu-buddy/latest/` | yml + zip + exe + blockmap，**原名** | 应用内自动更新的 generic feed；文件名必须与 `latest*.yml` 里记录的一致 |
 | `bambu-buddy/download/` | 两个安装包，**去掉版本号** | 对外公开的固定直链 + `latest.json`（版本信息） |
 
-对外只发 `download/` 下的地址——它**永不变**，发新版不用改 README 或任何渠道的链接：
+### 👉 给大陆用户的下载链接（就发这两条）
 
 ```
 https://<bucket>.<endpoint>/bambu-buddy/download/Bambu.Buddy-macOS-arm64.dmg
 https://<bucket>.<endpoint>/bambu-buddy/download/Bambu.Buddy-Windows-x64.Setup.exe
 ```
+
+这两条地址**永不变**：CI 每次发版都把最新安装包用这个去掉版本号的固定名覆盖上去。
+所以贴到小红书 / QQ 群 / 贴吧等渠道**一次就够**，以后发新版无需重贴、无需改任何文档。
+
+> 忘了链接也不要紧：每次发版的 Actions 日志末尾，「镜像到阿里云 OSS」这步会把两条
+> 完整地址打印出来（见 `scripts/upload-oss.js` 结尾的「中国大陆下载直链」）。
+
+> 注意 README 里**没有**放这两条链接——README 本身就在 GitHub 上，打不开 GitHub 的
+> 用户根本看不到它。（若日后想照顾「网页能开、但安装包下载卡住」的半通用户，
+> 再在 README 补一行即可。）
 
 > 说明：
 > - **草稿模式（`draft=true`）跳过镜像**：草稿是自测包，覆盖 `latest/` 会让线上用户
