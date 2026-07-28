@@ -124,6 +124,71 @@ gh workflow run release.yml -f tag=v0.1.2 -f ref=main
 - Windows 未签名，SmartScreen 可能提示「不常见」，点「更多信息 → 仍要运行」。
 - 产物文件名由 `package.json` 的 `build.{mac,win}.artifactName` 控制，保持点号风格与历史一致。
 
+## 中国大陆下载镜像（腾讯云 COS）
+
+中国大陆用户普遍访问不了 GitHub，既下不到安装包，应用内自动更新也连不上。因此每次正式
+发版，CI 会把产物**自动镜像一份到腾讯云 COS**（`.github/workflows/release.yml` 的
+「镜像到腾讯云 COS」步骤 → `scripts/upload-cos.js`）。**配好一次之后无需任何手动操作。**
+
+### 一次性配置
+
+> 📖 零基础一步步操作见本地 **`docs/腾讯云COS配置指南.md`**（`docs/` 已 gitignore，不公开）。
+> 下面是速览。
+
+1. 注册腾讯云账号并完成个人实名认证，开通**对象存储 COS**（免费开通，按量计费）。
+2. 建存储桶：地域选**大陆区域**（如上海 `ap-shanghai`，大陆下载最快），访问权限选
+   **公有读私有写**。
+   > 用 COS **默认域名**下载**不需要 ICP 备案**；备案只在绑自定义域名做网页时才需要。
+3. 建 **CAM 子账号**，授予 COS 写权限（最小权限见配置指南文末的自定义策略），生成
+   API 密钥（SecretId/SecretKey）。不要用主账号密钥。
+4. 在仓库 Settings → Secrets and variables → Actions 配置 4 个 Secret：
+
+   | Secret | 含义 | 示例 |
+   |---|---|---|
+   | `COS_SECRET_ID` | CAM 子账号 SecretId | `AKIDxxxx` |
+   | `COS_SECRET_KEY` | CAM 子账号 SecretKey | |
+   | `COS_BUCKET` | 存储桶名（**带 APPID 的完整名**） | `bambu-buddy-dl-1250000000` |
+   | `COS_REGION` | 存储桶所在地域代号 | `ap-shanghai` |
+
+5. 建议在腾讯云费用中心设**费用预警**（如 50 元/月），防止被刷流量产生意外账单。
+
+### 每次发版 CI 自动做什么
+
+产物会上传到三处，各有各的用途（命名诉求冲突，故不能合并）：
+
+| 路径 | 内容 | 用途 |
+|---|---|---|
+| `bambu-buddy/<tag>/` | 全部产物，**原名** | 归档，可回溯任意旧版 |
+| `bambu-buddy/latest/` | yml + zip + exe + blockmap，**原名** | 应用内自动更新的 generic feed；文件名必须与 `latest*.yml` 里记录的一致 |
+| `bambu-buddy/download/` | 两个安装包，**去掉版本号** | 对外公开的固定直链 + `latest.json`（版本信息） |
+
+### 👉 给大陆用户的下载链接（就发这两条）
+
+```
+https://<bucket>.cos.<region>.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-arm64.dmg
+https://<bucket>.cos.<region>.myqcloud.com/bambu-buddy/download/Bambu.Buddy-Windows-x64.Setup.exe
+```
+
+这两条地址**永不变**：CI 每次发版都把最新安装包用这个去掉版本号的固定名覆盖上去。
+所以贴到小红书 / QQ 群 / 贴吧等渠道**一次就够**，以后发新版无需重贴、无需改任何文档。
+
+> 忘了链接也不要紧：每次发版的 Actions 日志末尾，「镜像到腾讯云 COS」这步会把两条
+> 完整地址打印出来（见 `scripts/upload-cos.js` 结尾的「中国大陆下载直链」）。
+
+> 注意 README 里**没有**放这两条链接——README 本身就在 GitHub 上，打不开 GitHub 的
+> 用户根本看不到它。（若日后想照顾「网页能开、但安装包下载卡住」的半通用户，
+> 再在 README 补一行即可。）
+
+> 说明：
+> - **草稿模式（`draft=true`）跳过镜像**：草稿是自测包，覆盖 `latest/` 会让线上用户
+>   自动更新到测试版，覆盖 `download/` 会让公开直链指向测试版。
+> - **未配置上述 4 个 Secret 时该步骤自行跳过**并正常退出，不会让发版流程变红。
+> - `latest/` 与 `download/` 每次发版被覆盖，故设 `Cache-Control: no-cache`（每次回源
+>   校验），避免用户下到上一版、或自动更新读到过期的 `latest*.yml`；`<tag>/` 内容不变，
+>   设长期缓存。
+> - 镜像失败会让 release job 变红（GitHub Release 本身已发布成功）。重跑方式同
+>   「补建 / 重跑某个版本」，资产覆盖上传，可安全重复执行。
+
 ## macOS 证书签名与公证（发版硬要求）
 
 **每次 CI 发版都会自动对 macOS 包做 Developer ID 正式签名 + Apple 公证**，无需手动操作。
