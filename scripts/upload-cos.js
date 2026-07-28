@@ -156,17 +156,22 @@ async function main() {
 
   // [3/3] 对外固定直链：从归档区服务端复制，并把版本号从文件名里去掉，链接从此不再变化。
   // 例：Bambu.Buddy-0.4.3-macOS-arm64.dmg → Bambu.Buddy-macOS-arm64.dmg
+  // 但同时用 Content-Disposition 指定「另存为」文件名带上版本号：链接固定、下载下来
+  // 的文件名却带版本，用户一眼能分清下的是哪一版（每次发版这个头会更新到当前版本）。
   console.log(`\n[3/3] 服务端复制 → 固定下载直链 ${prefix}/download/`);
   const installers = files.filter((f) => /\.dmg$/i.test(f) || /Setup\.exe$/i.test(f));
   const links = {};
   for (const f of installers) {
-    const name = path.basename(f);
+    const name = path.basename(f); // 带版本号的原名，如 Bambu.Buddy-0.4.2-Windows-x64.Setup.exe
     const stable = name.replace(`-${version}`, '');
     if (stable === name) {
       throw new Error(`文件名里找不到版本号 ${version}，无法生成固定直链：${name}`);
     }
     const key = `${prefix}/download/${stable}`;
-    await copy(archiveKey[name], key, MUTABLE);
+    await copy(archiveKey[name], key, {
+      ...MUTABLE,
+      ContentDisposition: `attachment; filename="${name}"`, // 另存为带版本号的文件名
+    });
     links[/\.dmg$/i.test(f) ? 'macOS' : 'Windows'] = `${publicBase}/${key}`;
   }
 
