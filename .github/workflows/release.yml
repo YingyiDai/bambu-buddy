@@ -147,6 +147,10 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ env.TAG_NAME }}
           REPO: ${{ github.repository }}
+          DRAFT: ${{ env.DRAFT }}
+          # 拼中国大陆镜像链接用；未配 OSS 时为空 → 不注入镜像行（不出现死链）。
+          OSS_BUCKET: ${{ secrets.OSS_BUCKET }}
+          OSS_ENDPOINT: ${{ secrets.OSS_ENDPOINT }}
         run: |
           set -e
           VER="${TAG#v}"                                   # 文件名用不带 v 的版本号
@@ -155,10 +159,23 @@ jobs:
           if printf '%s' "$BODY" | grep -qF '## 📥 Download'; then
             echo "Download guide already present, skipping"; exit 0
           fi
+          # 中国大陆镜像用 OSS 的「版本化」路径（bambu-buddy/<tag>/…）：它只属于本版、
+          # 永久归档，故放进本版说明里永远正确——即使将来出了新版、用户翻回旧版页面点它，
+          # 下到的仍是本版（对外 README 用的是 download/ 固定链，那条永远指向最新版，
+          # 不能放进按版本归档的说明里）。仅在「非草稿 且 配了 OSS」时拼，否则留空：
+          # 草稿不镜像、未配 OSS 也没文件，避免注入指向不存在文件的死链。
+          OSS_BASE=""
+          if [ "$DRAFT" != "true" ] && [ -n "$OSS_BUCKET" ] && [ -n "$OSS_ENDPOINT" ]; then
+            EP="${OSS_ENDPOINT#http://}"; EP="${EP#https://}"; EP="${EP%/}"   # 归一化 endpoint
+            OSS_BASE="https://$OSS_BUCKET.$EP/bambu-buddy/$TAG"
+          fi
           {
             printf '## 📥 Download\n\n'
             printf -- '- **macOS (Apple Silicon)**: [Bambu.Buddy-%s-macOS-arm64.dmg](%s/Bambu.Buddy-%s-macOS-arm64.dmg)\n' "$VER" "$BASE" "$VER"
             printf -- '- **Windows (x64)**: [Bambu.Buddy-%s-Windows-x64.Setup.exe](%s/Bambu.Buddy-%s-Windows-x64.Setup.exe)\n\n' "$VER" "$BASE" "$VER"
+            if [ -n "$OSS_BASE" ]; then
+              printf '> 🇨🇳 **China mainland mirror** (use if GitHub download is slow or blocked): [macOS](%s/Bambu.Buddy-%s-macOS-arm64.dmg) · [Windows](%s/Bambu.Buddy-%s-Windows-x64.Setup.exe)\n\n' "$OSS_BASE" "$VER" "$OSS_BASE" "$VER"
+            fi
             printf '> The other files in the asset list (`latest*.yml` / `*.zip` / `*.blockmap`) are needed for in-app auto-update; regular users can ignore them.\n\n'
             printf -- '---\n\n'
             printf '%s' "$BODY"
