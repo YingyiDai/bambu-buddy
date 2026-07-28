@@ -16,6 +16,8 @@
 
 ### [⬇️ 下载 macOS / Windows 版本](https://github.com/YingyiDai/bambu-buddy/releases/latest)
 
+<sub>🇨🇳 GitHub 打不开或下载慢？走**国内镜像**：[macOS (Apple Silicon)](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-arm64.dmg) · [Windows (x64)](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-Windows-x64.Setup.exe)（始终为最新版）</sub>
+
 </div>
 
 ---
@@ -64,12 +66,14 @@ Bambu Buddy 把你打印机的状态变成桌面上一只会动的熊猫。它�
 ### macOS
 
 1. 到 **[Releases](https://github.com/YingyiDai/bambu-buddy/releases/latest)** 下载最新的 `.dmg`（Apple Silicon / arm64）。
+   国内可用镜像：**[国内下载 macOS 版](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-arm64.dmg)**（无需访问 GitHub，始终为最新版）。
 2. 打开 DMG，把 **Bambu Buddy** 拖进「应用程序」。
 3. 直接打开 **Bambu Buddy** 即可——已做 Apple 签名（Developer ID）与公证，首次打开不会有安全警告。
 
 ### Windows
 
 1. 到 **[Releases](https://github.com/YingyiDai/bambu-buddy/releases/latest)** 下载最新的 `.exe` 安装程序。
+   国内可用镜像：**[国内下载 Windows 版](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-Windows-x64.Setup.exe)**（无需访问 GitHub，始终为最新版）。
 2. 运行安装程序。若 Windows SmartScreen 提示「无法识别的发布者」——app 暂未做代码签名——点「更多信息 › 仍要运行」即可。
 
 ---
