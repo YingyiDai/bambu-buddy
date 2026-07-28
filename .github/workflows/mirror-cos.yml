@@ -1,0 +1,52 @@
+# 把某个已发布版本的安装包补镜像到腾讯云 COS —— 不重新构建、不改动 GitHub Release。
+#
+# 用途：
+#   1) 首次配好 COS 后，把「配 COS 之前」已经发布的旧版本补传上去；
+#   2) 某次镜像失败后单独重跑，无需重打整个 Release。
+#
+# 做法：从指定 tag 的 GitHub Release 下载已有产物 → 跑 scripts/upload-cos.js 上传到 COS。
+# 正常发版的自动镜像在 release.yml 里，这个工作流是它的「补传/重跑」旁路。
+#
+# 触发：Actions → mirror-cos → Run workflow，填 tag（如 v0.4.2）。
+name: mirror-cos
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '要补镜像到 COS 的 Release tag（如 v0.4.2）'
+        required: true
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: 从 Release 下载产物
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -e
+          mkdir -p artifacts
+          # 拉取该 Release 的全部资产（upload-cos.js 自己按扩展名过滤，多下无妨）。
+          gh release download "$TAG" --repo "${{ github.repository }}" --dir artifacts
+          echo "下载到的文件："
+          ls -lh artifacts
+      - name: 镜像到腾讯云 COS
+        env:
+          COS_SECRET_ID: ${{ secrets.COS_SECRET_ID }}
+          COS_SECRET_KEY: ${{ secrets.COS_SECRET_KEY }}
+          COS_BUCKET: ${{ secrets.COS_BUCKET }}
+          COS_REGION: ${{ secrets.COS_REGION }}
+          TAG: ${{ inputs.tag }}
+          ARTIFACTS_DIR: artifacts
+        run: |
+          set -e
+          npm i --prefix "$RUNNER_TEMP/cosdeps" cos-nodejs-sdk-v5@3.0.0 --no-audit --no-fund --loglevel=error
+          NODE_PATH="$RUNNER_TEMP/cosdeps/node_modules" node scripts/upload-cos.js
