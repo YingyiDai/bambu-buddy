@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """Generate a rounded-corner Windows app icon from the square source.
 
-macOS masks app icons into a rounded "squircle" automatically, but classic
-Win32 apps (this Electron app is packaged with NSIS) render the .ico exactly
-as provided — a full-bleed square shows up square. To match the macOS look on
-Windows we bake the rounded corners (with transparent corners) into the icon.
+Classic Win32 apps (this Electron app is packaged with NSIS) render the .ico
+exactly as provided — a full-bleed square shows up square — so we bake the
+rounded corners (with transparent corners) into the icon here. macOS does the
+same on its side via scripts/make-mac-icon.py (only macOS 26/Tahoe auto-rounds
+legacy icons; 15/Sequoia and earlier do not), so neither platform is left
+relying on the OS to shape the icon.
 
 Outputs:
   assets/icon/AppIcon.win.png  – 1024px rounded source (for future regen)
