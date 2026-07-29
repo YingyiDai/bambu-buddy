@@ -123,11 +123,32 @@ jobs:
           TARGET: ${{ env.BUILD_REF }}
         run: |
           set -e
-          # Release 不存在则创建（带自动生成说明；已存在则跳过，保留手写说明）。
+          # 发版说明来自仓库根目录的英文 RELEASE_NOTES.md（发版前手写好），**不再** 用
+          # --generate-notes 照抄 PR 标题——那会把中文 PR 标题带进说明（见 RELEASING.md）。
+          NOTES_FILE="RELEASE_NOTES.md"
+          # 硬闸①：必须有非空的发版说明，否则直接失败（绝不用 PR 标题兜底）。
+          if [ ! -s "$NOTES_FILE" ]; then
+            echo "::error::$NOTES_FILE 缺失或为空——发版前请先写好 $TAG 的英文发版说明（见 RELEASING.md）。"
+            exit 1
+          fi
+          # 硬闸②：说明不得含中日韩字符（发版说明必须全英文）。emoji（如 🇨🇳）不受影响。
+          if LC_ALL=C.UTF-8 grep -qP '[\x{3040}-\x{30ff}\x{3400}-\x{9fff}\x{f900}-\x{faff}\x{ff00}-\x{ffef}]' "$NOTES_FILE"; then
+            echo "::error::$NOTES_FILE 含中日韩字符——发版说明必须全英文。"
+            exit 1
+          fi
+          # 组装正文：英文说明 + 自动附「Full Changelog」比较链接。上一版取自当前「最新 Release」
+          # （本次尚未创建，故 /releases/latest 即上一版），不依赖 git tag 抓取、也不看 PR 标题。
+          BODY_FILE="$RUNNER_TEMP/release-body.md"
+          cp "$NOTES_FILE" "$BODY_FILE"
+          PREV=$(gh api "repos/$REPO/releases/latest" --jq '.tag_name' 2>/dev/null || true)
+          if [ -n "$PREV" ] && [ "$PREV" != "$TAG" ]; then
+            printf '\n\n**Full Changelog**: https://github.com/%s/compare/%s...%s\n' "$REPO" "$PREV" "$TAG" >> "$BODY_FILE"
+          fi
+          # Release 不存在则创建（用手写英文说明；已存在则跳过，保留正文）。
           # 草稿模式（DRAFT=true，仅手动触发）：加 --draft 建成草稿——不公开、不进 releases API，
           # 故不会被老版本应用的自动更新当成「最新版」拉走。用 --target 让草稿关联到本次构建的
           # 那个 commit，将来在页面点 Publish 转正时 tag 就落在实测过的代码上。
-          CREATE_ARGS=(--repo "$REPO" --title "Bambu Buddy $TAG" --generate-notes)
+          CREATE_ARGS=(--repo "$REPO" --title "Bambu Buddy $TAG" --notes-file "$BODY_FILE")
           if [ "$DRAFT" = "true" ]; then
             CREATE_ARGS+=(--draft --target "$TARGET")
           fi
@@ -180,6 +201,22 @@ jobs:
             printf '%s' "$BODY"
           } | gh release edit "$TAG" --repo "$REPO" --notes-file -
           echo "Download guide injected"
+      - name: 硬闸——最终 Release 正文必须全英文（含中日韩字符即失败）
+        # 兜底闸：不管正文从哪来（手写说明 + 注入的下载引导），发布后再抓一次实际正文，
+        # 只要含中日韩字符就让 job 变红。把「全英文」从「靠自觉」变成「机器强制」，
+        # 从物理上杜绝中文发版说明流到用户手里。注入的下载引导为英文 + emoji，正常通过。
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ env.TAG_NAME }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -e
+          BODY=$(gh release view "$TAG" --repo "$REPO" --json body --jq '.body // ""')
+          if printf '%s' "$BODY" | LC_ALL=C.UTF-8 grep -qP '[\x{3040}-\x{30ff}\x{3400}-\x{9fff}\x{f900}-\x{faff}\x{ff00}-\x{ffef}]'; then
+            echo "::error::$TAG 的 Release 正文含中日韩字符——发版说明必须全英文。请改成英文后重跑本工作流。"
+            exit 1
+          fi
+          echo "Release notes English-only check passed."
       - name: 镜像到腾讯云 COS（中国大陆下载）
         # 大陆用户访问 GitHub 困难（下载不了安装包、应用内自动更新也连不上），
         # 故把安装包与自动更新 feed 同步一份到 COS。上传去向见 scripts/upload-cos.js。
