@@ -43,6 +43,7 @@
       "**/node_modules/@koromix/**"
     ],
     "mac": {
+      "icon": "assets/icon/AppIcon.mac.png",
       "category": "public.app-category.utilities",
       "target": [
         "dmg",

@@ -5,7 +5,7 @@ const path = require('path');
 const Store = require('electron-store');
 
 // 窗口图标：Windows 用 .ico（多尺寸），其余平台用 PNG。
-const WINDOW_ICON = path.join(__dirname, '..', 'assets', 'icon', process.platform === 'win32' ? 'AppIcon.ico' : 'AppIcon.png');
+const WINDOW_ICON = path.join(__dirname, '..', 'assets', 'icon', process.platform === 'win32' ? 'AppIcon.ico' : 'AppIcon.mac.png');
 
 const { resolveState, extractTemps, fmtRemain, isPrintActive } = require('./core/state-machine');
 const { applyCompletionState } = require('./core/completion-state');
@@ -1711,9 +1711,11 @@ app.whenReady().then(() => {
   // 需在 createWindow / createTray 之前，保证首帧文案即为正确语言。
   if (store.get('locale') == null) store.set('locale', systemDefaultLocale());
 
-  // 设置 Dock 图标（开发模式下 Electron 默认图标会被替换）
+  // 设置 Dock 图标（开发模式下 Electron 默认图标会被替换）。
+  // 用已烤进 squircle 圆角+透明留白的 AppIcon.mac.png：macOS 15 及更早不会自动裁圆角，
+  // 只有 26(Tahoe) 才自动裁——不能依赖系统，须自带圆角，才能各版本一致显示圆角。
   if (process.platform === 'darwin' && app.dock) {
-    const appIconPath = path.join(__dirname, '..', 'assets', 'icon', 'AppIcon.png');
+    const appIconPath = path.join(__dirname, '..', 'assets', 'icon', 'AppIcon.mac.png');
     try { app.dock.setIcon(appIconPath); } catch (e) { /* 开发模式下可能失败，忽略 */ }
   }
 
