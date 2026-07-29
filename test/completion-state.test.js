@@ -5,6 +5,7 @@ const {
   FINISHED_MEMORY_MS,
   applyCompletionState,
   taskIdFromReport,
+  taskIdentityFromReport,
 } = require('../src/core/completion-state');
 const { resolveState } = require('../src/core/state-machine');
 const { STRINGS } = require('../src/config/locales');
@@ -18,7 +19,7 @@ function apply(report, record, now = START) {
 test('首次收到 FINISH：记录完成时间，演成功动画 1 小时，标签即为相对完成时间', () => {
   const report = { connected: true, gcode_state: 'FINISH', subtask_id: 'job-1' };
   const first = apply(report, null);
-  assert.deepStrictEqual(first.record, { finishedAt: START, taskId: 'job-1' });
+  assert.deepStrictEqual(first.record, { finishedAt: START, identity: { subtask_id: 'job-1' } });
   assert.equal(first.state.stateKey, 'finished');
   assert.equal(first.state.videoFile, 'finished.webm');
   // 与成功动画解耦：标签从结束起就是相对完成时间（携带原始时间戳，文案由渲染层就地生成）。
@@ -35,7 +36,7 @@ test('首次收到 FINISH：记录完成时间，演成功动画 1 小时，标�
 });
 
 test('相对时间在 1 小时内按整分钟边界安排刷新', () => {
-  const record = { finishedAt: START, taskId: 'job-1' };
+  const record = { finishedAt: START, identity: { subtask_id: 'job-1' } };
   const report = { connected: true, gcode_state: 'FINISH', subtask_id: 'job-1' };
   // 结束 5 分 30 秒：下一次跳字排到第 6 分钟整。
   const result = apply(report, record, START + 5 * 60 * 1000 + 30 * 1000);
@@ -45,7 +46,7 @@ test('相对时间在 1 小时内按整分钟边界安排刷新', () => {
 
 test('完成满 1 小时后切为空闲动画，标签仍为相对完成时间并按整小时刷新', () => {
   // 时间戳保持原始值传出（与 remainMins 同理），相对文案留给渲染进程/托盘按当前时间就地生成。
-  const record = { finishedAt: START, taskId: 'job-1' };
+  const record = { finishedAt: START, identity: { subtask_id: 'job-1' } };
   const report = { connected: true, gcode_state: 'FINISH', subtask_id: 'job-1' };
   const result = apply(report, record, START + SUCCESS_DISPLAY_MS);
 
@@ -58,7 +59,7 @@ test('完成满 1 小时后切为空闲动画，标签仍为相对完成时间�
 });
 
 test('完成记录在打印机转为 IDLE 后仍显示到 24 小时', () => {
-  const record = { finishedAt: START, taskId: 'job-1' };
+  const record = { finishedAt: START, identity: { subtask_id: 'job-1' } };
   const result = apply({ connected: true, gcode_state: 'IDLE' }, record, START + SUCCESS_DISPLAY_MS);
   assert.equal(result.state.stateKey, 'idle');
   assert.equal(result.state.labelKey, 'label.finishedAt');
@@ -66,7 +67,7 @@ test('完成记录在打印机转为 IDLE 后仍显示到 24 小时', () => {
 });
 
 test('完成满 24 小时后恢复普通空闲且不重新触发成功动画', () => {
-  const record = { finishedAt: START, taskId: 'job-1' };
+  const record = { finishedAt: START, identity: { subtask_id: 'job-1' } };
   const report = { connected: true, gcode_state: 'FINISH', subtask_id: 'job-1' };
   const result = apply(report, record, START + FINISHED_MEMORY_MS);
   assert.equal(result.state.stateKey, 'idle');
@@ -77,7 +78,7 @@ test('完成满 24 小时后恢复普通空闲且不重新触发成功动画', (
 });
 
 test('下一次打印开始时清除上次完成记录', () => {
-  const record = { finishedAt: START, taskId: 'job-1' };
+  const record = { finishedAt: START, identity: { subtask_id: 'job-1' } };
   const result = apply({ connected: true, gcode_state: 'RUNNING', mc_percent: 10 }, record, START + SUCCESS_DISPLAY_MS);
   assert.equal(result.state.stateKey, 'printing_0');
   assert.equal(result.record, null);
@@ -85,14 +86,14 @@ test('下一次打印开始时清除上次完成记录', () => {
 });
 
 test('不同任务完成时会创建新的成功状态（重开 1 小时动画 + 相对时间从"刚刚"起）', () => {
-  const oldRecord = { finishedAt: START, taskId: 'job-1' };
+  const oldRecord = { finishedAt: START, identity: { subtask_id: 'job-1' } };
   const nextFinish = START + FINISHED_MEMORY_MS + 1000;
   const result = apply(
     { connected: true, gcode_state: 'FINISH', subtask_id: 'job-2' },
     oldRecord,
     nextFinish,
   );
-  assert.deepStrictEqual(result.record, { finishedAt: nextFinish, taskId: 'job-2' });
+  assert.deepStrictEqual(result.record, { finishedAt: nextFinish, identity: { subtask_id: 'job-2' } });
   assert.equal(result.state.stateKey, 'finished');
   // age=0 → 首次跳字排到第 1 分钟整（而非动画边界）。
   assert.equal(result.nextUpdateAt, nextFinish + 60 * 1000);
@@ -126,7 +127,7 @@ test('P1S 局域网：应用未在线时换了新作业完成，占位 id 不再
   // 旧作业记录已老化（>24h），期间应用离线（没观测到 RUNNING，记录未被清空）。
   // 修复前：两次作业 taskId 都是 "0" → 被当成同一任务 → 新完成被误按旧完成时刻算龄 → 直接空闲、
   //         既不庆祝也不显示完成时刻（P1S 用户实测的「完成状态不对/不显示完成时间」）。
-  const staleRecord = { finishedAt: START, taskId: 'jobA.gcode' };
+  const staleRecord = { finishedAt: START, identity: { gcode_file: 'jobA.gcode' } };
   const reconnectAt = START + FINISHED_MEMORY_MS + 60 * 60 * 1000; // 25 小时后
   const jobBFinish = {
     connected: true, gcode_state: 'FINISH',
@@ -134,19 +135,78 @@ test('P1S 局域网：应用未在线时换了新作业完成，占位 id 不再
   };
   const result = apply(jobBFinish, staleRecord, reconnectAt);
   assert.equal(result.state.stateKey, 'finished');
-  assert.deepStrictEqual(result.record, { finishedAt: reconnectAt, taskId: 'jobB.gcode' });
+  assert.deepStrictEqual(result.record, { finishedAt: reconnectAt, identity: { gcode_file: 'jobB.gcode' } });
   assert.equal(result.nextUpdateAt, reconnectAt + 60 * 1000);
 });
 
 test('同一作业的连续 FINISH 帧（gcode_file 稳定）不重置完成时刻', () => {
   const report = { connected: true, gcode_state: 'FINISH', subtask_id: '0', gcode_file: 'plate_1.gcode' };
   const first = apply(report, null);
-  assert.deepStrictEqual(first.record, { finishedAt: START, taskId: 'plate_1.gcode' });
+  assert.deepStrictEqual(first.record, { finishedAt: START, identity: { gcode_file: 'plate_1.gcode' } });
   // 1 小时零 1 分钟后同一份作业仍在 FINISH：完成时刻保持不变，转空闲动画但仍显示相对完成时间。
   const later = apply(report, first.record, START + SUCCESS_DISPLAY_MS + 60 * 1000);
   assert.equal(later.state.stateKey, 'idle');
   assert.equal(later.state.labelKey, 'label.finishedAt');
   assert.equal(later.record.finishedAt, START);
+});
+
+test('云端重启：完成后 subtask_id 被清成 "0"，回落到稳定的 gcode_file，不重置完成时刻', () => {
+  // 复现用户反馈的「重启后显示重启后 X 分钟前完成」的根因：
+  // 打印中/刚完成时云端报文带真实 subtask_id → 记录身份 { subtask_id, gcode_file }。
+  // 重启后 pushall 里云端任务已结束，subtask_id 变占位符 "0"，身份只剩 gcode_file。
+  // 修复前：身份从 subtask_id 切到 gcode_file，两者「不相等」→ 误判新任务 → 完成时刻被重置成重启时刻。
+  // 修复后：subtask_id 只是「消失」而非「取到了不同的值」，不算矛盾 → 判为同一任务 → 完成时刻保持。
+  const finishReport = {
+    connected: true, gcode_state: 'FINISH',
+    subtask_id: '3901234567', gcode_file: 'plate_1.gcode',
+  };
+  const atFinish = apply(finishReport, null);
+  assert.deepStrictEqual(atFinish.record, {
+    finishedAt: START, identity: { subtask_id: '3901234567', gcode_file: 'plate_1.gcode' },
+  });
+
+  // 5 分钟后重启，pushall：subtask_id 变 "0"（占位符），只剩 gcode_file。
+  const restartAt = START + 5 * 60 * 1000;
+  const afterRestart = apply(
+    { connected: true, gcode_state: 'FINISH', subtask_id: '0', gcode_file: 'plate_1.gcode' },
+    atFinish.record,
+    restartAt,
+  );
+  // 完成时刻必须保持原值（而非被重置成 restartAt）。
+  assert.equal(afterRestart.record.finishedAt, START);
+  assert.deepStrictEqual(afterRestart.state.labelParams, { finishedAt: START });
+});
+
+test('重启后帧缺 id 字段（增量帧）也不重置完成时刻', () => {
+  // 重连后首帧可能是缺少任务标识字段的增量帧；此时身份为空，不应与旧记录构成矛盾。
+  const record = { finishedAt: START, identity: { subtask_id: 'job-1', gcode_file: 'a.gcode' } };
+  const partial = { connected: true, gcode_state: 'FINISH' }; // 无任何 id 字段
+  const result = apply(partial, record, START + 3 * 60 * 1000);
+  assert.equal(result.record.finishedAt, START);
+  // 已知身份字段应保留（供后续精确比对）。
+  assert.deepStrictEqual(result.record.identity, { subtask_id: 'job-1', gcode_file: 'a.gcode' });
+});
+
+test('旧格式记录（仅 taskId）平滑迁移：不误重置，且下一帧补全 identity 自愈', () => {
+  // 升级前落盘的记录形如 { finishedAt, taskId }，无字段名。迁移策略：视为「无可比字段」→ 不误判新任务。
+  const legacy = { finishedAt: START, taskId: '3901234567' };
+  const result = apply(
+    { connected: true, gcode_state: 'FINISH', subtask_id: '0', gcode_file: 'plate_1.gcode' },
+    legacy,
+    START + 5 * 60 * 1000,
+  );
+  assert.equal(result.record.finishedAt, START); // 完成时刻保持
+  assert.deepStrictEqual(result.record.identity, { gcode_file: 'plate_1.gcode' }); // 自愈补全
+});
+
+test('taskIdentityFromReport 收集全部非占位符字段', () => {
+  assert.deepStrictEqual(
+    taskIdentityFromReport({
+      subtask_id: '123', task_id: '0', project_id: '', gcode_file: 'a.gcode', subtask_name: '盒子',
+    }),
+    { subtask_id: '123', gcode_file: 'a.gcode', subtask_name: '盒子' },
+  );
+  assert.deepStrictEqual(taskIdentityFromReport({ subtask_id: '0', task_id: '0' }), {});
 });
 
 test('完成文案符合中英文产品文案（相对时间）', () => {

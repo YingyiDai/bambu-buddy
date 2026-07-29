@@ -16,6 +16,20 @@ const TASK_ID_FIELDS = ['subtask_id', 'task_id', 'project_id', 'gcode_file', 'su
 // 占位符取值：局域网打印时云端 id 恒为 "0"，空串同理，都不能当作真实任务标识。
 const PLACEHOLDER_TASK_IDS = new Set(['', '0']);
 
+// 收集报文里所有「非占位符」的任务标识字段 → { field: value }。
+// 与单值 taskIdFromReport 的关键区别：不是只取优先级最高的一个，而是**全部**留存，
+// 用于跨帧/跨重启做「按字段」比对（见 isDifferentTask）。占位符（'' / '0'）一律剔除。
+function taskIdentityFromReport(report) {
+  const identity = {};
+  for (const key of TASK_ID_FIELDS) {
+    const value = report && report[key];
+    if (value == null) continue;
+    const str = String(value).trim();
+    if (str !== '' && !PLACEHOLDER_TASK_IDS.has(str)) identity[key] = str;
+  }
+  return identity;
+}
+
 function taskIdFromReport(report) {
   for (const key of TASK_ID_FIELDS) {
     const value = report && report[key];
@@ -26,12 +40,33 @@ function taskIdFromReport(report) {
   return null;
 }
 
+// 「是否换了新任务」：只有当**双方都存在**的某个字段取值不同（正面矛盾）时才判为新任务。
+// 关键修复：某字段在其中一侧「消失/变占位符」不算矛盾——这正是重启后云端 id 被清成 "0"、
+// 身份回落到 gcode_file 而与旧记录里的 subtask_id 对不上，导致完成时刻被误重置成重启时刻的根因。
+function isDifferentTask(prevIdentity, curIdentity) {
+  const prev = prevIdentity || {};
+  for (const key of TASK_ID_FIELDS) {
+    if (prev[key] != null && curIdentity[key] != null && prev[key] !== curIdentity[key]) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// 归一化持久化记录为 { finishedAt, identity }。
+// 兼容旧格式 { finishedAt, taskId }：旧记录只有单个不带字段名的 id，无法安全地按字段比对，
+// 故迁移为「无可比字段」（identity: {}）——即绝不因旧记录而误判新任务（避免升级后再触发一次本 bug）；
+// 下一帧 FINISH 会用报文里的完整身份把 identity 补全（自愈），之后比对即为精确的按字段比对。
 function normalizeRecord(record) {
   if (!record || !Number.isFinite(record.finishedAt)) return null;
-  return {
-    finishedAt: record.finishedAt,
-    taskId: record.taskId == null ? null : String(record.taskId),
-  };
+  const identity = {};
+  const src = record.identity;
+  if (src && typeof src === 'object') {
+    for (const key of TASK_ID_FIELDS) {
+      if (src[key] != null) identity[key] = String(src[key]);
+    }
+  }
+  return { finishedAt: record.finishedAt, identity };
 }
 
 function makeFinishedState(state, labelKey = 'label.finished', labelParams = {}) {
@@ -74,9 +109,14 @@ function applyCompletionState(report, state, savedRecord, now = Date.now()) {
   }
 
   if (gcode === 'FINISH') {
-    const taskId = taskIdFromReport(report);
-    const isNewTask = !record || (taskId != null && record.taskId != null && taskId !== record.taskId);
-    if (isNewTask) record = { finishedAt: now, taskId };
+    const identity = taskIdentityFromReport(report);
+    if (!record || isDifferentTask(record.identity, identity)) {
+      // 新任务（或首次见到完成）→ 记新的完成时刻。
+      record = { finishedAt: now, identity };
+    } else {
+      // 同一任务：保留原完成时刻，并把本帧新出现的身份字段并入 identity（自愈/补全，供后续精确比对）。
+      record = { finishedAt: record.finishedAt, identity: { ...record.identity, ...identity } };
+    }
   }
 
   if (!record || (gcode !== 'FINISH' && gcode !== 'IDLE')) {
@@ -111,4 +151,5 @@ module.exports = {
   FINISHED_MEMORY_MS,
   applyCompletionState,
   taskIdFromReport,
+  taskIdentityFromReport,
 };
