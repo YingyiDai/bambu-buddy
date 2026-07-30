@@ -25,6 +25,7 @@ function isUserCanceled(r) {
 // 大状态字符串（gcode_state）。OFFLINE 为本应用内部约定（连接断开时注入）。
 const GCODE = {
   IDLE: 'IDLE',
+  SLICING: 'SLICING',
   PREPARE: 'PREPARE',
   RUNNING: 'RUNNING',
   PAUSE: 'PAUSE',
@@ -76,6 +77,20 @@ function pauseLabel(stg) {
 function amsChangingFilament(r) {
   const raw = r.ams_status != null ? r.ams_status : (r.ams && r.ams.ams_status);
   return Number.isFinite(raw) && ((raw & 0xff00) >> 8) === 1;
+}
+
+// 打印是否已真正开始（用于区分「gcode_state 已切 RUNNING 但打印机仍在准备」与「真正在打印」）。
+// 开印瞬间 gcode_state 先切到 RUNNING，而打印机此时仍在加热/调平；stg_cur 会有一帧短暂回落到 0
+//（label.stage.0=「打印中」）或未知值，若据此直接判「打印中」，就会出现用户反馈的
+// 「准备中 → 打印中（闪现约 0.5s）→ 准备中」抖动。仅当有确凿进度信号（层数 ≥1 或进度 >0）才算真打印。
+// ⚠️ 仅当 layer_num 为有限值时才据其判「尚未开始」；缺失（undefined）不作为证据，避免最简报文
+//    （只有 gcode_state=RUNNING、无 layer_num）被误判为准备中。
+function printHasStarted(r) {
+  const percent = Number(r.mc_percent);
+  if (Number.isFinite(percent) && percent > 0) return true;
+  const layer = r.layer_num;
+  if (Number.isFinite(layer)) return layer >= 1;
+  return true; // 无层数、无进度信息：保持既有行为（视作打印中）
 }
 
 // RUNNING 正常打印时按 mc_percent 选视频档
@@ -198,7 +213,14 @@ function resolveStateCore(report = {}) {
     return { stateKey: 'paused', videoFile: VIDEO.paused, labelKey: 'label.doorOpen', labelParams: {} };
   }
 
-  // 5. 准备中
+  // 5. 准备中 / 切片中
+  //    SLICING 是开印前的（云端/本机）切片阶段，打印机会短暂上报。bambu-mqtt / completion-state
+  //    都已把它当作「开印中」的活跃态，但此前 resolveState 未处理 → 落到第 8 步兜底成「空闲」，
+  //    造成开印初「空闲 → 准备中」的错态/抖动。统一按准备处理。此阶段 stg_cur 无准备子阶段含义，
+  //    故用通用「准备中」文案（不走 stageLabel：stg=0 会被解成「打印中」而再次串状态）。
+  if (gcode === GCODE.SLICING) {
+    return { stateKey: 'prepare', videoFile: VIDEO.prepare, labelKey: 'label.prepare', labelParams: {} };
+  }
   if (gcode === GCODE.PREPARE) {
     const sl = stageLabel(stg);
     return { stateKey: 'prepare', videoFile: VIDEO.prepare, labelKey: sl.labelKey, labelParams: sl.labelParams };
@@ -223,6 +245,13 @@ function resolveStateCore(report = {}) {
     if (cat === 'paused') {
       // 异常少见：RUNNING 却报暂停类 stage，按暂停处理
       return { stateKey: 'paused', videoFile: VIDEO.paused, labelKey: stageLabelKey(stg), labelParams: {} };
+    }
+    // 开印瞬间 gcode_state 已切 RUNNING，但打印机仍在准备（加热/调平），此时 stg_cur 会有一帧
+    // 短暂回落到 0（→'printing'）或未知值。若无任何进度信号（层数=0 且进度=0），仍视作准备中，
+    // 用通用「准备中」文案与准备动画兜底，避免「准备中→打印中(闪)→准备中」的抖动。
+    // 注意用通用 label.prepare 而非 stageLabelKey(0)——后者是「打印中」，会再次串成打印中文案。
+    if ((cat === 'printing' || cat === undefined) && !printHasStarted(r)) {
+      return { stateKey: 'prepare', videoFile: VIDEO.prepare, labelKey: 'label.prepare', labelParams: {} };
     }
     // cat === 'printing'（stg=0）或未知 → 正常打印，按进度选档
     const videoFile = printingVideoByPercent(percent);
