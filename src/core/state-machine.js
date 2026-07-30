@@ -25,6 +25,7 @@ function isUserCanceled(r) {
 // 大状态字符串（gcode_state）。OFFLINE 为本应用内部约定（连接断开时注入）。
 const GCODE = {
   IDLE: 'IDLE',
+  SLICING: 'SLICING',
   PREPARE: 'PREPARE',
   RUNNING: 'RUNNING',
   PAUSE: 'PAUSE',
@@ -212,7 +213,14 @@ function resolveStateCore(report = {}) {
     return { stateKey: 'paused', videoFile: VIDEO.paused, labelKey: 'label.doorOpen', labelParams: {} };
   }
 
-  // 5. 准备中
+  // 5. 准备中 / 切片中
+  //    SLICING 是开印前的（云端/本机）切片阶段，打印机会短暂上报。bambu-mqtt / completion-state
+  //    都已把它当作「开印中」的活跃态，但此前 resolveState 未处理 → 落到第 8 步兜底成「空闲」，
+  //    造成开印初「空闲 → 准备中」的错态/抖动。统一按准备处理。此阶段 stg_cur 无准备子阶段含义，
+  //    故用通用「准备中」文案（不走 stageLabel：stg=0 会被解成「打印中」而再次串状态）。
+  if (gcode === GCODE.SLICING) {
+    return { stateKey: 'prepare', videoFile: VIDEO.prepare, labelKey: 'label.prepare', labelParams: {} };
+  }
   if (gcode === GCODE.PREPARE) {
     const sl = stageLabel(stg);
     return { stateKey: 'prepare', videoFile: VIDEO.prepare, labelKey: sl.labelKey, labelParams: sl.labelParams };

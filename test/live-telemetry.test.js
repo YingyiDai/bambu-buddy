@@ -26,7 +26,7 @@ test('熊猫 stateKey → 卡片类别对所有 gcode×stg 一致（整类回归
     printing_0: 'printing', printing_25: 'printing', printing_50: 'printing', printing_75: 'printing',
   };
   const reps = [];
-  for (const g of ['IDLE', 'PREPARE', 'RUNNING', 'PAUSE', 'FINISH', 'FAILED', 'OFFLINE']) {
+  for (const g of ['IDLE', 'SLICING', 'PREPARE', 'RUNNING', 'PAUSE', 'FINISH', 'FAILED', 'OFFLINE']) {
     for (let stg = 0; stg <= 80; stg++) reps.push({ connected: true, gcode_state: g, stg_cur: stg, mc_percent: 50 });
   }
   reps.push({ connected: false }, { authExpired: true },

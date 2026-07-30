@@ -364,6 +364,21 @@ test('RUNNING + stg_cur=0 + 无 layer_num + mc_percent=0 → 打印中（最简�
   assert.equal(r.videoFile, 'printing_0.webm');
 });
 
+// 回归：SLICING（开印前切片阶段）此前未处理会兜底成「空闲」，造成开印初「空闲→准备中」错态/抖动。
+test('SLICING → 准备中（不再兜底成空闲）', () => {
+  const r = resolveState({ connected: true, gcode_state: 'SLICING' });
+  assert.equal(r.stateKey, 'prepare');
+  assert.equal(r.videoFile, 'prepare.webm');
+  assert.equal(r.labelKey, 'label.prepare');
+});
+
+// SLICING 阶段 stg_cur 可能残留 0（label.stage.0=「打印中」）——必须仍显示「准备中」，不得串成打印中。
+test('SLICING + stg_cur=0 → 仍是「准备中」，不串打印中文案', () => {
+  const r = resolveState({ connected: true, gcode_state: 'SLICING', stg_cur: 0 });
+  assert.equal(r.stateKey, 'prepare');
+  assert.equal(r.labelKey, 'label.prepare');
+});
+
 // ── 登录/会话失效（token 过期）区别于打印机离线 ──
 test('authExpired → 登录已失效（优先于离线）', () => {
   const r = resolveState({ connected: false, authExpired: true });
