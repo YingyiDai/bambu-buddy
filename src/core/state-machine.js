@@ -112,6 +112,22 @@ function fmtRemain(mins) {
   return m ? `${h}h${m}m` : `${h}h`;
 }
 
+// 「假完成」判定：gcode_state 报 FINISH，但报文自相矛盾地显示这是一份「刚开始、尚未打印」的任务
+//（有层数总数却停在第 0 层，且进度未达 100%）。真正完成的作业层数必等于总层数、进度为 100%，
+// 绝不可能停在第 0 层 —— 故这种帧只可能是「开印瞬间 gcode_state 仍残留上一次 FINISH」的过渡帧
+//（增量报文浅合并：新任务的 layer/percent 已更新，gcode_state 尚未刷新到 PREPARE/RUNNING）。
+// 若据此判「完成」，开印时熊猫会闪现一下「完成」。命中即按准备处理，避免这一帧误显完成。
+// ⚠️ layer_num 缺失（多数单测/最简报文）不算矛盾 → 视为真完成，保持既有行为。
+function isFreshStartFinish(report) {
+  const r = report || {};
+  const layer = r.layer_num;
+  const total = r.total_layer_num;
+  const percent = Number(r.mc_percent);
+  return Number.isFinite(layer) && layer === 0
+    && Number.isFinite(total) && total > 0
+    && !(percent >= 100);
+}
+
 // 打印任务是否进行中（RUNNING / PAUSE / PREPARE）。
 // 真机空闲时报文仍残留上一任务的 layer_num/total_layer_num（如 0/400），
 // 层数、剩余时间等任务级指标必须按此门控，否则空闲态会外显残留数据。
@@ -171,6 +187,11 @@ function resolveStateCore(report = {}) {
 
   // 2. 完成
   if (gcode === GCODE.FINISH) {
+    // 开印瞬间 gcode_state 仍残留上一次 FINISH 的过渡帧（新任务已停在第 0 层、进度未满）：不是真完成，
+    // 按准备处理，避免开印时「完成」闪现。与后续真实 PREPARE 帧同为「准备中」，衔接无缝。
+    if (isFreshStartFinish(r)) {
+      return { stateKey: 'prepare', videoFile: VIDEO.prepare, labelKey: 'label.prepare', labelParams: {} };
+    }
     return { stateKey: 'finished', videoFile: VIDEO.finished, labelKey: 'label.finished', labelParams: {} };
   }
 
@@ -328,4 +349,4 @@ function extractTemps(report) {
   };
 }
 
-module.exports = { resolveState, stageLabel, pauseLabel, hasFatalHms, extractTemps, fmtRemain, isPrintActive, GCODE };
+module.exports = { resolveState, stageLabel, pauseLabel, hasFatalHms, extractTemps, fmtRemain, isPrintActive, isFreshStartFinish, GCODE };

@@ -364,6 +364,31 @@ test('RUNNING + stg_cur=0 + 无 layer_num + mc_percent=0 → 打印中（最简�
   assert.equal(r.videoFile, 'printing_0.webm');
 });
 
+// 回归：开印瞬间 gcode_state 仍残留上一次 FINISH 的过渡帧（新任务已停在第 0 层、进度未满）。
+// 若据此判「完成」，熊猫会在开印时闪现一下「完成」。应按准备处理。
+test('FINISH 残留帧 + 新任务停在第 0 层（layer 0/96, 0%）→ 准备中，不闪完成', () => {
+  const r = resolveState({
+    connected: true, gcode_state: 'FINISH', layer_num: 0, total_layer_num: 96, mc_percent: 0,
+  });
+  assert.equal(r.stateKey, 'prepare');
+  assert.equal(r.videoFile, 'prepare.webm');
+  assert.equal(r.labelKey, 'label.prepare');
+});
+
+// 真完成（层数=总层数、100%）不受影响。
+test('真完成（layer 96/96, 100%）→ 仍是完成', () => {
+  const r = resolveState({
+    connected: true, gcode_state: 'FINISH', layer_num: 96, total_layer_num: 96, mc_percent: 100,
+  });
+  assert.equal(r.stateKey, 'finished');
+});
+
+// 无层数信息的最简 FINISH 帧保持既有行为（视为完成）。
+test('FINISH 无层数信息 → 仍是完成（最简报文契约不变）', () => {
+  const r = resolveState({ connected: true, gcode_state: 'FINISH' });
+  assert.equal(r.stateKey, 'finished');
+});
+
 // 回归：SLICING（开印前切片阶段）此前未处理会兜底成「空闲」，造成开印初「空闲→准备中」错态/抖动。
 test('SLICING → 准备中（不再兜底成空闲）', () => {
   const r = resolveState({ connected: true, gcode_state: 'SLICING' });

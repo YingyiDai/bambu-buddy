@@ -85,6 +85,22 @@ test('下一次打印开始时清除上次完成记录', () => {
   assert.equal(result.nextUpdateAt, null);
 });
 
+test('开印瞬间 FINISH 残留帧（新任务停在第 0 层）→ 清除旧记录、不记新完成、按准备返回', () => {
+  // 复现「开始打印后闪现一下完成」：上一次 job-1 的完成记录还在，开印时来一帧 gcode 仍残留 FINISH，
+  // 但报文已是新任务的 layer 0/96、0%。此前会把它当成「刚刚完成」→ 闪现完成。
+  const oldRecord = { finishedAt: START, identity: { subtask_id: 'job-1' } };
+  const startFrame = {
+    connected: true, gcode_state: 'FINISH',
+    subtask_id: 'job-2', layer_num: 0, total_layer_num: 96, mc_percent: 0,
+  };
+  const result = apply(startFrame, oldRecord, START + 5 * 60 * 1000);
+  // 记录被清除（等同开印），不再残留旧完成时刻，也不新记完成。
+  assert.equal(result.record, null);
+  // resolveState 已把这一帧判为准备中，completion 原样透出，不覆盖成完成。
+  assert.equal(result.state.stateKey, 'prepare');
+  assert.equal(result.nextUpdateAt, null);
+});
+
 test('不同任务完成时会创建新的成功状态（重开 1 小时动画 + 相对时间从"刚刚"起）', () => {
   const oldRecord = { finishedAt: START, identity: { subtask_id: 'job-1' } };
   const nextFinish = START + FINISHED_MEMORY_MS + 1000;
