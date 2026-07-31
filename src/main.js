@@ -9,6 +9,7 @@ const WINDOW_ICON = path.join(__dirname, '..', 'assets', 'icon', process.platfor
 
 const { resolveState, extractTemps, fmtRemain, isPrintActive } = require('./core/state-machine');
 const { applyCompletionState } = require('./core/completion-state');
+const { StateStabilizer } = require('./core/state-stabilizer');
 const { buildLiveTelemetry } = require('./core/live-telemetry');
 const { MockDataSource } = require('./core/mock');
 const { BambuCloudDataSource, BambuLanDataSource, classifyLanProbe } = require('./core/bambu-mqtt');
@@ -128,7 +129,7 @@ const MOCK_SERIAL = '__mock__';
 // 托盘状态区顶层最多展开几台的完整状态块。超出的台按「关注度」折进「其余 N 台」子菜单
 // （见 buildMenuTemplate）——账号绑很多台时（打印农场/教室）避免菜单被顶得极长、把设置/退出挤到要滚动。
 const MAX_TRAY_PRINTERS = 3;
-const runtimes = new Map(); // serial → { lastReport, lastState, completionTimer }
+const runtimes = new Map(); // serial → { lastReport, lastState, completionTimer, stabilizer, stabilizeTimer }
 let mockSource = null; // 仅 mock 模式非空（MockDataSource）
 const errorTables = new Map(); // "<lang>_<model>" → 解析后的官方错误码表（打印失败时查大类）
 const errorTablePending = new Set(); // 正在下载中的表 key，避免并发重复下载
@@ -139,7 +140,7 @@ let lastAuthNotifyAt = 0;
 function getRuntime(serial) {
   let rt = runtimes.get(serial);
   if (!rt) {
-    rt = { lastReport: null, lastState: null, completionTimer: null };
+    rt = { lastReport: null, lastState: null, completionTimer: null, stabilizer: null, stabilizeTimer: null };
     runtimes.set(serial, rt);
   }
   return rt;
@@ -482,6 +483,32 @@ function clearCompletionTimer(rt) {
   rt.completionTimer = null;
 }
 
+function clearStabilizeTimer(rt) {
+  if (!rt || !rt.stabilizeTimer) return;
+  clearTimeout(rt.stabilizeTimer);
+  rt.stabilizeTimer = null;
+}
+
+// 状态稳定器兜底定时器：待定态在 settleAt 时刻若仍未被后续帧确认/改回，则由 tick 提交显示。
+// 用途见 core/state-stabilizer.js —— 抑制开印/切换瞬间的一帧级抖动。
+function scheduleStabilizeTick(serial, rt, settleAt) {
+  clearStabilizeTimer(rt);
+  if (!Number.isFinite(settleAt)) return;
+  rt.stabilizeTimer = setTimeout(() => {
+    rt.stabilizeTimer = null;
+    const cur = runtimes.get(serial);
+    if (!cur || !cur.stabilizer) return;
+    const { state, changed, settleAt: next } = cur.stabilizer.tick(Date.now());
+    if (changed && state) {
+      cur.lastState = state;
+      schedulePetPush();
+      scheduleTrayRebuild();
+      notifySettingsLive();
+    }
+    if (Number.isFinite(next)) scheduleStabilizeTick(serial, cur, next);
+  }, Math.max(0, settleAt - Date.now()));
+}
+
 // 完成态定时刷新——按台各自一个定时器：既跨过 1 小时成功动画边界，也让相对完成时间按分钟/小时跳字。
 function scheduleCompletionUpdate(serial, rt, nextUpdateAt) {
   clearCompletionTimer(rt);
@@ -513,7 +540,8 @@ function applyReport(serial, report) {
     if (cat) state = { ...state, labelKey: `label.failed.${cat}`, labelParams: {} };
   }
 
-  if (serial !== MOCK_SERIAL && store.get('dataSource', 'mock') === 'live') {
+  const live = serial !== MOCK_SERIAL && store.get('dataSource', 'mock') === 'live';
+  if (live) {
     const completion = applyCompletionState(
       report, state, completionRecord(serial), Date.now(),
     );
@@ -522,6 +550,19 @@ function applyReport(serial, report) {
     scheduleCompletionUpdate(serial, rt, completion.nextUpdateAt);
   } else {
     clearCompletionTimer(rt);
+  }
+
+  // 真机 live 路径：经状态稳定器抑制开印/切换瞬间的一帧级抖动（增量报文多字段错位所致）。
+  // mock（把玩）演示不去抖 —— 要即时忠实地反映所选场景。完成记录等落盘逻辑用去抖前的原始 state，
+  // 稳定器只作用于「对外显示」的状态，二者解耦。
+  if (live) {
+    if (!rt.stabilizer) rt.stabilizer = new StateStabilizer();
+    const { state: shown, settleAt } = rt.stabilizer.observe(state, Date.now());
+    state = shown;
+    scheduleStabilizeTick(serial, rt, settleAt);
+  } else if (rt.stabilizer) {
+    rt.stabilizer.reset();
+    clearStabilizeTimer(rt);
   }
 
   rt.lastState = state;
@@ -621,7 +662,7 @@ function rebuildDataSources() {
   const mode = store.get('dataSource', 'mock');
   if (mode === 'mock') {
     hub.stopAll();
-    for (const rt of runtimes.values()) clearCompletionTimer(rt);
+    for (const rt of runtimes.values()) { clearCompletionTimer(rt); clearStabilizeTimer(rt); }
     runtimes.clear();
     if (mockSource) mockSource.stop();
     mockSource = new MockDataSource();
@@ -636,6 +677,7 @@ function rebuildDataSources() {
   for (const [serial, rt] of runtimes) {
     if (!valid.has(serial)) { // 含 MOCK_SERIAL 与已删除的台：清掉避免状态/遥测串台
       clearCompletionTimer(rt);
+      clearStabilizeTimer(rt);
       runtimes.delete(serial);
     }
   }
