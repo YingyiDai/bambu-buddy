@@ -1,4 +1,5 @@
 const { VIDEO } = require('../config/state-map');
+const { isFreshStartFinish } = require('./state-machine');
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -104,7 +105,10 @@ function applyCompletionState(report, state, savedRecord, now = Date.now()) {
   const gcode = report && report.gcode_state;
   let record = normalizeRecord(savedRecord);
 
-  if (ACTIVE_GCODE_STATES.has(gcode)) {
+  // 开印瞬间 gcode_state 仍残留上一次 FINISH 的过渡帧（新任务已停在第 0 层、进度未满）不是真完成，
+  // 按「开印」处理：清除上次完成记录、原样返回（此时 state 已由 resolveState 判为准备中），
+  // 避免这一帧被记成一次「刚刚完成」而闪现「完成」。
+  if (ACTIVE_GCODE_STATES.has(gcode) || (gcode === 'FINISH' && isFreshStartFinish(report))) {
     return { state, record: null, nextUpdateAt: null };
   }
 
