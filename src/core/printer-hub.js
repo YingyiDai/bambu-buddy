@@ -1,6 +1,6 @@
 // 多打印机连接生命周期管理（依赖注入，无 electron / store 依赖，便于单测）。
 // 每台打印机一个数据源实例（连接常驻），sync(entries) 以 diff 方式与目标列表对齐：
-// 新增台建连接、消失台断连接、配置未变的台**不动**——尤其是云端 45s 轮询会整体重写
+// 新增台建连接、消失台断连接、配置未变的台**不动**——尤其是云端轮询会整体重写
 // bambuPrinters（仅刷新 online/printStatus/name），若无签名比对每次轮询都会重连全部台。
 //
 // 单台时代的 LAN→cloud 一次性回退逻辑（main.js 原 buildDataSource 内闭包）按台复刻：
@@ -83,6 +83,16 @@ class PrinterHub {
     };
     connect(transport);
     return rt;
+  }
+
+  /**
+   * 让某台立刻重新拉取完整状态（转调数据源 refresh → pushall）。
+   * 用于云端轮询检出「打印机重新上线」时的事件驱动恢复，免等源内 5 分钟定时 pushall。
+   * 未在管理中的 serial（或源不支持 refresh）安全忽略。
+   */
+  refresh(serial) {
+    const rt = this._run.get(serial);
+    if (rt && rt.source && typeof rt.source.refresh === 'function') rt.source.refresh();
   }
 
   _stopRuntime(rt) {

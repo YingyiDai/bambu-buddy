@@ -17,6 +17,7 @@ class FakeSource {
   onAuthFailure(cb) { this._authCb = cb; }
   start() { this.started = true; }
   stop() { this.stopped = true; this._cb = null; }
+  refresh() { this.refreshed = (this.refreshed || 0) + 1; }
   emit(report) { if (this._cb) this._cb(report); }
   emitAuthFailure() { if (this._authCb) this._authCb(); }
 }
@@ -142,4 +143,15 @@ test('stopAll：全部断开清空', () => {
   hub.stopAll();
   assert.ok(created.every((s) => s.stopped));
   assert.deepStrictEqual(hub.serials(), []);
+});
+
+test('refresh(serial)：转调对应源的 refresh（打印机重新上线的即时拉取），未知台安全忽略', () => {
+  const { hub, created } = makeHub();
+  hub.sync([cloudEntry('A'), cloudEntry('B')]);
+  hub.refresh('A');
+  const a = created.find((s) => s.entry.serial === 'A');
+  const b = created.find((s) => s.entry.serial === 'B');
+  assert.strictEqual(a.refreshed, 1, '目标台应被 refresh');
+  assert.strictEqual(b.refreshed || 0, 0, '其他台不受影响');
+  assert.doesNotThrow(() => hub.refresh('ZZZ'), '未知 serial 不应抛错');
 });

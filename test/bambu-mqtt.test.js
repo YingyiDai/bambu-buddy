@@ -165,3 +165,27 @@ test('网络类错误（拒绝/DNS 解析失败）→ network', () => {
 test('全程无事件（SYN 被静默丢弃，如 AP 隔离/跨网段）→ timeout', () => {
   assert.equal(classifyLanProbe({ gotConnect: false, error: null }), 'timeout');
 });
+
+// ── refresh()：事件驱动的即时 pushall ──
+// 打印机重新上线时（云端轮询检出），主动请求一次完整状态，免等 5 分钟定时 pushall。
+test('refresh()：已连接时向 device/<serial>/request 发一次 pushall', () => {
+  const base = new BambuMQTTBase();
+  const published = [];
+  base._client = { connected: true, publish: (topic, payload) => published.push([topic, payload]) };
+  base._serial = 'DEV123';
+  base.refresh();
+  assert.strictEqual(published.length, 1);
+  assert.strictEqual(published[0][0], 'device/DEV123/request');
+  assert.deepStrictEqual(JSON.parse(published[0][1]), { pushing: { sequence_id: '0', command: 'pushall' } });
+});
+
+test('refresh()：未连接 / 无 client 时安全空操作，不发布不抛错', () => {
+  const base = new BambuMQTTBase();
+  const published = [];
+  base._client = { connected: false, publish: (topic, payload) => published.push([topic, payload]) };
+  base._serial = 'DEV123';
+  base.refresh();
+  assert.strictEqual(published.length, 0, '未连接不应发布');
+  base._client = null;
+  assert.doesNotThrow(() => base.refresh(), '无 client 不应抛错');
+});

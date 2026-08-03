@@ -1,7 +1,7 @@
 // test/printer-registry.test.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { mergePrinters, pickTransport } = require('../src/core/printer-registry');
+const { mergePrinters, pickTransport, onlineRoseSerials } = require('../src/core/printer-registry');
 
 test('仅云打印机 → source=cloud', () => {
   const r = mergePrinters([{ serial: 'A', name: 'a', model: 'X1', online: true, printStatus: 'IDLE' }], []);
@@ -98,4 +98,32 @@ test('迁移幂等：已是新结构则无操作', () => {
 test('迁移：mock 保持 mock', () => {
   const { set } = computeMigration({ dataSource: 'mock' });
   assert.equal(set.dataSource, undefined);
+});
+
+// ── online 上升沿检测（云端「打印机重新上线」的事件信号）──
+// 云端 45s→30s 轮询已知每台 online，但只更新展示、不驱动熊猫。检出 online 由「非 true」
+// 升到 true 的台，主进程据此立刻戳 MQTT 重发 pushall，免等 5 分钟定时 → 熊猫及时恢复在线。
+test('onlineRoseSerials: 只返回 online 从非 true 升到 true 的台', () => {
+  const prev = [
+    { serial: 'A', online: false },  // 上线 → 命中
+    { serial: 'B', online: true },   // 一直在线 → 不动
+    { serial: 'C', online: null },   // 未知 → 上线 → 命中
+    { serial: 'D', online: true },   // 掉线 → 不算上升沿
+  ];
+  const next = [
+    { serial: 'A', online: true },
+    { serial: 'B', online: true },
+    { serial: 'C', online: true },
+    { serial: 'D', online: false },
+  ];
+  assert.deepStrictEqual(onlineRoseSerials(prev, next).sort(), ['A', 'C']);
+});
+
+test('onlineRoseSerials: prev 里没有的台，本次 online=true 也算上升沿（首帧/新增台）', () => {
+  assert.deepStrictEqual(onlineRoseSerials([], [{ serial: 'X', online: true }]), ['X']);
+});
+
+test('onlineRoseSerials: 空/缺省安全，无上升沿返回空数组', () => {
+  assert.deepStrictEqual(onlineRoseSerials(undefined, undefined), []);
+  assert.deepStrictEqual(onlineRoseSerials([{ serial: 'A', online: true }], [{ serial: 'A', online: true }]), []);
 });

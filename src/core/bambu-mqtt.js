@@ -105,6 +105,7 @@ class BambuMQTTBase {
 
   /** 连接 MQTT broker。tls=true 用 mqtts://，自签名证书传 rejectUnauthorized:false。 */
   _connectMqtt(host, username, password, serial, { tls = true, rejectUnauthorized = true } = {}) {
+    this._serial = serial; // refresh() / _publishPushAll 复用，无需再传
     const scheme = tls ? 'mqtts' : 'mqtt';
     const port = tls ? 8883 : 1883;
     const url = `${scheme}://${host}:${port}`;
@@ -134,17 +135,29 @@ class BambuMQTTBase {
     this._client.on('close', () => this._emitOffline());
   }
 
+  /** 已连接时向打印机发一次 pushall（请求完整状态）。返回是否真的发出。 */
+  _publishPushAll() {
+    if (!this._client || !this._client.connected || !this._serial) return false;
+    this._client.publish(
+      `device/${this._serial}/request`,
+      JSON.stringify({ pushing: { sequence_id: '0', command: 'pushall' } }),
+    );
+    return true;
+  }
+
+  /**
+   * 主动请求一次完整状态刷新（pushall）。供外部事件驱动即时拉取——如云端轮询检出
+   * 「打印机重新上线」，立刻刷新而非干等 _requestPushAll 的 5 分钟定时。未连接时安全空操作。
+   */
+  refresh() { this._publishPushAll(); }
+
   /** 向打印机请求完整状态（pushall）。订阅后调用一次，并定时刷新。 */
   _requestPushAll(serial) {
-    if (!this._client) return;
-    const topic = `device/${serial}/request`;
-    const payload = JSON.stringify({ pushing: { sequence_id: '0', command: 'pushall' } });
-    this._client.publish(topic, payload);
+    this._serial = serial;
+    this._publishPushAll();
     // 定时重发（每 5 分钟），防止长时间空闲漏掉状态或连接静默
     if (this._pushTimer) clearInterval(this._pushTimer);
-    this._pushTimer = setInterval(() => {
-      if (this._client && this._client.connected) this._client.publish(topic, payload);
-    }, 5 * 60 * 1000);
+    this._pushTimer = setInterval(() => { this._publishPushAll(); }, 5 * 60 * 1000);
   }
 
   _onMessage(payload) {
