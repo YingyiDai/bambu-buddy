@@ -11,12 +11,12 @@ English | <a href="README.zh-CN.md">简体中文</a>
 <sub>Unofficial community project — not affiliated with or endorsed by Bambu Lab.</sub>
 
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-black?logo=apple)
-![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-arm64-333)
+![Mac](https://img.shields.io/badge/Mac-Apple%20Silicon%20%7C%20Intel-333)
 ![Version](https://img.shields.io/github/v/release/YingyiDai/bambu-buddy?color=brightgreen&label=version)
 
 ### [⬇️ Download for macOS / Windows](https://github.com/YingyiDai/bambu-buddy/releases/latest)
 
-<sub>🇨🇳 In mainland China (GitHub slow/blocked)? Use the **mirror**: [macOS (Apple Silicon)](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-arm64.dmg) · [Windows (x64)](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-Windows-x64.Setup.exe) (always the latest)</sub>
+<sub>🇨🇳 In mainland China (GitHub slow/blocked)? Use the **mirror**: [macOS (Apple Silicon)](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-arm64.dmg) · [macOS (Intel)](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-x64.dmg) · [Windows (x64)](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-Windows-x64.Setup.exe) (always the latest)</sub>
 
 </div>
 
@@ -63,8 +63,8 @@ Bambu Buddy turns your printer's status into a little animated panda that lives 
 
 ### macOS
 
-1. Download the latest `.dmg` from **[Releases](https://github.com/YingyiDai/bambu-buddy/releases/latest)** (Apple Silicon / arm64).
-   Mainland China mirror: **[download macOS build](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-arm64.dmg)** (no GitHub needed, always the latest).
+1. Download the latest `.dmg` for your Mac from **[Releases](https://github.com/YingyiDai/bambu-buddy/releases/latest)** — `macOS-arm64` for Apple Silicon (M1/M2/M3…), `macOS-x64` for Intel. Not sure which you have? Apple menu › **About This Mac**.
+   Mainland China mirror: **[Apple Silicon](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-arm64.dmg)** · **[Intel](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-x64.dmg)** (no GitHub needed, always the latest).
 2. Open the DMG and drag **Bambu Buddy** into Applications.
 3. Launch **Bambu Buddy** — it's Apple-signed (Developer ID) and notarized, so it opens normally with no security warning.
 

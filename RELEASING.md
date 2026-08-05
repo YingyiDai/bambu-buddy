@@ -1,6 +1,6 @@
 # 发版流程
 
-> 全平台（macOS arm64 + Windows x64）打包与发版由 GitHub Actions 自动完成。
+> 全平台（macOS arm64 + macOS x64 + Windows x64）打包与发版由 GitHub Actions 自动完成。
 > 工作流定义：`.github/workflows/release.yml`
 
 > 日常开发默认直接提交到 `main`，不强制走 PR。仅当明确要求 review 时才开 PR。
@@ -105,6 +105,8 @@ gh workflow run release.yml -f tag=v0.1.2 -f ref=main
 |---|---|---|
 | macOS（Apple Silicon） | `Bambu.Buddy-<ver>-macOS-arm64.dmg` | 用户手动下载；Developer ID 正式签名 + 公证（CI 自动） |
 | macOS（Apple Silicon） | `Bambu.Buddy-update-macOS-arm64-<ver>.zip` | 应用内自动更新专用（Squirrel.Mac 要求 zip）；同签名 |
+| macOS（Intel） | `Bambu.Buddy-<ver>-macOS-x64.dmg` | 同上，给 Intel Mac；在 Apple Silicon runner 上交叉打包 |
+| macOS（Intel） | `Bambu.Buddy-update-macOS-x64-<ver>.zip` | 同上，Intel 的自动更新包 |
 | Windows（x64） | `Bambu.Buddy-<ver>-Windows-x64.Setup.exe` | 手动下载 + 自动更新共用；未签名 |
 
 > **应用内自动更新依赖的资产（勿删）**：每个 Release 除 dmg/exe 外还带
@@ -114,9 +116,9 @@ gh workflow run release.yml -f tag=v0.1.2 -f ref=main
 > （用户只能回退「查看发布页」手动下载）。
 >
 > **资产命名兼顾列表排序**：GitHub 资产列表按文件名字母序排、不可自定义。update zip
-> 特意命名为 `Bambu.Buddy-update-...`（`u` 排在版本号 `0` 之后），让两个安装包始终
+> 特意命名为 `Bambu.Buddy-update-...`（`u` 排在版本号 `0` 之后），让三个安装包始终
 > 排在列表最前。dmg 不生成 blockmap（`dmg.writeUpdateInfo:false`，mac 更新只走 zip
-> 用不上），CI 上传也排除 `*.dmg.blockmap` 兜底。发版说明顶部固定放两个安装包的
+> 用不上），CI 上传也排除 `*.dmg.blockmap` 兜底。发版说明顶部固定放三个安装包的
 > 直链下载引导（见下方发版说明规则）。
 
 > 文件名里带 `macOS` / `Windows`（以及 `arm64` / `x64` 架构），下载时一眼就能分清是哪个平台。
@@ -125,6 +127,34 @@ gh workflow run release.yml -f tag=v0.1.2 -f ref=main
 - 本地 `npm run build:mac`（无证书环境）仍走 ad-hoc（`build/adhoc-sign.js`），只用于自测，别拿去分发。
 - Windows 未签名，SmartScreen 可能提示「不常见」，点「更多信息 → 仍要运行」。
 - 产物文件名由 `package.json` 的 `build.{mac,win}.artifactName` 控制，保持点号风格与历史一致。
+
+### macOS Intel（x64）包是怎么来的
+
+CI 的 mac runner 是 Apple Silicon，两个架构都在这一台上打（`package.json` 的
+`build.mac.target` 里给 dmg/zip 各列了 `arm64` + `x64`）。electron-builder 会自行下载 x64
+版 Electron，签名与公证对架构无感，所以**不需要第二台 Intel 机器**。两个要注意的点：
+
+1. **koffi 的原生包必须手动补装**。原生二进制按平台拆成 optionalDependencies
+   （`@koromix/koffi-darwin-x64`，带 `cpu=x64/os=darwin` 门控），arm64 机器上 `npm ci`
+   **只装 arm64 那份**。release.yml 里的「补装 Intel（x64）用的 koffi 原生包」这步
+   （`npm i --no-save --force @koromix/koffi-darwin-x64@<koffi 版本>`）就是为此。漏掉不会崩——
+   `src/core/fullscreen-watch.js` 有 try/catch 兜底——但「全屏自动隐藏」在 Intel 机上会
+   **静默失灵**，这类问题最难被发现，所以 CI 里加了硬闸（下条）。
+   > 本地 `npm run build:mac` 现在同样会打两份。没补装的话本地那份 x64 就缺 koffi，
+   > 自测全屏隐藏时别拿它当准。
+2. **CI 硬闸「校验 arm64 / x64 两份产物」**：逐个 `.app` 用 `lipo -archs` 核对主程序架构，
+   并确认自身架构的 `@koromix/koffi-darwin-*` 确实打进了 `app.asar.unpacked`；再检查
+   `latest-mac.yml` 同时列出两个架构的 zip（应用内更新靠它选包——electron-updater 按文件名
+   里的 `arm64` 过滤，x64 机器排除 arm64 包，少一条就有一半用户更新时拿到错架构的包）。
+   任一条不满足直接让 job 变红。
+
+**没有 Intel 真机也能自测**：x64 包是纯 Intel 二进制，在 Apple Silicon 上双击即自动走
+Rosetta（首次会提示安装 Rosetta），能覆盖启动、MQTT、koffi 全屏检测这几条主路径。
+确认它确实以 Intel 模式在跑：活动监视器里该进程的「种类」应显示 **Intel**，或：
+
+```bash
+lipo -archs "/Applications/Bambu Buddy.app/Contents/MacOS/Bambu Buddy"
+```
 
 ## 中国大陆下载镜像（腾讯云 COS）
 
@@ -171,24 +201,24 @@ gh workflow run release.yml -f tag=v0.1.2 -f ref=main
 |---|---|---|
 | `bambu-buddy/<tag>/` | 全部产物，**原名** | 归档，可回溯任意旧版 |
 | `bambu-buddy/latest/` | yml + zip + exe + blockmap，**原名** | 应用内自动更新的 generic feed；文件名必须与 `latest*.yml` 里记录的一致 |
-| `bambu-buddy/download/` | 两个安装包，**去掉版本号** | 对外公开的固定直链 + `latest.json`（版本信息） |
+| `bambu-buddy/download/` | 三个安装包，**去掉版本号** | 对外公开的固定直链 + `latest.json`（版本信息） |
 
-### 👉 给大陆用户的下载链接（就发这两条）
+### 👉 给大陆用户的下载链接（就发这三条）
 
 ```
 https://<bucket>.cos.<region>.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-arm64.dmg
+https://<bucket>.cos.<region>.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-x64.dmg
 https://<bucket>.cos.<region>.myqcloud.com/bambu-buddy/download/Bambu.Buddy-Windows-x64.Setup.exe
 ```
 
-这两条地址**永不变**：CI 每次发版都把最新安装包用这个去掉版本号的固定名覆盖上去。
+macOS 两条按芯片分：`arm64` 给 Apple 芯片（M1/M2/M3…），`x64` 给 Intel Mac。发给用户时
+顺手带一句「不确定就点左上角苹果菜单 → 关于本机」，能省掉大部分「下错了打不开」的私信。
+
+这三条地址**永不变**：CI 每次发版都把最新安装包用这个去掉版本号的固定名覆盖上去。
 所以贴到小红书 / QQ 群 / 贴吧等渠道**一次就够**，以后发新版无需重贴、无需改任何文档。
 
-> 忘了链接也不要紧：每次发版的 Actions 日志末尾，「镜像到腾讯云 COS」这步会把两条
+> 忘了链接也不要紧：每次发版的 Actions 日志末尾，「镜像到腾讯云 COS」这步会把三条
 > 完整地址打印出来（见 `scripts/upload-cos.js` 结尾的「中国大陆下载直链」）。
-
-> 注意 README 里**没有**放这两条链接——README 本身就在 GitHub 上，打不开 GitHub 的
-> 用户根本看不到它。（若日后想照顾「网页能开、但安装包下载卡住」的半通用户，
-> 再在 README 补一行即可。）
 
 > 说明：
 > - **草稿模式（`draft=true`）跳过镜像**：草稿是自测包，覆盖 `latest/` 会让线上用户
