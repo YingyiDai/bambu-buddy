@@ -641,6 +641,7 @@ async function ensureErrorTable(serial, locale) {
 
 // 连接生命周期交给 PrinterHub（diff 式：新增建连、消失断连、配置未变不动）。
 // onAuthFailure：云端 token 失效会同时命中所有云端台，去抖后只提示一次。
+// refresh(serial)：云端轮询检出某台重新上线时，立刻请求一次 pushall（见 refreshCloudPrinters）。
 const hub = new PrinterHub({
   makeSource: makeSourceFor,
   onReport: applyReport,
@@ -656,7 +657,7 @@ const hub = new PrinterHub({
 
 // 数据源与统一列表对齐（替代单台时代的 buildDataSource）：
 //   - mock：断开全部真机连接，单个 MockDataSource 挂在 MOCK_SERIAL 下；
-//   - live：hub.sync 全量对齐（配置签名未变的台不重连——云端 45s 轮询安全），
+//   - live：hub.sync 全量对齐（配置签名未变的台不重连——云端轮询刷新 online 不会闪断），
 //     清掉已不在列表里的台的残留状态，逐台就绪错误码表。
 function rebuildDataSources() {
   const mode = store.get('dataSource', 'mock');
@@ -1344,9 +1345,14 @@ async function refreshCloudPrinters() {
   const account = store.get('bambuAccount');
   if (!account || !account.token) return;
   const r = await bambuAuth.listDevices(account.region, decryptSecret(account.token));
+  let roseSerials = [];
   if (r.ok) {
     // 保留用户重命名过的名称：轮询刷新只更新 model/online/printStatus，不覆盖已存的 name。
-    const prevBySerial = new Map(store.get('bambuPrinters', []).map((p) => [p.serial, p]));
+    const prevList = store.get('bambuPrinters', []);
+    const prevBySerial = new Map(prevList.map((p) => [p.serial, p]));
+    // 「打印机重新上线」上升沿（online 非 true→true）：轮询只更新展示、不驱动熊猫，
+    // 故检出后主动戳 MQTT 立即 pushall，免等源内 5 分钟定时——熊猫及时恢复在线。
+    roseSerials = registry.onlineRoseSerials(prevList, r.devices);
     store.set('bambuPrinters', r.devices.map((d) => ({
       serial: d.serial,
       name: prevBySerial.get(d.serial)?.name || d.name,
@@ -1359,13 +1365,19 @@ async function refreshCloudPrinters() {
   }
   // 列表可能新增/减少了台子 → 与常驻连接对齐（配置签名未变的台不重连，轮询不会闪断）。
   // rebuildDataSources 内部会 rebuildTray；mock 模式只刷托盘展示、不动 mock 源。
-  if (store.get('dataSource', 'mock') === 'live') rebuildDataSources();
-  else rebuildTray();
+  if (store.get('dataSource', 'mock') === 'live') {
+    rebuildDataSources();
+    // 对齐完成后（源已就绪）再逐台即时刷新刚上线的台。
+    for (const serial of roseSerials) hub.refresh(serial);
+  } else rebuildTray();
   if (settingsWin && !settingsWin.isDestroyed()) settingsWin.webContents.send('printers:changed');
 }
+// 轮询间隔 = 「打印机上线后熊猫恢复在线」的延迟上限（配合上升沿即时 pushall）。
+// 30s 在恢复速度与云 API 温和之间取平衡：过短有被 Bambu 云限流的风险，不宜低于 ~20s。
+const CLOUD_POLL_MS = 30000;
 function startCloudPoll() {
   if (cloudPollTimer) clearInterval(cloudPollTimer);
-  cloudPollTimer = setInterval(refreshCloudPrinters, 45000);
+  cloudPollTimer = setInterval(refreshCloudPrinters, CLOUD_POLL_MS);
 }
 
 // 合并登录流程：登录成功后一次性持久化账号 + 拉取全部云端打印机进统一列表，

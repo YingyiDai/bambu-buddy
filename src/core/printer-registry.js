@@ -35,6 +35,19 @@ function pickTransport(entry) {
   return entry && entry.hasLan ? 'lan' : 'cloud';
 }
 
+// 云端轮询检出「打印机重新上线」的上升沿：online 从「非 true」（false/null/缺省）升到 true。
+// 主进程据此立刻让对应 MQTT 源重发 pushall——否则打印机上线后要干等 _requestPushAll 的
+// 5 分钟定时才恢复，熊猫长时间卡在离线（真机重启/早上开机场景的核心痛点）。
+// 掉线（true→false）不在此列；prev 里没有的台按「非 true」处理，故首帧上线也算上升沿。
+function onlineRoseSerials(prev = [], next = []) {
+  const wasOnline = new Map((prev || []).map((p) => [p.serial, p.online === true]));
+  const rose = [];
+  for (const d of next || []) {
+    if (d && d.online === true && !wasOnline.get(d.serial)) rose.push(d.serial);
+  }
+  return rose;
+}
+
 function addLan(lanList, printer) {
   const rest = (lanList || []).filter((p) => p.serial !== printer.serial);
   return [...rest, { ...printer }];
@@ -66,4 +79,4 @@ function computeMigration(s = {}) {
   return { set, del };
 }
 
-module.exports = { mergePrinters, pickTransport, addLan, removeLan, renameInList, computeMigration };
+module.exports = { mergePrinters, pickTransport, onlineRoseSerials, addLan, removeLan, renameInList, computeMigration };
