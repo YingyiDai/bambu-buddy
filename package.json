@@ -1,7 +1,7 @@
 {
   "name": "bambu-buddy",
   "version": "0.4.3",
-  "description": "Bambu Buddy — 一只熊猫常驻桌面，根据打印机状态播放对应动画",
+  "description": "Bambu Buddy \u2014 \u4e00\u53ea\u718a\u732b\u5e38\u9a7b\u684c\u9762\uff0c\u6839\u636e\u6253\u5370\u673a\u72b6\u6001\u64ad\u653e\u5bf9\u5e94\u52a8\u753b",
   "main": "src/main.js",
   "author": "YingyiDai",
   "license": "MIT",
@@ -78,5 +78,8 @@
     "publish": {
       "provider": "github"
     }
+  },
+  "overrides": {
+    "fast-uri": "3.1.3"
   }
 }
