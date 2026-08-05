@@ -7,8 +7,9 @@
 #      可选 ref（构建用的 commit，默认即 tag；补建旧版时可填 main）
 #
 # 产物命名（见 package.json build.artifactName）：
-#   macOS arm64 → Bambu.Buddy-<ver>-macOS-arm64.dmg / .zip（Developer ID 签名 + 公证）
-#   Windows x64 → Bambu.Buddy-<ver>-Windows-x64.Setup.exe（未签名）
+#   macOS arm64（Apple Silicon）→ Bambu.Buddy-<ver>-macOS-arm64.dmg / .zip（Developer ID 签名 + 公证）
+#   macOS x64（Intel）          → Bambu.Buddy-<ver>-macOS-x64.dmg / .zip（同上）
+#   Windows x64                 → Bambu.Buddy-<ver>-Windows-x64.Setup.exe（未签名）
 # 另有应用内自动更新所需的 latest-mac.yml / latest.yml / *.blockmap（见 RELEASING.md「产物」）。
 
 name: release
@@ -48,6 +49,19 @@ jobs:
           node-version: '22'
           cache: 'npm'
       - run: npm ci
+      - name: 补装 Intel（x64）用的 koffi 原生包
+        # koffi 的原生二进制按平台拆成 optionalDependencies（@koromix/koffi-darwin-x64 带
+        # cpu=x64/os=darwin 门控），而 runner 是 Apple Silicon，`npm ci` 只会装 arm64 那份。
+        # 不补装的话 Intel 包里没有 x64 koffi，装到 Intel 机上「全屏自动隐藏」会静默降级
+        # （见 src/core/fullscreen-watch.js 的 try/catch 兜底：加载失败即永不判为全屏）。
+        # --force 用来跳过 npm 的 EBADPLATFORM 检查（就是要装一份跨架构的包进去）。
+        # 版本必须与 package.json 里 koffi 的实际安装版本一致，故从 lock 里读，避免手写漂移。
+        run: |
+          set -e
+          KOFFI_VER=$(node -p "require('./node_modules/koffi/package.json').version")
+          echo "koffi=$KOFFI_VER，补装 @koromix/koffi-darwin-x64@$KOFFI_VER"
+          npm i --no-save --force "@koromix/koffi-darwin-x64@$KOFFI_VER"
+          test -d node_modules/@koromix/koffi-darwin-x64
       - name: 准备公证用 API Key（把 secret 里的 .p8 写到临时文件）
         run: |
           echo "${{ secrets.APPLE_API_KEY_P8 }}" | base64 --decode > "$RUNNER_TEMP/authkey.p8"
@@ -60,6 +74,37 @@ jobs:
           # 公证：App Store Connect API Key（APPLE_API_KEY 指向上一步写出的 .p8 文件）
           APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
           APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+      - name: 硬闸——校验 arm64 / x64 两份产物
+        # 两条 Intel 支持最容易静默失效的地方，都在这里卡死，别等用户装了才发现：
+        #   ① 每个 .app 的主程序架构对不对，且**自身架构**的 koffi 原生包确实打进去了
+        #      （缺了不会崩，只会让「全屏自动隐藏」在该架构上永久失灵——静默降级最难发现）；
+        #   ② latest-mac.yml 里必须同时列出两个架构的 zip：应用内更新靠它选包，
+        #      electron-updater 按文件名里的 arm64 过滤（x64 机器排除 arm64 包），
+        #      少一条就会有一半用户更新时拿到错架构的包。
+        run: |
+          set -e
+          for app in dist/mac*/*.app; do
+            bin="$app/Contents/MacOS/Bambu Buddy"
+            archs=$(lipo -archs "$bin")
+            case "$archs" in
+              *arm64*)  want=arm64 ;;
+              *x86_64*) want=x64 ;;
+              *) echo "::error::$app 主程序架构无法识别：$archs"; exit 1 ;;
+            esac
+            koffi="$app/Contents/Resources/app.asar.unpacked/node_modules/@koromix/koffi-darwin-$want"
+            if [ ! -d "$koffi" ]; then
+              echo "::error::$app（$archs）里缺少 @koromix/koffi-darwin-$want，全屏自动隐藏在该架构上会失效"
+              exit 1
+            fi
+            echo "✓ $app  archs=$archs  koffi=darwin-$want"
+          done
+          echo "=== latest-mac.yml ==="
+          cat dist/latest-mac.yml
+          for a in arm64 x64; do
+            grep -q -- "-$a-" dist/latest-mac.yml || {
+              echo "::error::latest-mac.yml 里没有 $a 的 zip——该架构用户的应用内自动更新会拿错包"; exit 1; }
+          done
+          echo "✓ latest-mac.yml 同时包含 arm64 与 x64"
       - uses: actions/upload-artifact@v4
         with:
           name: mac-dist
@@ -191,10 +236,12 @@ jobs:
           fi
           {
             printf '## 📥 Download\n\n'
-            printf -- '- **macOS (Apple Silicon)**: [Bambu.Buddy-%s-macOS-arm64.dmg](%s/Bambu.Buddy-%s-macOS-arm64.dmg)\n' "$VER" "$BASE" "$VER"
+            printf -- '- **macOS (Apple Silicon / M-series)**: [Bambu.Buddy-%s-macOS-arm64.dmg](%s/Bambu.Buddy-%s-macOS-arm64.dmg)\n' "$VER" "$BASE" "$VER"
+            printf -- '- **macOS (Intel)**: [Bambu.Buddy-%s-macOS-x64.dmg](%s/Bambu.Buddy-%s-macOS-x64.dmg)\n' "$VER" "$BASE" "$VER"
             printf -- '- **Windows (x64)**: [Bambu.Buddy-%s-Windows-x64.Setup.exe](%s/Bambu.Buddy-%s-Windows-x64.Setup.exe)\n\n' "$VER" "$BASE" "$VER"
+            printf -- '> Not sure which Mac you have?  → Apple menu > About This Mac: "Apple M1/M2/M3…" = Apple Silicon, "Intel" = Intel.\n\n'
             if [ -n "$COS_BASE" ]; then
-              printf '> 🇨🇳 **China mainland mirror** (use if GitHub download is slow or blocked): [macOS](%s/Bambu.Buddy-%s-macOS-arm64.dmg) · [Windows](%s/Bambu.Buddy-%s-Windows-x64.Setup.exe)\n\n' "$COS_BASE" "$VER" "$COS_BASE" "$VER"
+              printf '> 🇨🇳 **China mainland mirror** (use if GitHub download is slow or blocked): [macOS (Apple Silicon)](%s/Bambu.Buddy-%s-macOS-arm64.dmg) · [macOS (Intel)](%s/Bambu.Buddy-%s-macOS-x64.dmg) · [Windows](%s/Bambu.Buddy-%s-Windows-x64.Setup.exe)\n\n' "$COS_BASE" "$VER" "$COS_BASE" "$VER" "$COS_BASE" "$VER"
             fi
             printf '> The other files in the asset list (`latest*.yml` / `*.zip` / `*.blockmap`) are needed for in-app auto-update; regular users can ignore them.\n\n'
             printf -- '---\n\n'

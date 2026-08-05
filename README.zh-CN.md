@@ -11,12 +11,12 @@
 <sub>非官方第三方项目，与 Bambu Lab（拓竹科技）无从属或合作关系。</sub>
 
 ![Platform](https://img.shields.io/badge/platform-macOS%20%7C%20Windows-black?logo=apple)
-![Apple Silicon](https://img.shields.io/badge/Apple%20Silicon-arm64-333)
+![Mac](https://img.shields.io/badge/Mac-Apple%20Silicon%20%7C%20Intel-333)
 ![Version](https://img.shields.io/github/v/release/YingyiDai/bambu-buddy?color=brightgreen&label=version)
 
 ### [⬇️ 下载 macOS / Windows 版本](https://github.com/YingyiDai/bambu-buddy/releases/latest)
 
-<sub>🇨🇳 GitHub 打不开或下载慢？走**国内镜像**：[macOS (Apple Silicon)](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-arm64.dmg) · [Windows (x64)](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-Windows-x64.Setup.exe)（始终为最新版）</sub>
+<sub>🇨🇳 GitHub 打不开或下载慢？走**国内镜像**：[macOS (Apple Silicon)](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-arm64.dmg) · [macOS (Intel)](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-x64.dmg) · [Windows (x64)](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-Windows-x64.Setup.exe)（始终为最新版）</sub>
 
 </div>
 
@@ -65,8 +65,8 @@ Bambu Buddy 把你打印机的状态变成桌面上一只会动的熊猫。它�
 
 ### macOS
 
-1. 到 **[Releases](https://github.com/YingyiDai/bambu-buddy/releases/latest)** 下载最新的 `.dmg`（Apple Silicon / arm64）。
-   国内可用镜像：**[国内下载 macOS 版](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-arm64.dmg)**（无需访问 GitHub，始终为最新版）。
+1. 到 **[Releases](https://github.com/YingyiDai/bambu-buddy/releases/latest)** 下载对应你 Mac 的最新 `.dmg`——Apple 芯片（M1/M2/M3…）下 `macOS-arm64`，Intel 芯片下 `macOS-x64`。不确定是哪种？点左上角苹果菜单 › **关于本机** 看一眼。
+   国内可用镜像：**[Apple 芯片版](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-arm64.dmg)** · **[Intel 版](https://bambu-buddy-1326566814.cos.ap-guangzhou.myqcloud.com/bambu-buddy/download/Bambu.Buddy-macOS-x64.dmg)**（无需访问 GitHub，始终为最新版）。
 2. 打开 DMG，把 **Bambu Buddy** 拖进「应用程序」。
 3. 直接打开 **Bambu Buddy** 即可——已做 Apple 签名（Developer ID）与公证，首次打开不会有安全警告。
 

@@ -46,8 +46,20 @@
       "icon": "assets/icon/AppIcon.mac.png",
       "category": "public.app-category.utilities",
       "target": [
-        "dmg",
-        "zip"
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
       ],
       "artifactName": "Bambu.Buddy-update-macOS-${arch}-${version}.${ext}",
       "hardenedRuntime": true,

@@ -172,7 +172,11 @@ async function main() {
       ...MUTABLE,
       ContentDisposition: `attachment; filename="${name}"`, // 另存为带版本号的文件名
     });
-    links[/\.dmg$/i.test(f) ? 'macOS' : 'Windows'] = `${publicBase}/${key}`;
+    // 按「平台-架构」做 key（如 macOS-arm64 / macOS-x64 / Windows-x64）——macOS 有
+    // Apple Silicon 与 Intel 两份包，只按平台归会互相覆盖，漏掉一条直链。
+    const m = stable.match(/-(macOS|Windows)-(arm64|x64)/);
+    if (!m) throw new Error(`文件名里认不出平台/架构，无法生成固定直链：${name}`);
+    links[`${m[1]}-${m[2]}`] = `${publicBase}/${key}`;
   }
 
   // 给 Phase 2 的官网页面留的版本信息：页面读它就能显示最新版本号，
@@ -192,7 +196,7 @@ async function main() {
   });
 
   console.log('\n=== 中国大陆下载直链（固定，发新版不变）===');
-  for (const [os, url] of Object.entries(links)) console.log(`${os.padEnd(8)} ${url}`);
+  for (const [target, url] of Object.entries(links)) console.log(`${target.padEnd(14)} ${url}`);
 }
 
 main().catch((e) => {
