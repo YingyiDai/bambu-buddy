@@ -21,6 +21,9 @@ const STRINGS = {
     'label.remainTime': '剩余{time}',
     // 预计完成时刻（本机时区，如「完成 14:30」），由渲染层用 remainMins + 本机时间算出。
     'label.finishTime': '完成 {time}',
+    // 跨自然日的完成时刻：时刻后跟「差几天」（如「完成 08:00+1」＝明早八点、「+7」＝七天后）。
+    // 只有时:分会让今天和明天的同一时刻长得一样，故跨天必须标出来；天数不封顶，长件如实显示。
+    'label.finishTimeDayOffset': '{time}+{d}',
     'label.changingFilament': '换料中',
     'label.paused': '用户暂停',
     'label.paused.generic': '已暂停',
@@ -199,7 +202,7 @@ const STRINGS = {
     'settings.showTime': '显示剩余时间',
     'settings.showTimeDesc': '打印中在熊猫下方显示预计剩余时间',
     'settings.showFinishTime': '显示完成时间',
-    'settings.showFinishTimeDesc': '打印中在熊猫下方显示预计完成时刻（按本机时区）',
+    'settings.showFinishTimeDesc': '打印中在熊猫下方显示预计完成时刻（按本机时区；跨天标 +1、+2）',
     'settings.showPrinter': '在桌面显示',
     'settings.hidePrinter': '从桌面隐藏',
     'settings.matchFilamentColor': '跟随耗材颜色',
@@ -398,6 +401,10 @@ const STRINGS = {
     'label.remainTime': '{time} left',
     // Estimated completion clock time (computer's timezone, e.g. "done 14:30"), computed in the renderer from remainMins + local time.
     'label.finishTime': 'Done {time}',
+    // Completion time that lands on a later calendar day: the clock time carries a day offset
+    // ("Done 08:00+1" = 8am tomorrow, "+7" = a week out). Hours:minutes alone cannot tell
+    // today's 08:00 from tomorrow's, so the offset is always shown; it is not capped.
+    'label.finishTimeDayOffset': '{time}+{d}',
     'label.changingFilament': 'Changing filament',
     'label.paused': 'Paused by the user',
     'label.paused.generic': 'Paused',
@@ -575,7 +582,7 @@ const STRINGS = {
     'settings.showTime': 'Show Remaining Time',
     'settings.showTimeDesc': 'While printing, show estimated time remaining below the panda',
     'settings.showFinishTime': 'Show Completion Time',
-    'settings.showFinishTimeDesc': 'While printing, show the estimated completion time (in your computer\'s timezone) below the panda',
+    'settings.showFinishTimeDesc': 'While printing, show the estimated completion time (in your computer\'s timezone) below the panda; +1, +2 marks a later day',
     'settings.showPrinter': 'Show on desktop',
     'settings.hidePrinter': 'Hide from desktop',
     'settings.matchFilamentColor': 'Match Filament Color',

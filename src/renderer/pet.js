@@ -55,10 +55,17 @@ function fmtClock(ms) {
   return new Date(ms).toLocaleTimeString(undefined, opts);
 }
 
-// 预计完成时刻：当前时间 + 剩余分钟。
+// 预计完成时刻：当前时间 + 剩余分钟。只显示「时:分」，故跨自然日时补 +1 / +2 …… 后缀
+// （见 day-offset.js）——否则今晚 23:00 起打 9 小时和打 33 小时都写作「完成 08:00」，
+// 字面一模一样。天数不设上限：打一星期的长件会如实显示「完成 08:00+7」。
 function fmtFinishClock(remainMins) {
   if (!Number.isFinite(remainMins) || remainMins <= 0) return null;
-  return fmtClock(Date.now() + remainMins * 60000);
+  const now = Date.now();
+  const finishAt = now + remainMins * 60000;
+  const clock = fmtClock(finishAt);
+  const days = dayOffset(now, finishAt);
+  if (days <= 0) return clock;
+  return t(currentLocale, 'label.finishTimeDayOffset', { time: clock, d: days });
 }
 
 // 已完成的**相对时间**：刚刚 / X 分钟前 / X 小时前（跟随 locale）。就地按当前时间算——完成记忆
