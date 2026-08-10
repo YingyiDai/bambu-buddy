@@ -18,19 +18,6 @@ function parseTrayColor(raw) {
   return '#' + rgb.toLowerCase();
 }
 
-// snow 里「AMS 编号 / 槽号」的拆法有两种讲法，手上只有一台真机的样本，不能断定所有
-// 固件 / AMS 组合都用同一种，故两种都试（顺序即可信度）：
-//   ① 字节拆分：本项目在一台双头机上实证（snow=257 → AMS1 槽1，353 帧稳定对得上）。
-//   ② 半字节拆分：pybambu 注释里的讲法「bottom 4 bits is tray, remainder is ams index」，
-//      无实现，作者自注「not sure about ams HT 128+」。
-// 两者在 snow < 16 时完全等价，只在更大的值上分岔。只采纳「真的落在报文里存在的槽、
-// 且该槽有颜色」的那一种 —— 拆错的那种必然指向不存在的 AMS/槽，自然被淘汰，
-// 不会凭空造出一个错色；两种都落空才算解不出（交回 tray_now）。
-const SNOW_DECODERS = [
-  (snow) => [(snow >> 8) & 0xff, snow & 0xff], // ① 字节拆分
-  (snow) => [snow >> 4, snow & 0x0f],          // ② 半字节拆分
-];
-
 /** 从合并后的报文取 AMS 单元 amsId 的 slotId 槽颜色；缺 id 时按数组下标回退。 */
 function colorAtSlot(report, amsId, slotId) {
   const ams = report.ams;
@@ -59,10 +46,11 @@ function externalColor(report, slotId) {
  * 两卷料同时在走，ams.tray_now 只反映其中一个喷头、无法代表正在出料的主喷头。改认
  * device.extruder.info[].snow（正在出料喷头的当前装载槽）：
  *   snow = 高字节 ams_id | 低字节 tray_id，0xFFFF=空槽；stat 非 0 = 该喷头正在出料。
- * ⚠️ 「字节拆分」(>>8 / &0xFF) 是真机抓包实证的：一台双头机上 snow=257 → AMS1 槽1，
- *    与该帧 ams 数组里 id=1 槽 tray_color 的粉色对得上，全程 353 帧稳定。故它排在第一位。
- *    但一台机器的样本不足以断定全体固件 / AMS 组合同此一种拆法，pybambu 记的又是另一种
- *    （半字节拆分），所以两种都试、只认落到真实槽上的那种（见 SNOW_DECODERS）。
+ * ⚠️ 解码用「字节拆分」(>>8 / &0xFF) 是真机抓包实证的：一台双头机上 snow=257 → AMS1 槽1，
+ *    与该帧 ams 数组里 id=1 槽 tray_color 的粉色对得上，全程 353 帧稳定。
+ *    pybambu 对 snow 只有一句「bottom 4 bits is tray, remainder is ams index」的注释、无实现，
+ *    且作者自注「not sure about ams HT 128+」；按其「半字节拆分」(>>4) 解码 257 会得 ams=16，
+ *    在真机上对不到槽 → 与实测矛盾，故不采用。若拿到 AMS-HT（ams 索引 128+）真机再核实。
  *    非双头机（extruder.info < 2 项）走原 tray_now，不受影响。
  *
  * ⚠️ 本分支只做「加法」：拿不到结论一律返回 null 交回 tray_now 老路径，绝不代替它下结论。
@@ -93,14 +81,10 @@ function resolveDualNozzleColor(report) {
   if (!active) return null;
 
   const snow = Number(active.snow);
-  for (const decode of SNOW_DECODERS) {
-    const [amsId, slotId] = decode(snow);
-    const color = EXTERNAL_AMS_IDS.has(amsId)
-      ? externalColor(report, slotId)
-      : colorAtSlot(report, amsId, slotId);
-    if (color) return color;
-  }
-  return null;
+  const amsId = (snow >> 8) & 0xff;
+  const slotId = snow & 0xff;
+  if (EXTERNAL_AMS_IDS.has(amsId)) return externalColor(report, slotId);
+  return colorAtSlot(report, amsId, slotId);
 }
 
 /**

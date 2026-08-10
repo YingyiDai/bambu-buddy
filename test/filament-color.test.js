@@ -170,37 +170,6 @@ test('双喷头：stat 缺失/恒 0 时，唯一装料的喷头即主喷头（�
   assert.equal(resolveFilamentColor(report), '#f55a74');
 });
 
-test('双喷头：字节拆分对不到槽时改用半字节拆分（pybambu 记的那种拆法）', () => {
-  // snow=0x11：字节拆分 → AMS0 槽17（不存在）；半字节拆分 → AMS1 槽1 = 粉。
-  // 只有落到真实存在的槽上的那种拆法会被采纳，故取到粉色而不是 tray_now 指向的紫。
-  const report = {
-    ams: {
-      tray_now: '1', // AMS0 槽1 = 紫，另一喷头选中的槽
-      ams: [
-        { id: '0', tray: [{ id: '0', tray_color: '000000FF' }, { id: '1', tray_color: 'A03CF7FF' }] },
-        { id: '1', tray: [{ id: '0', tray_color: 'FEC600FF' }, { id: '1', tray_color: 'F55A74FF' }] },
-      ],
-    },
-    device: { extruder: { info: [{ id: 0, snow: 65535, stat: 0 }, { id: 1, snow: 0x11, stat: 197376 }] } },
-  };
-  assert.equal(resolveFilamentColor(report), '#f55a74');
-});
-
-test('双喷头：字节拆分能对到槽时不受半字节拆分干扰（真机实证那台不回归）', () => {
-  // snow=257：字节拆分 → AMS1 槽1 = 粉（真机实证）；半字节拆分会得 AMS16（不存在）。
-  const report = {
-    ams: {
-      tray_now: '1',
-      ams: [
-        { id: '0', tray: [{ id: '0', tray_color: '000000FF' }, { id: '1', tray_color: 'A03CF7FF' }] },
-        { id: '1', tray: [{ id: '0', tray_color: 'FEC600FF' }, { id: '1', tray_color: 'F55A74FF' }] },
-      ],
-    },
-    device: { extruder: { info: [{ id: 0, snow: 65535, stat: 0 }, { id: 1, snow: 257, stat: 197376 }] } },
-  };
-  assert.equal(resolveFilamentColor(report), '#f55a74');
-});
-
 test('双喷头：snow 指向不存在的 AMS 槽时回落 tray_now，不是返回 null', () => {
   const report = {
     ams: {
