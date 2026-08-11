@@ -61,21 +61,40 @@
 想在正式发版前先拿到全平台安装包自测、但**不想落到公开 Releases 页、也不想惊动老用户的
 自动更新**时，用「草稿模式」跑一遍：
 
-1. 仓库 **Actions** 页 → 选 `release` 工作流 → **Run workflow**。
-2. `tag` 填测试 tag（如 `v0.4.1-test`）。
-3. `ref` 填要打包的 commit/分支（如 `main`，或 `claude/xxx` 特性分支）。
-4. **勾选 `draft`**（建成草稿 Release）。
-5. 运行结束后，Release 以**草稿**形式存在：只有仓库协作者能在 Releases 页看到（带
+1. 在**特性分支**上把 `package.json` 的 `"version"` 改成**预发布号**：下一个正式版号 +
+   `-beta.N`（如正式版将发 `0.4.5`，测试包就写 `0.4.5-beta.1`，第二轮 `-beta.2`）。
+   连同英文 `RELEASE_NOTES.md` 一起提交、推分支——**别合进 `main`**，正式发版时再合。
+   > **为什么必须改版本号**（三处都读它，留着旧版号会出乱子）：
+   > - 产物文件名由 `package.json` 的 `version` 拼（`Bambu.Buddy-<ver>-macOS-arm64.dmg`），
+   >   不改的话测试包与正式包重名，用户手里两个文件分不清、你也没法确认他装的是哪份。
+   > - 应用「关于」页与托盘显示的就是这个版本号，测试反馈里能一眼看出版本。
+   > - 发版说明顶部的下载引导由 CI 用 **tag** 拼文件名（`VER="${TAG#v}"`），所以
+   >   **tag 必须与 `version` 完全一致**（`0.4.5-beta.1` ↔ `v0.4.5-beta.1`），否则链接全是死链。
+   >
+   > **为什么是 `-beta.N` 而不是随手编一个号**：`compareSemver`（`src/core/updater.js`）按
+   > semver 规则排序，`0.4.5-beta.1` 正好夹在 `0.4.4` 与 `0.4.5` 之间——测试用户既不会被
+   > 「更新」回旧正式版，将来 `0.4.5` 正式发布时又能正常收到更新。用 `0.4.5` 本身当测试号
+   > 则会让测试用户永远停在测试包上（版本号与正式版相同 → 判定为已是最新）。
+2. 仓库 **Actions** 页 → 选 `release` 工作流 → **Run workflow**。
+3. `tag` 填与版本号一致的测试 tag（如 `v0.4.5-beta.1`）。
+4. `ref` 填要打包的 commit/分支（那条特性分支，如 `claude/xxx`）。
+5. **勾选 `draft`**（建成草稿 Release）。
+6. 运行结束后，Release 以**草稿**形式存在：只有仓库协作者能在 Releases 页看到（带
    「Draft」标记），**不进公开 releases API**，所以**老版本应用的自动更新不会把它当成最新版拉走**。
 
 命令行触发同理：
 ```bash
-gh workflow run release.yml -f tag=v0.4.1-test -f ref=main -f draft=true
+gh workflow run release.yml -f tag=v0.4.5-beta.1 -f ref=claude/xxx -f draft=true
 ```
 
 自测通过后：
-- **要转正**：直接在草稿 Release 页面点 **Publish release** 即可——因为建草稿时用了
-  `--target <本次构建的 commit>`，转正时 tag 正好落在你实测过的那份代码上，无需重打。
+- **要转正**：把特性分支合进 `main`，按上面「日常发版」走一遍——版本号从 `0.4.5-beta.1`
+  改成 `0.4.5`，打 `v0.4.5` tag 重新发一次。**不要**直接在草稿页点 Publish：
+  草稿一旦 Publish 就进公开 releases API 成为「最新版」，而 `0.4.5-beta.1` 比线上的
+  `0.4.4` 新，**全体线上用户会被自动更新到这个 beta 包**。转正后记得删掉草稿。
+  > 若测试包用的**不是** `-beta.N` 预发布号（例如只是补建某个正式版），草稿页点
+  > **Publish release** 就够了——建草稿时用了 `--target <本次构建的 commit>`，
+  > 转正时 tag 正好落在你实测过的那份代码上，无需重打。
 - **不要了**：在页面删掉这个草稿 Release（连带其关联的测试 tag）即可，不留痕迹。
 
 > 说明：

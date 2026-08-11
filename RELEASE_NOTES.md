@@ -1,16 +1,11 @@
+> ⚠️ **This is a beta build for testing, not a public release.** Please report anything that
+> looks wrong. It will be superseded by the next stable release, which your app will pick up
+> automatically.
+
 ## What's Changed
 
-### New
-- **Intel Mac build.** macOS now ships in two flavors: `macOS-arm64` for Apple Silicon (M1/M2/M3…) and `macOS-x64` for Intel Macs. Download the one that matches your machine — Apple menu › About This Mac tells you which one you have. In-app updates pick the right build automatically.
-
 ### Fixes
-- **No more flicker when a print starts.** In the first second of a job the panda could flash "Printing", "Finished" or "Idle" before settling on "Preparing". Those half-updated frames from the printer are now recognized for what they are, and a new state stabilizer holds back any single-frame state change until the printer confirms it — so the panda shows the state your printer is really in, without the twitch.
-- **Cloud printers come back online on their own.** After powering the printer off and on, the panda could stay offline for up to five minutes, or until you signed in again. It now recovers within 30 seconds, with no manual re-login.
-- **Rounded Dock icon on every macOS version.** The icon was a square image that relied on macOS to round the corners, which only macOS 26 does — on macOS 15 and earlier it showed up square. The rounded shape is now part of the icon itself.
+- **Filament color following works again on dual-nozzle printers (H2D / H2C).** On machines with two nozzles the panda could keep its original green filament and never follow the loaded color at all. Two everyday setups ran into this: printing from the external spool (common on an H2D without an AMS), and printers that don't report which nozzle is currently extruding. In both cases the app gave up rather than guessing. It now reads the external spool directly, and when it genuinely cannot tell the nozzles apart it falls back to the single-nozzle behavior instead of showing no color at all. Single-nozzle printers are unaffected.
+- **Beta builds no longer get "updated" back to an older stable release.** Version numbers with a beta suffix were compared incorrectly, so a beta build looked older than the stable release it was built on top of and the app would quietly download and install the older version over it. Beta versions are now ordered correctly: newer than the stable release they follow, older than the stable release they lead to — so a beta upgrades to the next stable release and never downgrades.
 
-### Improvements
-- **Overnight prints show which day they finish.** A print that ends after midnight now reads "Done 08:00+1" instead of a bare "Done 08:00", so a 9-hour and a 33-hour job are no longer indistinguishable. The offset counts local calendar days, so it stays correct across daylight-saving changes, and it is not capped — a week-long print shows "+7".
-
-### Under the hood
-- Release notes are now hand-written in English and enforced by CI, and the release pipeline builds, verifies, signs and mirrors both Mac architectures.
-- New developer script to preview the panda's label off-screen, so label wording and layout can be checked without a printer or a display.
+**Testing notes:** if you print with two nozzles, or from the external spool, check that the panda's filament color matches what is actually loaded. The tray icon should show no update available while you are on this beta.

@@ -5,17 +5,49 @@
 const https = require('https');
 
 // ---- semver 比较 ----
+// 拆成「数字段 + 预发布标识段」：`v0.4.5-beta.1` → { nums: [0,4,5], pre: ['beta', 1] }。
+// 预发布必须单独拆出来：直接 '0.4.5-beta.1'.split('.').map(Number) 会把 '5-beta' 变成 NaN，
+// 而下面的 `|| 0` 又把它当成 0，于是测试版会被算成 0.4.0.1 —— 比正式版 0.4.4 还旧，
+// 装了测试包的用户会被「更新」回旧正式版（见 planUpdateDownload → autoUpdater.downloadUpdate）。
+function parseSemver(v) {
+  const s = String(v).replace(/^v/i, '').trim();
+  const dash = s.indexOf('-');
+  const core = dash === -1 ? s : s.slice(0, dash);
+  const pre = dash === -1 ? '' : s.slice(dash + 1);
+  return {
+    nums: core.split('.').map((x) => Number(x) || 0),
+    // 纯数字段转成 number（按数值比），其余保留字符串（按 ASCII 比）——semver 规则
+    pre: pre ? pre.split('.').map((x) => (/^\d+$/.test(x) ? Number(x) : x)) : [],
+  };
+}
+
 function compareSemver(a, b) {
-  // 去 v 前缀
-  const strip = (s) => String(s).replace(/^v/i, '');
-  const aa = strip(a).split('.').map(Number);
-  const bb = strip(b).split('.').map(Number);
-  const len = Math.max(aa.length, bb.length);
+  const pa = parseSemver(a);
+  const pb = parseSemver(b);
+  const len = Math.max(pa.nums.length, pb.nums.length);
   for (let i = 0; i < len; i++) {
-    const na = aa[i] || 0;
-    const nb = bb[i] || 0;
+    const na = pa.nums[i] || 0;
+    const nb = pb.nums[i] || 0;
     if (na < nb) return -1;  // a < b
     if (na > nb) return 1;   // a > b
+  }
+  // 数字段相同：带预发布标识的一方更小（0.4.5-beta.1 < 0.4.5），都不带则相等。
+  if (!pa.pre.length && !pb.pre.length) return 0;
+  if (!pa.pre.length) return 1;
+  if (!pb.pre.length) return -1;
+  const plen = Math.max(pa.pre.length, pb.pre.length);
+  for (let i = 0; i < plen; i++) {
+    const ia = pa.pre[i];
+    const ib = pb.pre[i];
+    if (ia === ib) continue;
+    if (ia === undefined) return -1; // 段数少的更小：beta < beta.1
+    if (ib === undefined) return 1;
+    const numA = typeof ia === 'number';
+    const numB = typeof ib === 'number';
+    if (numA && numB) return ia < ib ? -1 : 1;
+    if (numA) return -1;             // 数字段 < 字母段：beta.1 < beta.rc
+    if (numB) return 1;
+    return ia < ib ? -1 : 1;         // 都是字母段：按 ASCII 序（alpha < beta < rc）
   }
   return 0; // equal
 }
