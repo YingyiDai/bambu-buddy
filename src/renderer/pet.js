@@ -34,68 +34,18 @@ let matchFilamentColor = true;
 // undefined=跟随 locale）。Chromium 的 Intl 读不到该系统开关，必须显式传入才能跟随系统。
 let sysHour12;
 
-function t(locale, key, params) {
-  const map = localeStrings[locale] || localeStrings['zh-CN'] || {};
-  let template = map[key];
-  if (template == null) return key;
-  if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      template = template.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v));
-    }
-  }
-  return template;
-}
-
-// 把毫秒时间戳格式化为「时:分」。时区跟随系统 locale；12/24 小时制用主进程下发的 sysHour12
-// 显式指定（Chromium 的 Intl 读不到 macOS 的「24 小时制」开关，只认 locale → 需显式传入）。
-// 未下发时回落到 locale 默认：习惯 AM/PM 的用户看到「2:30 PM」，24 小时制则是「14:30」。
-function fmtClock(ms) {
-  const opts = { hour: '2-digit', minute: '2-digit' };
-  if (sysHour12 !== undefined) opts.hour12 = sysHour12;
-  return new Date(ms).toLocaleTimeString(undefined, opts);
-}
-
-// 预计完成时刻：当前时间 + 剩余分钟。只显示「时:分」，故跨自然日时补 +1 / +2 …… 后缀
-// （见 day-offset.js）——否则今晚 23:00 起打 9 小时和打 33 小时都写作「完成 08:00」，
-// 字面一模一样。天数不设上限：打一星期的长件会如实显示「完成 08:00+7」。
-function fmtFinishClock(remainMins) {
-  if (!Number.isFinite(remainMins) || remainMins <= 0) return null;
-  const now = Date.now();
-  const finishAt = now + remainMins * 60000;
-  const clock = fmtClock(finishAt);
-  const days = dayOffset(now, finishAt);
-  if (days <= 0) return clock;
-  return t(currentLocale, 'label.finishTimeDayOffset', { time: clock, d: days });
-}
-
-// 已完成的**相对时间**：刚刚 / X 分钟前 / X 小时前（跟随 locale）。就地按当前时间算——完成记忆
-// 上限 24 小时，故最多「23 小时前」。与打印中那行的绝对「完成 {时刻}」在格式上区分，避免看错时态。
-function fmtFinishedRelative(locale, finishedAt) {
-  const sec = Math.max(0, Math.floor((Date.now() - finishedAt) / 1000));
-  if (sec < 60) return t(locale, 'label.finishedJustNow');
-  const min = Math.floor(sec / 60);
-  if (min < 60) return t(locale, 'label.finishedMinAgo', { m: min });
-  return t(locale, 'label.finishedHourAgo', { h: Math.floor(min / 60) });
-}
-
-// 拼一行的**状态文案**（不含打印机名）：主体是状态本身（打印中时即「打印中 {p}%」）；
-// 打印中且开关开启时，用统一的「 · 」把层数段、剩余时间段平级追加，例：
-//   中文 打印中 50% · 100/200 · 剩余45m    英文 Printing 50% · 100/200 · 45m left
-// 「剩余」只贴在时间段上（层数是当前/总层，不属于「剩余」）。层数段在渲染层直接拼 {layer}/{total}；
-// 时间段由 label.remainTime 定文案。打印机名由 renderLabel 单独渲染（带专属分隔符）。
-// 数据由 resolveState 放进 labelParams（remain 已是 locale 无关的紧凑 token），切 locale / 切开关都能就地重绘。
+// locale 表在渲染层只用于**状态文案拼接**，那段逻辑与设置窗的效果预览共用同一份纯函数
+// （core/label-text.js，经 <script> 挂在 window 上）。这里只负责把「此刻的上下文」凑齐。
 function statusText(line) {
-  const p = line.labelParams || {};
-  // 完成态携带原始时间戳 finishedAt：就地生成相对完成文案（刚刚/X 分钟前/X 小时前），无后续指标段。
-  if (p.finishedAt != null) return fmtFinishedRelative(currentLocale, p.finishedAt);
-  const parts = [t(currentLocale, line.labelKey, p)];
-  if (showLayer && p.layer != null && p.total != null) parts.push(`${p.layer}/${p.total}`);
-  if (showTime && p.remain != null) parts.push(t(currentLocale, 'label.remainTime', { time: p.remain }));
-  if (showFinishTime && p.remainMins != null) {
-    const clock = fmtFinishClock(p.remainMins);
-    if (clock) parts.push(t(currentLocale, 'label.finishTime', { time: clock }));
-  }
-  return parts.join(' · ');
+  return buildStatusText(line, {
+    strings: localeStrings,   // 形状本就是 { 'zh-CN': {...}, en: {...} }，与 buildStatusText 期望一致
+    locale: currentLocale,
+    showLayer,
+    showTime,
+    showFinishTime,
+    hour12: sysHour12,
+    now: Date.now(),
+  });
 }
 
 // 「熊猫此刻演的是哪台」——注意力那台的状态若属需要处理类（失败/暂停/离线/登录失效），
@@ -115,8 +65,8 @@ function renderLabel() {
   const multi = lines.length > 1;
   const activeSerial = lastPetState.activeSerial;
   // 渲染结果签名：决定标签显示的所有因素（各行名字/序列号/严重度/渲染文案 + 活动台 + locale）。
-  // 内容未变则不重建 DOM —— 否则每次状态推送（打印中约每秒）都会重建、把 marquee 动画重置到
-  // 起点，滚动永远滚不起来。相同即直接返回，保留现有 DOM 与正在进行的滚动。
+  // 内容未变则不重建 DOM —— 打印中状态约每秒推一次，逐帧重建整块标签纯属无谓开销。
+  // 相同即直接返回，保留现有 DOM。
   const sig = JSON.stringify(lines.map((l) => [
     l.name || null, l.serial || null, l.stateKey || null, statusText(l),
     multi && l.serial != null && l.serial === activeSerial,
@@ -132,9 +82,11 @@ function renderLabel() {
       div.classList.add('active');
       div.classList.add(ERR_STATES.has(line.stateKey) ? 'sev-err' : 'sev-ok');
     }
-    // 行内容包两层：.line-vp 是**从左侧竖线右侧开始**的裁剪视口（竖线在视口之外的左槽里，
-    // 内容永不进入其区域），.line-inner 是被裁部分做横向滚动（marquee）的内容层。窗口宽固定
-    // 为熊猫宽，超宽的行由 applyMarquee 给 inner 加往返平移，滚出全貌而不撑宽窗口、不截断。
+    // 行内容装两层：.line-vp 是**从左侧竖线右侧开始**的单行裁剪视口（竖线在视口之外的左槽里，
+    // 文本永不进入其区域），窗口宽固定为熊猫宽，放不下就在这里以「…」收尾 —— 不折行、
+    // 不撑宽窗口，也不缩用户设定的字号。
+    // .line-inner 平时是 display:inline、对布局完全透明（省略号照常由 vp 那层出），只有悬停
+    // 轮播时才变成 inline-block 承载横向平移 —— marquee 需要一个能整体 transform 的元素。
     const vp = document.createElement('span');
     vp.className = 'line-vp';
     const inner = document.createElement('span');
@@ -148,41 +100,143 @@ function renderLabel() {
       const sepEl = document.createElement('span');
       sepEl.className = 'label-sep';
       sepEl.textContent = '›';
-      inner.append(nameEl, sepEl, document.createTextNode(statusText(line)));
-    } else {
-      inner.textContent = statusText(line);
+      inner.append(nameEl, sepEl);
     }
+    inner.appendChild(document.createTextNode(statusText(line)));
     vp.appendChild(inner);
     div.appendChild(vp);
     labelEl.appendChild(div);
   }
+  // 滚动中重建（文案变了）：新 DOM 是收拢态，重新摘省略号接着滚，否则滚动会中途消失；
+  // 没在滚则问一次——自动档下这是首帧起滚的入口。
+  if (scrolling) applyScroll(); else refreshScroll();
   reportLabelSize();
 }
 
-// 超宽的行做横向滚动（marquee）：窗口宽固定=熊猫宽，pill 经 CSS max-width 卡在窗口内，
-// 视口 .line-vp 内容超出时给 .line-inner 施加往返平移，把被裁部分滚出来看全，不截断。
-// 竖线在视口左侧的独立槽里、不在裁剪区内，故滚动内容不会与竖线重叠。
-// 需在布局落定后测量（reportLabelSize 的 rAF 里调用）。滚动距离 = 视口内容溢出量。
+// ============ 文案放不下时怎么滚 ============
+// 标签恒每台一行，放不下就以「…」收尾。被截掉的那半句怎么补回来，由外观页的
+// 「文案放不下时」二选一决定（labelScroll）：
+//   'hover'（默认）—— 平时纹丝不动，指针停在熊猫身体或标签上才滚一遍，移开立刻停。
+//                      桌宠常驻视野边缘，默认就该安静；想看时把鼠标放上去即可。
+//   'auto'          —— 常驻轮播，自己一直滚。给「就想瞟一眼、不想动鼠标」的人。
+// 两档共用同一套摊开 + marquee 实现，只是「什么时候该滚」的判定不同（wantScroll）。
+//
+// 悬停判定用「熊猫身体热区（insideHotzone）」或「标签 pill 的矩形」，两者都算数——
+// 用户想看文案时最自然的动作就是把鼠标挪到文案上，而 pill 是 pointer-events:none 且整窗
+// 默认点击穿透，收不到自己的 mouseenter，只能靠 document 上转发来的 mousemove + 矩形判定。
+// 全程不碰点击穿透状态：滚动只改观感，不该让标签开始拦下层应用的点击。
+let labelScroll = 'hover';
+const HOVER_INTENT_MS = 250;   // 停留这么久才起滚：路过熊猫不该触发（否则又变成到处在动）
+// 离开后的宽限：熊猫与标签是两块独立热区，指针从熊猫滑到标签上时会先收到熊猫的 mouseleave、
+// 再收到落在标签上的 mousemove。没有宽限就会「停一下再从头滚」，白白打断正在看的那一轮。
+const HOVER_LEAVE_GRACE_MS = 120;
+let labelRect = null;          // pill 的窗口内矩形，随每次量尺寸更新（避免每帧 getBoundingClientRect）
+let hoverOnPet = false;        // 指针在熊猫身体热区内（由 updateCursor 维护）
+let hoverOnLabel = false;      // 指针在标签 pill 矩形内
+let startTimer = null;         // 停留计时（未到点就离开则作废）
+let leaveTimer = null;         // 离开宽限计时（宽限内回来则继续滚，不重启动画）
+let scrolling = false;         // 已进入滚动态
+
+function pointerInLabel(e) {
+  if (!labelRect || labelEl.classList.contains('hidden')) return false;
+  return e.clientX >= labelRect.left && e.clientX <= labelRect.right
+    && e.clientY >= labelRect.top && e.clientY <= labelRect.bottom;
+}
+
+// 这行是否真被 text-overflow 截掉了尾巴。没被截断的行悬停时保持原样不动 —— 全看得见
+// 还滚，纯属多余的动。
+// 名字要单独查：它有自己的 max-width（半行宽），可能名字已经截成「X1-Carbon-St…」
+// 而整行并不溢出——只看 vp 会漏判，悬停时名字就还原不回来。
+function isTruncated(vp) {
+  if (vp.scrollWidth > vp.clientWidth + 1) return true;
+  const name = vp.querySelector('.label-name');
+  return name != null && name.scrollWidth > name.clientWidth + 1;
+}
+
+// 此刻该不该滚：自动档永远该滚；悬停档看指针在不在熊猫或标签上。
+function wantScroll() {
+  return labelScroll === 'auto' || hoverOnPet || hoverOnLabel;
+}
+
+function refreshScroll() {
+  if (wantScroll()) {
+    if (leaveTimer != null) { clearTimeout(leaveTimer); leaveTimer = null; }
+    if (scrolling || startTimer != null) return;
+    // 自动档没有「误触」可言，立刻起滚；悬停档要先确认这不是路过。
+    if (labelScroll === 'auto') { startScroll(); return; }
+    startTimer = setTimeout(() => { startTimer = null; startScroll(); }, HOVER_INTENT_MS);
+  } else {
+    if (startTimer != null) { clearTimeout(startTimer); startTimer = null; }
+    if (scrolling && leaveTimer == null) {
+      leaveTimer = setTimeout(() => { leaveTimer = null; stopScroll(); }, HOVER_LEAVE_GRACE_MS);
+    }
+  }
+}
+
+// 给被截断的行摘掉省略号 → 下一帧量溢出、起动画。测量必须等布局落定，故隔一帧。
+function applyScroll() {
+  let any = false;
+  for (const line of labelEl.querySelectorAll('.label-line')) {
+    const truncated = isTruncated(line.firstElementChild);
+    line.classList.toggle('reveal', truncated);
+    any = any || truncated;
+  }
+  // 一行都没被截断（例：单台且文案短）就当无事发生：不加提亮、不起动画。
+  // 提亮只在悬停档给——那是「你的动作生效了」的反馈；自动档没人在等反馈，提亮反而是无谓的变化。
+  labelEl.classList.toggle('hover', any && labelScroll === 'hover');
+  if (!any) return;
+  requestAnimationFrame(() => {
+    if (!scrolling) return; // 这一帧之内指针已经走了
+    applyMarquee();
+    // 标签高度不会因滚动改变（恒每台一行），但名字还原后 pill 可能变宽 —— 重量一次好让
+    // 悬停判定用的矩形跟上（labelRect 在这里更新）。
+    reportLabelSize();
+  });
+}
+
+function startScroll() {
+  scrolling = true;
+  applyScroll();
+}
+
+function stopScroll() {
+  scrolling = false;
+  labelEl.classList.remove('hover');
+  for (const line of labelEl.querySelectorAll('.label-line')) {
+    line.classList.remove('reveal', 'scroll');
+    line.style.removeProperty('--dist');
+    line.style.removeProperty('--dur');
+  }
+  reportLabelSize();
+}
+
+// 摊平后的超宽行做横向滚动（marquee）：视口 .line-vp 内容超出时给 .line-inner 施加往返平移，
+// 把被裁部分滚出来看全。竖线在视口左侧的独立槽里、不在裁剪区内，故滚动内容不会与竖线重叠。
 //
 // 时间轴：**起点停 REST(固定) → 滚出 tScroll(按最大距离) → 末端停 ENDPAUSE(固定) → 滚回 tScroll**，
 // 循环。REST/ENDPAUSE 是固定秒数（不随内容长短变），故每轮之间在起点明显停一段再滚下一轮。
 // 因固定停顿使关键帧百分比依赖动态的 tScroll，改由 JS 算好百分比注入 @keyframes（覆盖 css 里的
 // 静态兜底那份）。多行共用同一 total 与同一注入 keyframes → **整体同步**（同时起/停/回，不漂移）。
 const MARQUEE_SPEED = 45;      // px/s 滚动速度
-const MARQUEE_REST = 2.2;      // s 起点停顿（每轮之间停这么久）
-const MARQUEE_ENDPAUSE = 0.9;  // s 滚到底后的停顿
+// 两档的节奏不一样：悬停是用户主动要看，起滚该快、末端该多停一会儿好把结尾看清；
+// 自动档一直在跑，起点多停一段才不至于显得一刻不停。
+const MARQUEE_TIMING = {
+  hover: { rest: 1.0, endPause: 1.2 },
+  auto: { rest: 2.2, endPause: 0.9 },
+};
 // 溢出小于该阈值不滚：几像素的微溢出去滚一圈毫无意义（观感是无谓抽动），
 // 宁可裁掉那一点点（多为半个字符的边缘）也不做无意义动画。
 const MARQUEE_MIN_OVER = 10;   // px
 let marqueeStyleEl = null;
 function applyMarquee() {
-  const vps = [...labelEl.querySelectorAll('.line-vp')];
+  const { rest, endPause } = MARQUEE_TIMING[labelScroll] || MARQUEE_TIMING.hover;
+  const vps = [...labelEl.querySelectorAll('.label-line.reveal > .line-vp')];
   const overs = vps.map((vp) => vp.scrollWidth - vp.clientWidth);
   // 只有超过阈值的行才算「需要滚」；统一周期按这些行里的最大溢出定（同步）。
   const scrollOvers = overs.filter((o) => o >= MARQUEE_MIN_OVER);
   const maxOver = scrollOvers.length ? Math.max(...scrollOvers) : 0;
   const tScroll = maxOver / MARQUEE_SPEED;
-  const total = MARQUEE_REST + tScroll + MARQUEE_ENDPAUSE + tScroll;
+  const total = rest + tScroll + endPause + tScroll;
   const durStr = total.toFixed(2) + 's';
   vps.forEach((vp, i) => {
     const line = vp.parentElement;
@@ -197,23 +251,41 @@ function applyMarquee() {
     }
   });
   if (maxOver <= 0) return; // 无需滚动的行，不注入动画
-  const a = (MARQUEE_REST / total * 100).toFixed(2);
-  const b = ((MARQUEE_REST + tScroll) / total * 100).toFixed(2);
-  const c = ((MARQUEE_REST + tScroll + MARQUEE_ENDPAUSE) / total * 100).toFixed(2);
+  const a = (rest / total * 100).toFixed(2);
+  const b = ((rest + tScroll) / total * 100).toFixed(2);
+  const c = ((rest + tScroll + endPause) / total * 100).toFixed(2);
   if (!marqueeStyleEl) { marqueeStyleEl = document.createElement('style'); document.head.appendChild(marqueeStyleEl); }
   marqueeStyleEl.textContent =
     `@keyframes label-marquee{0%,${a}%{transform:translateX(0)}${b}%,${c}%{transform:translateX(calc(-1*var(--dist,0px)))}100%{transform:translateX(0)}}`;
 }
 
-// 量出标签实际像素尺寸，上报主进程按需加宽/向下加高窗口 —— 长标签完整显示、多行放得下，
-// 既不缩小用户设定的字号，也不截断成「…」。隐藏标签时上报 0，窗口回落到熊猫本身尺寸。
-// 宽度 +14px：给 pill 两侧留一点呼吸空隙（与 CSS max-width 的 12px 边距配合，确保不触发 ellipsis）。
+// 指针在标签上与否要靠矩形判定（pill 收不到自己的鼠标事件，见上）。整窗默认点击穿透，
+// 但 forward:true 会把 mousemove 转发进来，故 document 上拿得到。
+document.addEventListener('mousemove', (e) => {
+  const on = pointerInLabel(e);
+  if (on === hoverOnLabel) return;
+  hoverOnLabel = on;
+  refreshScroll();
+});
+// 指针离开整个窗口：熊猫上的 mouseleave 只覆盖熊猫方形，从标签那侧移出去要靠这个收尾。
+document.addEventListener('mouseleave', () => {
+  hoverOnLabel = false;
+  hoverOnPet = false;
+  refreshScroll();
+});
+
+// 量出标签实际像素尺寸，上报主进程按需向下加高窗口 —— 多台时逐台一行、pill 向下生长，
+// 加高才放得下（既不缩小用户设定的字号，也不让末行跑到窗口外被裁掉）。
+// 单台恒一行，高度回落到熊猫方形本身预留的那条带里，窗口高与单打印机时代完全一致。
+// 隐藏标签时上报 0，窗口回落到熊猫本身尺寸。
+// 宽度 +14px：给 pill 两侧留一点呼吸空隙（主进程现已不据宽加宽窗口，保留上报仅为兼容）。
 const LABEL_WIN_MARGIN = 14;
 function reportLabelSize() {
   const hidden = labelEl.classList.contains('hidden');
   // requestAnimationFrame：等本次文本改动完成布局后再量，scrollWidth/offsetHeight 才是真实尺寸
   requestAnimationFrame(() => {
-    if (!hidden) applyMarquee(); // 布局落定后判定各行是否需横向滚动
+    // 顺手缓存 pill 矩形：悬停判定每次 mousemove 都要用它，不能每帧现算（会强制回流）。
+    labelRect = hidden ? null : labelEl.getBoundingClientRect();
     window.pet.setLabelSize({
       w: hidden ? 0 : Math.ceil(labelEl.scrollWidth) + LABEL_WIN_MARGIN,
       h: hidden ? 0 : Math.ceil(labelEl.offsetHeight),
@@ -269,10 +341,22 @@ window.pet.onPrefs((prefs) => {
   if (prefs.showLayer != null) showLayer = prefs.showLayer;
   if (prefs.showTime != null) showTime = prefs.showTime;
   if (prefs.showFinishTime != null) showFinishTime = prefs.showFinishTime;
+  if (prefs.labelScroll != null && prefs.labelScroll !== labelScroll) {
+    labelScroll = prefs.labelScroll;
+    // 换档时**立刻**收干净再按新档重来，不走离开宽限：用户在设置页点一下就该马上看到新样子，
+    // 且旧档注入的 marquee 节奏（起点/末端停顿）必须作废。这段要赶在下面的 renderLabel 之前，
+    // 否则重建后 scrolling 还是 true，会照着旧档再摊开一次。
+    if (startTimer != null) { clearTimeout(startTimer); startTimer = null; }
+    if (leaveTimer != null) { clearTimeout(leaveTimer); leaveTimer = null; }
+    if (scrolling) stopScroll();
+    refreshScroll(); // 自动档就地起滚；悬停档若指针正停在熊猫上也会起
+  }
   if (prefs.matchFilamentColor != null) matchFilamentColor = prefs.matchFilamentColor;
   // hour12 可正当为 undefined（跟随 locale），用 'in' 判定而非 != null。
   if ('hour12' in prefs) sysHour12 = prefs.hour12;
-  // 字号 / 熊猫尺寸变会改变标签宽与滚动上限，但不改文案签名 → 强制重建以重新测量 marquee。
+  // 字号变会改变每行高度（进而标签总高与 pill 矩形），熊猫尺寸变会改变标签的可用宽度，
+  // 但两者都不改文案签名 → 强制重建，好让 reportLabelSize 重新量一次把新高度报给主进程
+  // （否则签名相同会直接返回，窗口高度停在旧字号上、末行被裁），顺带刷新悬停判定用的矩形。
   lastLabelSig = null;
   renderLabel();
   refreshOverlays(); // 开关变化就地生效，无需等下一帧状态
@@ -342,6 +426,8 @@ function updateCursor(e) {
   const inZone = insideHotzone(e.offsetX, e.offsetY);
   if (inZone === cursorInHotzone) return;
   cursorInHotzone = inZone;
+  hoverOnPet = inZone;      // 指到熊猫身上 = 想看它，标签跟着起滚（见 refreshScroll）
+  refreshScroll();
   if (dragging) return; // 拖拽中不切换光标/穿透（拖出身体也保持可交互，靠 dragTimer 跟随光标）
   applyInteractive(inZone); // 进入身体→关闭穿透可交互；离开→恢复穿透，点击落到下层
   petEl.style.cursor = inZone ? 'grab' : 'default';
@@ -351,6 +437,8 @@ petEl.addEventListener('mouseenter', updateCursor);
 petEl.addEventListener('mousemove', updateCursor);
 petEl.addEventListener('mouseleave', () => {
   cursorInHotzone = false;
+  hoverOnPet = false;
+  refreshScroll();
   if (!dragging) { applyInteractive(false); petEl.style.cursor = 'default'; }
 });
 
