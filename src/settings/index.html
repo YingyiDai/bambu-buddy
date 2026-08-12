@@ -99,48 +99,57 @@
             </div>
             <input type="range" id="sizeSlider" min="80" max="400" value="220" class="slider" />
           </div>
-          <div class="row row-stack">
-            <div class="row-head">
-              <span class="row-label" data-i18n="settings.textSize">文字大小</span>
-              <span class="row-val" id="fontSizeVal">12px</span>
-            </div>
-            <input type="range" id="fontSizeSlider" min="8" max="20" value="12" class="slider" />
-          </div>
-          <div class="row">
-            <div class="row-text">
-              <span class="row-label" data-i18n="settings.showLabel">显示文字</span>
-              <span class="row-desc" data-i18n="settings.showLabelDesc">在熊猫下方显示状态文字</span>
-            </div>
-            <div class="row-control"><input type="checkbox" id="showLabelToggle" class="toggle" checked /></div>
-          </div>
-          <!-- 「显示文字」的子开关：缩进从属；关掉「显示文字」时由 settings.js 整体隐藏 -->
-          <div class="row row-sub" id="rowShowLayer">
-            <div class="row-text">
-              <span class="row-label" data-i18n="settings.showLayer">显示层数</span>
-              <span class="row-desc" data-i18n="settings.showLayerDesc">打印中在熊猫下方显示当前层 / 总层数</span>
-            </div>
-            <div class="row-control"><input type="checkbox" id="showLayerToggle" class="toggle" /></div>
-          </div>
-          <div class="row row-sub" id="rowShowTime">
-            <div class="row-text">
-              <span class="row-label" data-i18n="settings.showTime">显示剩余时间</span>
-              <span class="row-desc" data-i18n="settings.showTimeDesc">打印中在熊猫下方显示预计剩余时间</span>
-            </div>
-            <div class="row-control"><input type="checkbox" id="showTimeToggle" class="toggle" /></div>
-          </div>
-          <div class="row row-sub" id="rowShowFinishTime">
-            <div class="row-text">
-              <span class="row-label" data-i18n="settings.showFinishTime">显示完成时间</span>
-              <span class="row-desc" data-i18n="settings.showFinishTimeDesc">打印中在熊猫下方显示预计完成时刻（按本机时区；跨天标 +1、+2）</span>
-            </div>
-            <div class="row-control"><input type="checkbox" id="showFinishTimeToggle" class="toggle" /></div>
-          </div>
           <div class="row">
             <div class="row-text">
               <span class="row-label" data-i18n="settings.matchFilamentColor">跟随耗材颜色</span>
               <span class="row-desc" data-i18n="settings.matchFilamentColorDesc">打印中把熊猫吃的耗材和竹子染成当前耗材的颜色；关闭则保持原始绿色</span>
             </div>
             <div class="row-control"><input type="checkbox" id="matchFilamentColorToggle" class="toggle" checked /></div>
+          </div>
+          <!-- 「状态文字」卡：所有与熊猫下方那条标签有关的设置收在一起，顶部带实时预览。
+               「文字大小」也在卡内——它只有在标签显示时才有意义，放在总开关上方是层级颠倒。
+               预览由 settings.js 用 core/label-text.js 拼（与桌面标签同一个函数，逐字一致），
+               宽度也按真机窗口宽算，故「…」什么时候出现，预览里看到的就是真机的样子。 -->
+          <div class="row row-label-card">
+            <div class="lc-head">
+              <div class="row-text">
+                <span class="row-label" data-i18n="settings.showLabel">显示文字</span>
+                <span class="row-desc" data-i18n="settings.showLabelDesc">在熊猫下方显示状态文字</span>
+              </div>
+              <div class="row-control"><input type="checkbox" id="showLabelToggle" class="toggle" checked /></div>
+            </div>
+            <!-- 卡内四项一律同构：一行小标题（左，可带右侧数值）+ 一个满宽控件。
+                 之前每项各用各的形状（右对齐开关 / 满宽滑杆 / 内容宽药丸 / 满宽分段），
+                 一张卡里四种排布，看着杂乱。现在只剩「标题 → 满宽控件」一种节奏。 -->
+            <div class="lc-body" id="labelCardBody">
+              <div class="lc-field">
+                <div class="row-head"><span class="lc-cap" data-i18n="settings.labelPreview">效果预览</span></div>
+                <div class="preview-stage"><span class="pv-pill" id="labelPreview"></span></div>
+              </div>
+              <div class="lc-field">
+                <div class="row-head">
+                  <span class="lc-cap" data-i18n="settings.textSize">文字大小</span>
+                  <span class="row-val" id="fontSizeVal">12px</span>
+                </div>
+                <input type="range" id="fontSizeSlider" min="8" max="20" value="12" class="slider" />
+              </div>
+              <div class="lc-field">
+                <div class="row-head"><span class="lc-cap" data-i18n="settings.labelContent">显示内容</span></div>
+                <!-- 与下面的 .seg 同一个「槽」外观，三格等分；多选靠勾号 + 浅填充区别于单选的实心 -->
+                <div class="seg seg-multi" id="labelChips">
+                  <button type="button" class="seg-tab" data-pref="showLayer"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="settings.labelChipLayer">层数</span></button>
+                  <button type="button" class="seg-tab" data-pref="showTime"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="settings.labelChipTime">剩余时间</span></button>
+                  <button type="button" class="seg-tab" data-pref="showFinishTime"><svg class="tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg><span data-i18n="settings.labelChipFinish">完成时间</span></button>
+                </div>
+              </div>
+              <div class="lc-field">
+                <div class="row-head"><span class="lc-cap" data-i18n="settings.labelScroll">文案放不下时</span></div>
+                <div class="seg" id="labelScrollSeg">
+                  <button type="button" class="seg-tab" data-mode="hover" data-i18n="settings.labelScrollHover">鼠标悬停时滚动</button>
+                  <button type="button" class="seg-tab" data-mode="auto" data-i18n="settings.labelScrollAuto">自动滚动</button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -181,6 +190,8 @@
 
     </main>
   </div>
+  <script src="../core/day-offset.js"></script>
+  <script src="../core/label-text.js"></script>
   <script src="settings.js"></script>
 </body>
 </html>
