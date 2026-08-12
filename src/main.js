@@ -285,8 +285,9 @@ function applyHideOnFullscreen(enabled) {
 }
 
 // 渲染层上报的标签实际像素尺寸。高度 h 驱动窗口向下加高以容纳多行标签（多台打印机每台
-// 一行，见 core/attention.js）；宽度 w 现已不再驱动窗口加宽（窗口宽固定为熊猫宽，超宽行在
-// 渲染层做 marquee 横向滚动），保留上报仅为兼容、不影响几何。
+// 一行、恒一行，见 core/attention.js 与 renderer/style.css）；宽度 w 现已不再驱动窗口加宽
+// （窗口宽固定为熊猫宽，放不下的内容在渲染层以「…」截断，悬停时才滚出全文），
+// 保留上报仅为兼容、不影响几何。
 const labelSize = { w: 0, h: 0 };
 
 // 熊猫方形**中心**的权威坐标（运行时唯一真源，可为小数）。窗口比熊猫方形宽（标签留白），
@@ -297,17 +298,17 @@ const labelSize = { w: 0, h: 0 };
 let petCenter = null;
 
 // 窗口宽下限。有两重作用：
-// 1) 标签最小可读宽：窗口宽固定=熊猫宽后，熊猫调小会连带把标签挤窄、内容易滚。设 220 下限
+// 1) 标签最小可读宽：窗口宽固定=熊猫宽后，熊猫调小会连带把标签挤窄、内容易被截。设 220 下限
 //    （≈ 单台全开「打印中 88% · 305/340 · 剩余1h12m」所需宽，也是默认熊猫尺寸），使标签宽度
-//    不随熊猫缩小而变小——熊猫再小，标签也保持能放下常规单台内容、一般不滚。熊猫 <220 时
-//    窗口保持 220，两侧透明留白点击穿透，熊猫仍按用户尺寸居中；多台真·超宽仍照常横向滚动。
+//    不随熊猫缩小而变小——熊猫再小，标签也保持能放下常规单台内容、一般不截。熊猫 <220 时
+//    窗口保持 220，两侧透明留白点击穿透，熊猫仍按用户尺寸居中；真·超长文案照常截，悬停可滚。
 // 2) 兼作 macOS 透明窗口白底 workaround：宽度 <约 162px 的透明窗口在 Apple Silicon+缩放屏上会
 //    整窗变白底（electron/electron#44884）。220 远高于该阈值，顺带避开。
 const MIN_WIN_WIDTH = 220;
 
 // 目标窗口宽度：恒为熊猫方形宽（不低于透明窗口安全下限），**不再随标签加宽**。
-// 标签 pill 经 CSS max-width 卡在窗口宽内；超宽的行由渲染层做横向滚动（marquee）播出全部
-// 内容（见 pet.js），既不截断也不把窗口越撑越宽。窗口宽固定后，标签宽变化不再牵动窗口，
+// 标签 pill 经 CSS max-width 卡在窗口宽内；放不下的内容由渲染层以「…」截断、悬停时滚出全文
+// （见 pet.js），不把窗口越撑越宽——只按上报的标签高度向下加高。窗口宽固定后，标签宽变化不再牵动窗口，
 // 也彻底消除了「标签快速变宽→窗口跟随→熊猫抖动」的老问题（原量化 quantizeWinWidth 不再需要）。
 function targetWinWidth() {
   return Math.max(currentSizePx(), MIN_WIN_WIDTH);
@@ -997,6 +998,7 @@ function pushPetPrefs() {
       showLayer: store.get('showLayer', false),
       showTime: store.get('showTime', false),
       showFinishTime: store.get('showFinishTime', false),
+      labelScroll: store.get('labelScroll', 'hover'),
       matchFilamentColor: store.get('matchFilamentColor', true),
       // 渲染进程（Chromium）的 Intl 只认 locale（en-US → 12 小时），读不到 macOS 的
       // 「24 小时制」开关。由主进程读出后显式下发，渲染层据此格式化完成/预计完成时刻。
@@ -1690,7 +1692,12 @@ ipcMain.handle('pref:getAll', () => ({
   showLayer: store.get('showLayer', false),
   showTime: store.get('showTime', false),
   showFinishTime: store.get('showFinishTime', false),
+  labelScroll: store.get('labelScroll', 'hover'),
   matchFilamentColor: store.get('matchFilamentColor', true),
+  // 不是用户偏好，是**系统**的 12/24 小时制。设置窗的标签预览要拿它才能把完成时刻格式化得
+  // 和桌面标签一模一样（渲染层那份走 pet:prefs 下发，见 pushPetPrefs）——否则预览写
+  // 「完成 10:10 AM」、桌面写「完成 10:10」，预览就不算数了。
+  hour12: systemHour12(),
   showInMenuBar: store.get('showInMenuBar', true),
   showInDock: store.get('showInDock', true),
   launchAtLogin: store.get('launchAtLogin', false),
@@ -1701,7 +1708,7 @@ ipcMain.handle('pref:getAll', () => ({
 ipcMain.handle('pref:set', (_e, key, value) => {
   store.set(key, value);
   if (key === 'sizePx') setPetSizePx(value);
-  if (key === 'sizePx' || key === 'labelFontSize' || key === 'showLabel' || key === 'showLayer' || key === 'showTime' || key === 'showFinishTime' || key === 'matchFilamentColor') pushPetPrefs();
+  if (key === 'sizePx' || key === 'labelFontSize' || key === 'showLabel' || key === 'showLayer' || key === 'showTime' || key === 'showFinishTime' || key === 'labelScroll' || key === 'matchFilamentColor') pushPetPrefs();
   if (key === 'locale') {
     pushLocale();
     // 各台按新语言重解析（失败大类文案等依赖 locale 对应的码表 key）

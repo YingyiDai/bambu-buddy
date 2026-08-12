@@ -67,11 +67,18 @@ video.layer.active + canvas.overlay {
    主进程据 pet:labelSize 上报把窗口向下加高——绝不向上生长盖住熊猫。 */
 .status-pill {
   position: absolute;
-  left: 50%;
   top: calc(var(--pet-px, 100vh) - 34px);
-  transform: translateX(-50%);
+  /* 居中用「left:0 + right:0 + margin auto」，**不要**用 left:50%+translateX(-50%)：
+     绝对定位元素的可用宽度是从 left 偏移量量到包含块右缘，left:50% 会让可用宽只剩半个窗口。
+     文本恒 nowrap 时两种写法碰巧等价（最小内容宽就是整行，一律取到 max-width），但只要
+     哪天某处允许了换行，pill 就会在半宽处折、右边空一大片。left/right 都为 0 时可用宽 =
+     整个窗口，width:fit-content 再把 pill 收到内容实际所需宽——短文案仍是紧凑的小药丸。 */
+  left: 0;
+  right: 0;
+  margin-inline: auto;
+  width: fit-content;
   /* 窗口宽固定=熊猫宽，pill 最宽卡在窗口内（100% 即窗口宽），仅留很小边距以尽量多容纳内容
-     （减少「刚好差几像素」被裁的情况）。内容确实更宽时按行做横向滚动（见 .label-line.scroll），
+     （减少「刚好差几像素」就被截掉的情况）。内容确实更宽时行尾省略（见 .line-vp），
      不撑宽窗口、不改用户字号。 */
   max-width: calc(100% - 4px);
   box-sizing: border-box;
@@ -93,34 +100,24 @@ video.layer.active + canvas.overlay {
 .status-pill.multi {
   border-radius: 14px;
 }
-
-/* 单行标签内容：恒为一行（层数 / 剩余时间用「 · 」横向拼接）。窗口宽固定=熊猫宽，
-   内容超出的行不截断也不撑宽窗口，而是裁掉溢出部分、由 .line-inner 做横向滚动播出全貌。
+/* 每台打印机**恒一行**（层数 / 剩余时间 / 完成时间用「 · 」横向拼接）。窗口宽固定=熊猫宽，
+   放不下就以「…」收尾——不折行、不撑宽窗口、不缩用户设定的字号。
+   为什么一行封顶：标签总高只由「几台」决定，与文案长短无关，熊猫下面那条永远是那么厚，
+   不会因为打开了几个开关、或某台名字长就忽胖忽瘦。多台时更是刚需（三台若各占两行就是
+   6 行、一堵墙）；单台同理，一行也够扫「打印中 x% · 层数 · 剩余」，尾巴看不全不要紧。
+   **静止态不做任何动画**——桌宠常驻视野边缘，自己一直在动的跑马灯是干扰源（用户反馈）。
+   截掉的部分不是没处看：把指针停到熊猫或标签上，被截断的行会滚一遍（见文件末尾
+   「悬停才轮播」）；逐台细节右键托盘菜单里也始终全显（不受这几个开关影响）。
    .line-vp 是裁剪视口——**从左侧竖线右侧开始**（竖线在 .label-line 的 padding 左槽里、
-   在视口之外），故滚动内容绝不进入竖线区域、不与之重叠。 */
+   在视口之外），故文本绝不进入竖线区域、不与之重叠。 */
 .label-line {
-  white-space: nowrap;
   overflow: visible;
 }
 .line-vp {
   display: block;
   overflow: hidden;
   white-space: nowrap;
-}
-.line-inner {
-  display: inline-block;
-  white-space: nowrap;
-}
-/* 超宽行：往返平移把被裁部分滚出来。--dist/--dur 及带固定停顿的 @keyframes 均由 pet.js
-   applyMarquee 按实际溢出量注入（每轮之间在起点固定停顿再滚下一轮）。下面这份静态 keyframes
-   仅作注入前的首帧兜底，注入的同名 keyframes（在 head 末尾）会覆盖它。 */
-.label-line.scroll .line-inner {
-  animation: label-marquee var(--dur, 6s) ease-in-out infinite;
-}
-@keyframes label-marquee {
-  0%, 15% { transform: translateX(0); }
-  50%, 65% { transform: translateX(calc(-1 * var(--dist, 0px))); }
-  100% { transform: translateX(0); }
+  text-overflow: ellipsis;
 }
 
 /* 多台并存：给「熊猫当前表达的那台」（.active）加左侧短圆角竖条 + 提亮，其余行压暗——
@@ -141,10 +138,11 @@ video.layer.active + canvas.overlay {
   content: '';
   position: absolute;
   left: 2px;                /* 贴近文本（文本左缘 9px，竖条 2–5px，间距约 4px） */
-  top: 50%;
-  transform: translateY(-50%);
+  /* 上下各内缩 3px 而不是给固定高度：约占 2/3 行高（与旧观感一致），且跟着字号走——
+     用户把标签字号调大时竖条自己变长，不会缩成一小截。 */
+  top: 3px;
+  bottom: 3px;
   width: 3px;
-  height: 56%;              /* 短于整行高，居中 */
   border-radius: 2px;       /* 圆角，避免与圆角底板冲突 */
   background: #8bd450;      /* 正常运转 = 竹叶绿 */
 }
@@ -154,11 +152,61 @@ video.layer.active + canvas.overlay {
 
 /* 打印机名与状态之间的分隔符：轻量右尖括号「›」，有方向感、非竖线，既区别于状态段
    内部的「 · 」，也不与左侧竖状态条撞。让「名字到哪结束」一眼可辨。名字段略提亮以强化标识。 */
-.label-name { opacity: 0.92; }
+/* 名字必须让位给状态：名字最多占半行宽，超了自己以「…」收尾。否则长名字会把状态整段
+   挤出去——英文「X1-Carbon-Studio › Paused by the user」会截成「X1-Carbon-Studio › …」，
+   最该看见的「怎么了」没了。认哪台看名字前几个字就够，状态才是不能丢的那半句。
+   （名字只在多台时才有，单台不带前缀，故无需再加 .multi 限定。） */
+.label-name {
+  opacity: 0.92;
+  display: inline-block;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+}
 .label-sep {
   margin: 0 6px;
   opacity: 0.55;
   font-weight: 400;
+}
+
+/* ============ 悬停才轮播 ============
+   静止态（上面所有规则）是常态：截断，不动。指针在熊猫身体或标签 pill 上停够 250ms，
+   pet.js 给**确实被截断的行**加 .reveal（没截断的行不加，全看得见还滚是多余的动），
+   摘掉省略号、量出溢出量后再加 .scroll 起动画；指针一走两个 class 一起摘掉。
+   触发与状态机在 pet.js（refreshHover / applyHoverScroll），这里只管拆省略与平移。 */
+.label-line.reveal .line-vp {
+  text-overflow: clip;       /* 要滚出全文，不能还留着省略号 */
+}
+/* 滚动时名字也还原成全名——正是为了看全才滚的，没道理还把名字截在一半。 */
+.label-line.reveal .label-name {
+  max-width: none;
+  overflow: visible;
+}
+/* 平时 inline（对省略号完全透明：省略号由 .line-vp 这层的 text-overflow 负责，
+   中间夹一个 inline-block 会把它挡掉）。只有滚动时才成为可 transform 的整体。 */
+.line-inner {
+  display: inline;
+}
+.label-line.reveal .line-inner {
+  display: inline-block;
+}
+/* --dist/--dur 及带固定停顿的 @keyframes 均由 pet.js applyMarquee 按实际溢出量注入
+   （每轮之间在起点固定停顿再滚下一轮）。下面这份静态 keyframes 仅作注入前的首帧兜底，
+   注入的同名 keyframes（在 head 末尾）会覆盖它。 */
+.label-line.scroll .line-inner {
+  animation: label-marquee var(--dur, 6s) ease-in-out infinite;
+}
+@keyframes label-marquee {
+  0%, 15% { transform: translateX(0); }
+  50%, 65% { transform: translateX(calc(-1 * var(--dist, 0px))); }
+  100% { transform: translateX(0); }
+}
+/* 悬停时底板略微加深：给一个「已激活、正在为你滚」的反馈，否则用户不知道是不是自己
+   触发的。只动透明度、不动尺寸，不会把下面的内容顶走。 */
+.status-pill.hover {
+  background: rgba(20, 20, 22, 0.78);
 }
 
 /* Add hidden utility */

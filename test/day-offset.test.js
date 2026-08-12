@@ -3,7 +3,7 @@
 // 用内置 node:test 运行：node --test test/
 const test = require('node:test');
 const assert = require('node:assert');
-const { dayOffset } = require('../src/renderer/day-offset');
+const { dayOffset } = require('../src/core/day-offset');
 
 // 本地时间构造器（测试全程用本机时区，与渲染层口径一致）。
 function local(y, m, d, h = 0, min = 0) {

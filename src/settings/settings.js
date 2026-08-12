@@ -581,20 +581,75 @@ window.bambu.onError((msg) => { showError(msg || t('settings.errAuthExpired')); 
 window.bambu.onPrintersChanged(() => { const sec = document.querySelector('.section[data-section="printers"]'); if (sec && !sec.classList.contains('hidden')) renderPrinters(); });
 
 // ── 外观 ──
+// 「状态文字」卡的当前值。preview 要用它们拼预览文案，chips 要用它们决定选中态，
+// 故在这里存一份（真相仍在主进程 store，每次改动都 setPreference 落盘）。
+const labelPrefs = { showLayer: false, showTime: false, showFinishTime: false, labelScroll: 'hover', hour12: undefined };
+
+// 预览用的样例报文：一份「打印中、三段信息都有」的典型 labelParams。
+// 数值取得有辨识度（42% / 126 层 / 45 分钟），一眼看得出哪个 chip 对应哪一段。
+const PREVIEW_LINE = {
+  labelKey: 'label.printing',
+  labelParams: { p: 42, layer: 126, total: 300, remain: '45m', remainMins: 45 },
+};
+// 真机窗口宽 = max(熊猫宽, 下限 220)，与 main.js 的 MIN_WIN_WIDTH 同口径；
+// pill 最宽是窗口宽减 4px 边距（见 renderer/style.css 的 .status-pill max-width）。
+const MIN_WIN_WIDTH = 220;
+const PILL_SIDE_MARGIN = 4;
+
+// 预览：用与桌面标签**同一个**纯函数拼文案（core/label-text.js），宽度也按真机口径算，
+// 故「…」什么时候出现、出现在哪个字，预览里看到的就是桌面上会发生的。
+function renderLabelPreview() {
+  const pill = el('labelPreview');
+  if (!pill) return;
+  const petPx = Number(el('sizeSlider').value) || MIN_WIN_WIDTH;
+  const fontPx = Number(el('fontSizeSlider').value) || 12;
+  pill.style.setProperty('--pv-max', (Math.max(petPx, MIN_WIN_WIDTH) - PILL_SIDE_MARGIN) + 'px');
+  pill.style.setProperty('--pv-font', fontPx + 'px');
+  pill.textContent = window.buildStatusText(PREVIEW_LINE, {
+    strings: localeStrings || {},
+    locale: currentLocale,
+    showLayer: labelPrefs.showLayer,
+    showTime: labelPrefs.showTime,
+    showFinishTime: labelPrefs.showFinishTime,
+    hour12: labelPrefs.hour12,  // 用主进程下发的**系统** 12/24 小时制，与桌面标签同一个口径
+    now: Date.now(),
+  });
+}
+
+function syncLabelChips() {
+  for (const chip of document.querySelectorAll('#labelChips .seg-tab')) {
+    chip.classList.toggle('on', !!labelPrefs[chip.dataset.pref]);
+  }
+}
+function syncLabelScrollSeg() {
+  for (const tab of document.querySelectorAll('#labelScrollSeg .seg-tab')) {
+    tab.classList.toggle('is-active', tab.dataset.mode === labelPrefs.labelScroll);
+  }
+}
+// 关掉「显示文字」时整条标签都不显示，卡内所有细项都无意义 —— 整块隐藏（而非置灰）。
+function syncLabelCard() {
+  el('labelCardBody').classList.toggle('hidden', !el('showLabelToggle').checked);
+}
+
 async function loadPreferences() {
   if (!localeStrings) await loadLocales();
   const p = await window.bambu.getPreferences();
   el('sizeSlider').value = p.sizePx; el('sizeVal').textContent = p.sizePx + 'px';
   el('fontSizeSlider').value = p.labelFontSize; el('fontSizeVal').textContent = p.labelFontSize + 'px';
   el('showLabelToggle').checked = p.showLabel;
-  el('showLayerToggle').checked = p.showLayer;
-  el('showTimeToggle').checked = p.showTime;
-  el('showFinishTimeToggle').checked = p.showFinishTime;
+  labelPrefs.showLayer = p.showLayer;
+  labelPrefs.showTime = p.showTime;
+  labelPrefs.showFinishTime = p.showFinishTime;
+  labelPrefs.labelScroll = p.labelScroll;
+  labelPrefs.hour12 = p.hour12;
   el('matchFilamentColorToggle').checked = p.matchFilamentColor;
-  syncLabelSubRows();
+  syncLabelCard();
+  syncLabelChips();
+  syncLabelScrollSeg();
   el('localeSelect').value = p.locale;
   if (p.locale !== currentLocale) { currentLocale = p.locale; renderLocale(); }
   syncAllSliderFills();
+  renderLabelPreview();
 }
 
 // ── 滑杆填充轨道：--fill 跟随当前值（拖动时由全局 input 监听更新，
@@ -606,23 +661,30 @@ function syncSliderFill(s) {
 }
 function syncAllSliderFills() { document.querySelectorAll('.slider').forEach(syncSliderFill); }
 document.addEventListener('input', (e) => { if (e.target.classList && e.target.classList.contains('slider')) syncSliderFill(e.target); });
-el('sizeSlider').addEventListener('input', () => { const v = el('sizeSlider').value; el('sizeVal').textContent = v + 'px'; window.bambu.setPreference('sizePx', Number(v)); });
-el('fontSizeSlider').addEventListener('input', () => { el('fontSizeVal').textContent = el('fontSizeSlider').value + 'px'; });
+// 两个滑杆都实时刷预览：宠物大小决定 pill 的可用宽度（进而决定何时出现「…」），
+// 文字大小决定字号 —— 它们的效果原本只能等回到桌面才看得到。
+el('sizeSlider').addEventListener('input', () => { const v = el('sizeSlider').value; el('sizeVal').textContent = v + 'px'; renderLabelPreview(); window.bambu.setPreference('sizePx', Number(v)); });
+el('fontSizeSlider').addEventListener('input', () => { el('fontSizeVal').textContent = el('fontSizeSlider').value + 'px'; renderLabelPreview(); });
 el('fontSizeSlider').addEventListener('change', () => window.bambu.setPreference('labelFontSize', Number(el('fontSizeSlider').value)));
-// 「显示层数 / 剩余时间」是「显示文字」的子设置：关掉「显示文字」时整个标签都不显示，
-// 这两项无意义，直接隐藏（而非置灰）。
-function syncLabelSubRows() {
-  const on = el('showLabelToggle').checked;
-  el('rowShowLayer').classList.toggle('hidden', !on);
-  el('rowShowTime').classList.toggle('hidden', !on);
-  el('rowShowFinishTime').classList.toggle('hidden', !on);
-}
-el('showLabelToggle').addEventListener('change', () => { window.bambu.setPreference('showLabel', el('showLabelToggle').checked); syncLabelSubRows(); });
-el('showLayerToggle').addEventListener('change', () => window.bambu.setPreference('showLayer', el('showLayerToggle').checked));
-el('showTimeToggle').addEventListener('change', () => window.bambu.setPreference('showTime', el('showTimeToggle').checked));
-el('showFinishTimeToggle').addEventListener('change', () => window.bambu.setPreference('showFinishTime', el('showFinishTimeToggle').checked));
+el('showLabelToggle').addEventListener('change', () => { window.bambu.setPreference('showLabel', el('showLabelToggle').checked); syncLabelCard(); });
+el('labelChips').addEventListener('click', (e) => {
+  const chip = e.target.closest('.seg-tab');
+  if (!chip) return;
+  const key = chip.dataset.pref;
+  labelPrefs[key] = !labelPrefs[key];
+  syncLabelChips();
+  renderLabelPreview();
+  window.bambu.setPreference(key, labelPrefs[key]);
+});
+el('labelScrollSeg').addEventListener('click', (e) => {
+  const tab = e.target.closest('.seg-tab');
+  if (!tab || tab.dataset.mode === labelPrefs.labelScroll) return;
+  labelPrefs.labelScroll = tab.dataset.mode;
+  syncLabelScrollSeg();
+  window.bambu.setPreference('labelScroll', labelPrefs.labelScroll);
+});
 el('matchFilamentColorToggle').addEventListener('change', () => window.bambu.setPreference('matchFilamentColor', el('matchFilamentColorToggle').checked));
-el('localeSelect').addEventListener('change', () => { currentLocale = el('localeSelect').value; renderLocale(); renderPrinters(); if (playGalleryBuilt) buildGallery(); window.bambu.setPreference('locale', currentLocale); });
+el('localeSelect').addEventListener('change', () => { currentLocale = el('localeSelect').value; renderLocale(); renderPrinters(); renderLabelPreview(); if (playGalleryBuilt) buildGallery(); window.bambu.setPreference('locale', currentLocale); });
 
 // ── 关于 ──
 // 检查更新进行中标志：防止 loadAbout（可能因切页/托盘再次触发而重入）把「检查中…」状态重置掉，

@@ -14,6 +14,9 @@
   --panel: #ffffff;
   --rows-bg: #fbfbfc;
   --field-bg: #f5f5f7;
+  /* 标签预览台：代表「桌面」，故不跟随面板色，只保证 pill（半透明深色）在它上面读得清。
+     浅色下与输入框同灰即可；深色下必须比面板亮一档，否则深色 pill 叠深色底会糊成一片。 */
+  --preview-stage: #f5f5f7;
   --sidebar-bg: #ececef;
   --sidebar-hover: rgba(0, 0, 0, 0.05);
   --sidebar-active: #ffffff;
@@ -57,6 +60,7 @@
     --panel: #232327;
     --rows-bg: #1a1a1d;
     --field-bg: #2c2c2e;
+    --preview-stage: #3c3c42;
     --sidebar-bg: #18181b;
     --sidebar-hover: rgba(255, 255, 255, 0.05);
     --sidebar-active: #2e2e33;
@@ -150,9 +154,53 @@ html, body {
 .row-control select { width: auto; min-width: 130px; }
 .row-head { display: flex; align-items: center; justify-content: space-between; }
 .row-val { font-size: 12px; color: var(--text-faint); font-variant-numeric: tabular-nums; }
-/* 「显示文字」的子开关：缩进 + 略淡标签，表示从属于上方总开关 */
-.row-sub { padding-left: 34px; }
-.row-sub .row-label { font-weight: 400; }
+/* ── 「状态文字」卡：把所有与熊猫下方那条标签有关的设置收在一起 ──
+   原先是「显示文字」总开关 + 四个缩进子开关，四行长得一模一样却分属两类：前三个是
+   「显示什么」，第四个是「放不下时怎么办」。现在总开关留在卡头，下面依次是
+   预览 → 文字大小 → 显示内容（chips）→ 文案放不下时（二选一），层级和类别都对上了。
+   「文字大小」也搬进来：它只在标签显示时才有意义，原先摆在总开关**上方**是层级颠倒。 */
+.row-label-card { flex-direction: column; align-items: stretch; gap: 14px; }
+.lc-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+/* 卡内四项**不缩进**，与卡头同一条左轴。曾经缩过 14px，是为了避开一个具体的歧义：
+   那时「跟随耗材颜色」排在本卡之后，它与卡内四项左缘相同，四项容易被读成它的同级。
+   后来「跟随耗材颜色」上移到「宠物大小」旁（都属熊猫本体），本卡成了列表最后一项，
+   那个歧义随之消失——从属关系已由两点表达：四项与卡头同在一个 .row 边框格内（格与格
+   之间才有分隔线），且小标题是 11px faint（.lc-cap）而卡头是 13px 正色，字型对比够明显。
+   于是缩进只剩副作用（吃掉满宽控件的宽度、让全页多一条左轴），去掉更干净。
+   ⚠️ 若将来在本卡**之后**再加同级行，那个歧义会回来，届时应重新考虑缩进。 */
+.lc-body { display: flex; flex-direction: column; gap: 14px; }
+.lc-field { display: flex; flex-direction: column; gap: 8px; }
+/* 卡内小标题：比 row-label 轻一档，免得和卡头的「显示文字」抢层级 */
+.lc-cap { font-size: 11px; font-weight: 600; color: var(--text-faint); letter-spacing: .02em; }
+
+/* 预览台：中性灰 + 细边（色值见 --preview-stage）。整页以白为主，这里放个有彩色的
+   「壁纸」色块会突兀，故一律中性。宽度与下面几个控件一样满宽，卡内四项才对得齐。 */
+.preview-stage {
+  background: var(--preview-stage); border: 1px solid var(--border); border-radius: var(--radius-sm);
+  padding: 18px 12px; display: flex; justify-content: center; overflow: hidden;
+}
+/* 与 renderer/style.css 的 .status-pill 同参数（半透明深色 + 浅色字 + 轻阴影）。
+   --pv-max 由 settings.js 按真机窗口宽下发，故这里的「…」出现时机与桌面一致。 */
+.pv-pill {
+  max-width: var(--pv-max, 216px); box-sizing: border-box; padding: 4px 12px;
+  font-family: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
+  font-size: var(--pv-font, 12px); line-height: 1.4; color: #f5f5f7;
+  background: rgba(20, 20, 22, 0.62); border-radius: 999px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* 「显示内容」复用下面单选那套 .seg 槽（同样的外框、同样的等分），只是允许同时亮多个。 */
+.seg-multi .seg-tab { display: inline-flex; align-items: center; justify-content: center; gap: 5px; }
+.seg-multi .tick { width: 11px; height: 11px; flex-shrink: 0; }
+.seg-multi .seg-tab:not(.on) .tick { visibility: hidden; }
+/* 卡内两行分段共用**同一种**「选中」外观：浅绿底 + 绿字 + 加粗。
+   原本单选沿用了全局 .seg 的实心绿底白字，于是一张卡里出现两种绿、两种选中表达——
+   属于多余的样式变体。单选 / 多选的区别交给「能不能同时亮好几个」和多选独有的勾号，
+   不必再靠填充深浅去说。（登录页那套 .seg 不在 .lc-field 内，仍是实心，不受影响。） */
+.lc-field .seg-tab.on,
+.lc-field .seg-tab.is-active { background: var(--brand-weak); color: var(--brand); font-weight: 600; }
+/* 卡内的槽由 .lc-field 的 gap 控制间距，.seg 自带的下外边距在这里是多余的 */
+.lc-field .seg { margin-bottom: 0; }
 
 /* ── 卡片 / 分组 ── */
 .card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
