@@ -91,7 +91,15 @@ video.layer.active + canvas.overlay {
   border-radius: 999px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(4px);
+  /* 这里**不要**加 backdrop-filter（曾有 blur(4px)，已移除）：
+     1) 它在本窗口里毫无效果——backdrop-filter 只能采样「本页自己」的背景，采不到窗口下面的
+        桌面/别的应用。药丸位于熊猫方形下沿之外（top = --pet-px - 34px），页内它背后空无一物、
+        全透明，模糊一片透明 = 什么都没发生。观感上药丸的半透明质感完全来自 background 那行。
+     2) 它有实打实的风险：透明窗口里带 backdrop-filter 的元素会强制整页成为 backdrop root，
+        合成器需要一块「可采样的背景」纹理，部分 Windows GPU/驱动上会因此把根渲染面按不透明
+        处理 —— 表现就是**整个窗口变黑**（用户反馈的「熊猫背景黑了」）。同样的合成决策依赖
+        显卡/驱动，所以只有部分机器复现、开发机上照常透明。
+     要做磨砂效果只能走系统能力（macOS vibrancy / Windows backgroundMaterial），不能用 CSS。 */
   pointer-events: none;     /* 非交互、点击穿透 */
   transition: opacity 300ms ease;
 }

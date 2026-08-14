@@ -185,6 +185,20 @@
             <div class="row-text"><span class="row-label" data-i18n="settings.aboutAuthor">作者</span></div>
             <div class="row-control"><a id="aboutAuthor" class="about-author-link" href="#">—</a></div>
           </div>
+          <!-- 一键诊断：熊猫显示异常（如整窗变黑）几乎都由本机的显卡/显示器/合成路径决定，
+               光看截图分辨不出是哪一条。点一下把环境信息复制成文本，反馈时一并粘贴即可。 -->
+          <div class="row row-stack">
+            <div class="row-head">
+              <div class="row-text">
+                <span class="row-label" data-i18n="settings.diagnostics">诊断信息</span>
+                <span class="row-desc" data-i18n="settings.diagnosticsDesc">熊猫显示异常时，点一下复制本机环境信息，反馈给作者。</span>
+              </div>
+              <div class="row-control">
+                <button id="copyDiagBtn" class="btn" data-i18n="settings.copyDiagnostics">复制诊断信息</button>
+              </div>
+            </div>
+            <span id="diagStatus" class="update-status hidden"></span>
+          </div>
         </div>
       </section>
 

@@ -1,6 +1,6 @@
 // Electron 主进程：透明置顶窗口、托盘、IPC、位置记忆、数据源驱动（§5）。
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, safeStorage, shell, dialog, net, session } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, safeStorage, shell, dialog, net, session, clipboard } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 
@@ -60,6 +60,24 @@ function netGetRaw(host, path) {
   });
 }
 const { clampToVisible, petWindowBounds } = require('./core/window-position');
+const { formatDiagnostics } = require('./core/diagnostics');
+
+// ── 禁止把熊猫的视频提升为硬件叠加层（Windows / DirectComposition）──
+// 叠加层（overlay plane）由系统直接合成，**不携带窗口的逐像素 alpha**。一旦 Chromium 把
+// 熊猫的 <video> 提升上去，就等于在这个透明窗口上挖出一块不透明的洞 —— 观感正是「熊猫身上
+// 一整块黑」。是否提升由显卡/驱动的能力决定，驱动一更新就可能翻面，所以它天然是那种
+// 「同一个版本用了几个月都好好的，某一天突然开始黑」且作者机上永远复现不出的缺陷。
+//
+// 代价近乎为零，这也是它值得**默认对所有人生效**（而不是做成开关）的原因：叠加层的收益
+// 只在大尺寸/全屏视频上才显著（省合成带宽与功耗），而熊猫是 80–400px 的装饰性循环动画，
+// 提升上去几乎省不到什么。收益近零、风险实打实，两边不对称，所以直接关掉。
+// 若某台机器本就不会提升叠加层，这个开关只是空转，不改变任何行为。
+//
+// 必须在 app ready 之前 appendSwitch —— ready 之后再加是静默无效的（见 gpu-switches 单测）。
+// 仅 Windows 有 DirectComposition，其它平台不必附加。
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch('disable-direct-composition-video-overlays');
+}
 
 // 调试/测试：BAMBU_BUDDY_USER_DATA 指定独立数据目录（干净登录态、不动正式数据）。
 // 必须在 new Store() 之前生效——electron-store 在构造时就固定了 userData 路径。
@@ -191,6 +209,10 @@ function createWindow() {
     x: Math.round(x - (winW - sizePx) / 2),
     y,
     transparent: true,
+    // 显式给全透明底色。transparent:true 时 Electron 确实不会去套那个 #FFF 默认底，但「不设」
+    // 依赖的是默认值链路；显式写死零 alpha 才与「窗口就该是全透明」这一意图一一对应，也是
+    // 官方与社区对「部分 Windows 机器上透明失效/发黑」的通行建议。零风险、无观感变化。
+    backgroundColor: '#00000000',
     frame: false,
     hasShadow: false,
     resizable: false,
@@ -215,6 +237,11 @@ function createWindow() {
 
   // 窗口销毁后清空引用，避免留下「已销毁但非 null」的悬空引用（对齐 settingsWin 的 closed 处理）。
   win.on('closed', () => { win = null; });
+
+  // 透明窗口自救（见 forceRepaint）。挂在 'show' 事件而不是逐个 win.show() 调用点上：
+  // 全屏退出、托盘「显示熊猫」、单实例二次启动都会走到这里，一处覆盖全部路径。
+  win.on('show', forceRepaint);
+  registerDisplayRepaint();
 
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
@@ -284,6 +311,41 @@ function applyHideOnFullscreen(enabled) {
   }
 }
 
+// ── 透明窗口「整窗变黑」自救：重新显示 / 显示环境变化后强制整窗重绘 ──
+// 透明窗口在 Windows 上是分层窗口，它的合成表面由 GPU 进程持有。以下事件会让这块表面被
+// 丢弃/重建，而重建后的首帧若早于渲染层交出带 alpha 的新帧，整窗就会以不透明黑呈现，
+// 并一直保持到下一次重绘为止（electron/electron#1270「改显示设置后透明窗口变黑」、#45730
+// 「关掉系统动画效果后 hide→show 不显示」都是这一类）：
+//   · 全屏应用来了又走（fullscreen-watch 自动 hide→show，用户无需做任何操作就会触发）；
+//   · 插拔显示器、改分辨率/缩放/刷新率、开关 HDR（display-metrics-changed）；
+//   · 睡眠唤醒、切换独显/核显、显卡驱动更新后 GPU 进程重启。
+// 这解释了「用了很久，某一天突然黑，重启就好」这种形态——它不由版本决定，由那天的环境
+// 变化决定，所以作者机上永远复现不出来。
+// invalidate() 只是排一次整窗重绘（不碰 bounds、不重建窗口），代价可忽略；即便某台机器的
+// 黑底不属于这一类，它也只是白跑一次重绘，不改变任何观感。
+// 延时那次是必需的：环境变化事件到达时合成表面可能尚未重建完，立刻重绘会画在旧表面上。
+let repaintTimer = null;
+function forceRepaint() {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.invalidate();
+  if (repaintTimer) clearTimeout(repaintTimer);
+  repaintTimer = setTimeout(() => {
+    repaintTimer = null;
+    if (win && !win.isDestroyed()) win.webContents.invalidate();
+  }, 400);
+}
+
+// screen 的监听只挂一次：macOS 的 activate 会再次 createWindow（窗口全关时），
+// 挂在窗口里会逐次累积同一个监听器。
+let displayRepaintBound = false;
+function registerDisplayRepaint() {
+  if (displayRepaintBound) return;
+  displayRepaintBound = true;
+  screen.on('display-metrics-changed', forceRepaint);
+  screen.on('display-added', forceRepaint);
+  screen.on('display-removed', forceRepaint);
+}
+
 // 渲染层上报的标签实际像素尺寸。高度 h 驱动窗口向下加高以容纳多行标签（多台打印机每台
 // 一行、恒一行，见 core/attention.js 与 renderer/style.css）；宽度 w 现已不再驱动窗口加宽
 // （窗口宽固定为熊猫宽，放不下的内容在渲染层以「…」截断，悬停时才滚出全文），
@@ -339,7 +401,37 @@ function applyWinWidth() {
   const next = petWindowBounds(petCenter, targetWinWidth(), currentSizePx(), targetExtraHeight());
   const b = win.getBounds();
   if (b.x === next.x && b.y === next.y && b.width === next.width && b.height === next.height) return;
+  // 尺寸真的变了才需要补重绘：改尺寸会让透明窗口的合成表面重建，重建后的首帧若早于渲染层
+  // 交出带 alpha 的新帧，整窗就以不透明黑呈现并一直保持（见 forceRepaint）。Electron 文档
+  // 对 transparent 窗口本就写着「不可 resize，设为 resizable 可能让透明失效」，而我们改
+  // 熊猫尺寸/标签行数时确实在 resize —— 那就至少保证每次 resize 后都排一次重绘。
+  // 纯移动（x/y 变化）不重建表面，无需重绘，故不在此触发。
+  const resized = b.width !== next.width || b.height !== next.height;
   win.setBounds(next);
+  if (resized) forceRepaint();
+}
+
+// 改尺寸的尾沿合并。设置页的尺寸滑杆是 input 事件驱动：从 220 拖到 380 会连发上百次
+// setPetSizePx，若逐次落到窗口上就是上百次「透明窗口 resize」——既浪费，也把「重建后回不到
+// 透明」的概率放大了两个数量级（每一次都是一张彩票）。首沿保住拖动时的即时跟手，尾沿保证
+// 停手后必有最后一次收敛到准确尺寸。节流不影响 applyWinWidth 的幂等性：它每次都据权威源
+// （petCenter + sizePx + labelSize）重算，晚一帧执行结果完全相同。
+const RESIZE_COALESCE_MS = 50;
+let resizeCoalesceTimer = null;
+let lastResizeAt = 0;
+function scheduleApplyWinWidth() {
+  if (resizeCoalesceTimer) return;
+  const wait = RESIZE_COALESCE_MS - (Date.now() - lastResizeAt);
+  if (wait <= 0) {
+    lastResizeAt = Date.now();
+    applyWinWidth();
+    return;
+  }
+  resizeCoalesceTimer = setTimeout(() => {
+    resizeCoalesceTimer = null;
+    lastResizeAt = Date.now();
+    applyWinWidth();
+  }, wait);
 }
 
 // 无极调整宠物窗口大小（80–400px），保持中心不动，持久化。
@@ -355,8 +447,9 @@ function setPetSizePx(px) {
     petCenter = { x: petTopLeft.x + px / 2, y: petTopLeft.y + px / 2 };
   }
   // 记忆熊猫方形左上角（历史口径），再经唯一入口 applyWinWidth 幂等落定窗口 bounds。
+  // 走节流版：滑杆连发时窗口不必每个像素都 resize 一次（见 scheduleApplyWinWidth）。
   store.set('window.position', petTopLeft);
-  applyWinWidth();
+  scheduleApplyWinWidth();
   rebuildTray();
 }
 
@@ -1742,6 +1835,82 @@ ipcMain.handle('app:info', () => {
     version: pkg.version,
     description: 'Bambu Buddy',
   };
+});
+
+// 一键诊断：把「这台机器为什么和作者机不一样」所需的全部环境信息收集成一段纯文本，
+// 由「设置 › 关于 › 复制诊断信息」写进剪贴板，用户粘贴回来即可。
+// 存在的理由见 core/diagnostics.js 顶部注释：透明窗口的显示缺陷几乎都由用户那台机器的
+// 合成路径决定，命令行开关（--disable-gpu 之类）对普通用户成本太高，得做成一个按钮。
+// 采集全程 try/catch：任何一项取不到都只让那一行显示「(未取到)」，绝不让按钮报错。
+async function collectDiagnostics() {
+  const pkg = require('../package.json');
+  const os = require('os');
+  const d = {
+    now: new Date().toLocaleString(),
+    appVersion: pkg.version,
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    platform: process.platform,
+    release: os.release(),
+    arch: process.arch,
+    sizePx: currentSizePx(),
+    labelFontSize: store.get('labelFontSize', 12),
+    showLabel: store.get('showLabel', true),
+    hideOnFullscreen: store.get('hideOnFullscreen', true),
+    hiddenByFullscreen,
+  };
+
+  try { d.gpuFeatureStatus = app.getGPUFeatureStatus(); } catch { /* 取不到就留空 */ }
+  try {
+    // GPU 进程未就绪时 getGPUInfo 可能久久不 resolve，给它一个上限，超时就放弃这一项。
+    d.gpuInfo = await Promise.race([
+      app.getGPUInfo('complete'),
+      new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+    ]);
+  } catch { /* 同上 */ }
+
+  try {
+    d.displays = screen.getAllDisplays().map((disp) => ({
+      id: disp.id,
+      bounds: disp.bounds,
+      scaleFactor: disp.scaleFactor,
+      colorDepth: disp.colorDepth,
+      depthPerComponent: disp.depthPerComponent,
+      colorSpace: disp.colorSpace,
+      internal: disp.internal,
+      detected: disp.detected,
+    }));
+    if (win && !win.isDestroyed()) {
+      d.petDisplayId = screen.getDisplayMatching(win.getBounds()).id;
+      // 这里读 getBounds 是**只读快照**（进报告文本），不是回写——与「源码防线」禁止的
+      // 「读回 bounds 再 setBounds」无关。变量特意不叫 b，以免与那条防线的模式撞名。
+      const winBounds = win.getBounds();
+      d.window = {
+        x: winBounds.x,
+        y: winBounds.y,
+        width: winBounds.width,
+        height: winBounds.height,
+        visible: win.isVisible(),
+      };
+    }
+  } catch { /* 同上 */ }
+
+  try {
+    const payload = buildPetPayload();
+    d.state = payload.stateKey;
+    d.anim = payload.videoFile;
+    d.filamentColor = store.get('matchFilamentColor', true) ? payload.filamentColor : null;
+    d.printerCount = currentPetItems().length;
+    d.mock = store.get('dataSource', 'mock') === 'mock';
+  } catch { /* 同上 */ }
+
+  return formatDiagnostics(d);
+}
+
+ipcMain.handle('app:diagnostics', async () => {
+  const text = await collectDiagnostics();
+  try { clipboard.writeText(text); } catch { /* 剪贴板不可用时仍把文本回传给设置窗显示 */ }
+  return text;
 });
 
 ipcMain.handle('app:checkUpdate', async () => {

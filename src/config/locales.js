@@ -262,6 +262,11 @@ const STRINGS = {
     'settings.aboutName': 'Bambu Buddy',
     'settings.aboutDesc': '一只住在桌面上的熊猫，会实时跟着你的拓竹打印机状态做出反应。',
     'settings.aboutAuthor': '作者',
+    'settings.diagnostics': '诊断信息',
+    'settings.diagnosticsDesc': '熊猫显示异常时，点一下复制本机环境信息，反馈给作者。',
+    'settings.copyDiagnostics': '复制诊断信息',
+    'settings.diagnosticsCopied': '已复制到剪贴板，粘贴给作者即可。',
+    'settings.diagnosticsFailed': '复制失败，请重试。',
     'about.currentVersion': '当前版本',
 
     // 设置窗 — 连接模式/区域/错误
@@ -650,6 +655,11 @@ const STRINGS = {
     'settings.aboutName': 'Bambu Buddy',
     'settings.aboutDesc': 'A desktop pet panda that lives on your screen and reacts to your Bambu 3D printer.',
     'settings.aboutAuthor': 'Author',
+    'settings.diagnostics': 'Diagnostics',
+    'settings.diagnosticsDesc': 'If the panda looks wrong on screen, copy this machine\u2019s environment info and send it along.',
+    'settings.copyDiagnostics': 'Copy diagnostics',
+    'settings.diagnosticsCopied': 'Copied to clipboard \u2014 paste it into your report.',
+    'settings.diagnosticsFailed': 'Copy failed, please try again.',
     'about.currentVersion': 'Current version',
 
     // Settings — connection mode / region / errors

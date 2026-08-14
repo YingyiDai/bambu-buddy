@@ -778,6 +778,22 @@ async function runUpdateCheck() {
 }
 
 el('checkUpdateBtn').addEventListener('click', runUpdateCheck);
+
+// 一键诊断：主进程采集本机环境（显卡/驱动、显示器与缩放/色深、GPU 特性、窗口几何）并写入
+// 剪贴板。熊猫显示异常（整窗变黑等）几乎都由这些环境项决定，用户粘贴回来即可定位。
+el('copyDiagBtn').addEventListener('click', async () => {
+  const btn = el('copyDiagBtn'), status = el('diagStatus');
+  btn.disabled = true;
+  try {
+    await window.bambu.copyDiagnostics();
+    status.textContent = t('settings.diagnosticsCopied');
+    status.className = 'update-status uptodate';
+  } catch {
+    status.textContent = t('settings.diagnosticsFailed');
+    status.className = 'update-status error';
+  }
+  btn.disabled = false;
+});
 el('autoCheckUpdateToggle').addEventListener('change', () => window.bambu.setPreference('autoCheckUpdate', el('autoCheckUpdateToggle').checked));
 
 // 托盘菜单点「检查更新」：主进程会切到关于页并请求自动触发一次检查。
