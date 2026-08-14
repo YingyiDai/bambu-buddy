@@ -1,6 +1,6 @@
 // Electron 主进程：透明置顶窗口、托盘、IPC、位置记忆、数据源驱动（§5）。
 
-const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, safeStorage, shell, dialog, net, session } = require('electron');
+const { app, BrowserWindow, Tray, Menu, ipcMain, nativeImage, screen, safeStorage, shell, dialog, net, session, clipboard } = require('electron');
 const path = require('path');
 const Store = require('electron-store');
 
@@ -60,6 +60,7 @@ function netGetRaw(host, path) {
   });
 }
 const { clampToVisible, petWindowBounds } = require('./core/window-position');
+const { formatDiagnostics } = require('./core/diagnostics');
 
 // 调试/测试：BAMBU_BUDDY_USER_DATA 指定独立数据目录（干净登录态、不动正式数据）。
 // 必须在 new Store() 之前生效——electron-store 在构造时就固定了 userData 路径。
@@ -220,6 +221,11 @@ function createWindow() {
   // 窗口销毁后清空引用，避免留下「已销毁但非 null」的悬空引用（对齐 settingsWin 的 closed 处理）。
   win.on('closed', () => { win = null; });
 
+  // 透明窗口自救（见 forceRepaint）。挂在 'show' 事件而不是逐个 win.show() 调用点上：
+  // 全屏退出、托盘「显示熊猫」、单实例二次启动都会走到这里，一处覆盖全部路径。
+  win.on('show', forceRepaint);
+  registerDisplayRepaint();
+
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'));
 
   // 渲染层加载完成后，补发偏好/语言/最近状态（数据源可能在窗口 ready 前已 emit）。
@@ -286,6 +292,41 @@ function applyHideOnFullscreen(enabled) {
     fullscreenWatch.stop();
     if (hiddenByFullscreen && win && !win.isDestroyed()) { win.show(); hiddenByFullscreen = false; }
   }
+}
+
+// ── 透明窗口「整窗变黑」自救：重新显示 / 显示环境变化后强制整窗重绘 ──
+// 透明窗口在 Windows 上是分层窗口，它的合成表面由 GPU 进程持有。以下事件会让这块表面被
+// 丢弃/重建，而重建后的首帧若早于渲染层交出带 alpha 的新帧，整窗就会以不透明黑呈现，
+// 并一直保持到下一次重绘为止（electron/electron#1270「改显示设置后透明窗口变黑」、#45730
+// 「关掉系统动画效果后 hide→show 不显示」都是这一类）：
+//   · 全屏应用来了又走（fullscreen-watch 自动 hide→show，用户无需做任何操作就会触发）；
+//   · 插拔显示器、改分辨率/缩放/刷新率、开关 HDR（display-metrics-changed）；
+//   · 睡眠唤醒、切换独显/核显、显卡驱动更新后 GPU 进程重启。
+// 这解释了「用了很久，某一天突然黑，重启就好」这种形态——它不由版本决定，由那天的环境
+// 变化决定，所以作者机上永远复现不出来。
+// invalidate() 只是排一次整窗重绘（不碰 bounds、不重建窗口），代价可忽略；即便某台机器的
+// 黑底不属于这一类，它也只是白跑一次重绘，不改变任何观感。
+// 延时那次是必需的：环境变化事件到达时合成表面可能尚未重建完，立刻重绘会画在旧表面上。
+let repaintTimer = null;
+function forceRepaint() {
+  if (!win || win.isDestroyed()) return;
+  win.webContents.invalidate();
+  if (repaintTimer) clearTimeout(repaintTimer);
+  repaintTimer = setTimeout(() => {
+    repaintTimer = null;
+    if (win && !win.isDestroyed()) win.webContents.invalidate();
+  }, 400);
+}
+
+// screen 的监听只挂一次：macOS 的 activate 会再次 createWindow（窗口全关时），
+// 挂在窗口里会逐次累积同一个监听器。
+let displayRepaintBound = false;
+function registerDisplayRepaint() {
+  if (displayRepaintBound) return;
+  displayRepaintBound = true;
+  screen.on('display-metrics-changed', forceRepaint);
+  screen.on('display-added', forceRepaint);
+  screen.on('display-removed', forceRepaint);
 }
 
 // 渲染层上报的标签实际像素尺寸。高度 h 驱动窗口向下加高以容纳多行标签（多台打印机每台
@@ -1746,6 +1787,82 @@ ipcMain.handle('app:info', () => {
     version: pkg.version,
     description: 'Bambu Buddy',
   };
+});
+
+// 一键诊断：把「这台机器为什么和作者机不一样」所需的全部环境信息收集成一段纯文本，
+// 由「设置 › 关于 › 复制诊断信息」写进剪贴板，用户粘贴回来即可。
+// 存在的理由见 core/diagnostics.js 顶部注释：透明窗口的显示缺陷几乎都由用户那台机器的
+// 合成路径决定，命令行开关（--disable-gpu 之类）对普通用户成本太高，得做成一个按钮。
+// 采集全程 try/catch：任何一项取不到都只让那一行显示「(未取到)」，绝不让按钮报错。
+async function collectDiagnostics() {
+  const pkg = require('../package.json');
+  const os = require('os');
+  const d = {
+    now: new Date().toLocaleString(),
+    appVersion: pkg.version,
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    platform: process.platform,
+    release: os.release(),
+    arch: process.arch,
+    sizePx: currentSizePx(),
+    labelFontSize: store.get('labelFontSize', 12),
+    showLabel: store.get('showLabel', true),
+    hideOnFullscreen: store.get('hideOnFullscreen', true),
+    hiddenByFullscreen,
+  };
+
+  try { d.gpuFeatureStatus = app.getGPUFeatureStatus(); } catch { /* 取不到就留空 */ }
+  try {
+    // GPU 进程未就绪时 getGPUInfo 可能久久不 resolve，给它一个上限，超时就放弃这一项。
+    d.gpuInfo = await Promise.race([
+      app.getGPUInfo('complete'),
+      new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+    ]);
+  } catch { /* 同上 */ }
+
+  try {
+    d.displays = screen.getAllDisplays().map((disp) => ({
+      id: disp.id,
+      bounds: disp.bounds,
+      scaleFactor: disp.scaleFactor,
+      colorDepth: disp.colorDepth,
+      depthPerComponent: disp.depthPerComponent,
+      colorSpace: disp.colorSpace,
+      internal: disp.internal,
+      detected: disp.detected,
+    }));
+    if (win && !win.isDestroyed()) {
+      d.petDisplayId = screen.getDisplayMatching(win.getBounds()).id;
+      // 这里读 getBounds 是**只读快照**（进报告文本），不是回写——与「源码防线」禁止的
+      // 「读回 bounds 再 setBounds」无关。变量特意不叫 b，以免与那条防线的模式撞名。
+      const winBounds = win.getBounds();
+      d.window = {
+        x: winBounds.x,
+        y: winBounds.y,
+        width: winBounds.width,
+        height: winBounds.height,
+        visible: win.isVisible(),
+      };
+    }
+  } catch { /* 同上 */ }
+
+  try {
+    const payload = buildPetPayload();
+    d.state = payload.stateKey;
+    d.anim = payload.videoFile;
+    d.filamentColor = store.get('matchFilamentColor', true) ? payload.filamentColor : null;
+    d.printerCount = currentPetItems().length;
+    d.mock = store.get('dataSource', 'mock') === 'mock';
+  } catch { /* 同上 */ }
+
+  return formatDiagnostics(d);
+}
+
+ipcMain.handle('app:diagnostics', async () => {
+  const text = await collectDiagnostics();
+  try { clipboard.writeText(text); } catch { /* 剪贴板不可用时仍把文本回传给设置窗显示 */ }
+  return text;
 });
 
 ipcMain.handle('app:checkUpdate', async () => {

@@ -40,6 +40,9 @@ contextBridge.exposeInMainWorld('bambu', {
   // 关于信息
   getAppInfo: () => ipcRenderer.invoke('app:info'),
 
+  // 一键诊断：主进程采集环境信息、写入剪贴板，并把文本回传供界面显示
+  copyDiagnostics: () => ipcRenderer.invoke('app:diagnostics'),
+
   // 检查更新
   checkForUpdates: () => ipcRenderer.invoke('app:checkUpdate'),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
