@@ -62,6 +62,23 @@ function netGetRaw(host, path) {
 const { clampToVisible, petWindowBounds } = require('./core/window-position');
 const { formatDiagnostics } = require('./core/diagnostics');
 
+// ── 禁止把熊猫的视频提升为硬件叠加层（Windows / DirectComposition）──
+// 叠加层（overlay plane）由系统直接合成，**不携带窗口的逐像素 alpha**。一旦 Chromium 把
+// 熊猫的 <video> 提升上去，就等于在这个透明窗口上挖出一块不透明的洞 —— 观感正是「熊猫身上
+// 一整块黑」。是否提升由显卡/驱动的能力决定，驱动一更新就可能翻面，所以它天然是那种
+// 「同一个版本用了几个月都好好的，某一天突然开始黑」且作者机上永远复现不出的缺陷。
+//
+// 代价近乎为零，这也是它值得**默认对所有人生效**（而不是做成开关）的原因：叠加层的收益
+// 只在大尺寸/全屏视频上才显著（省合成带宽与功耗），而熊猫是 80–400px 的装饰性循环动画，
+// 提升上去几乎省不到什么。收益近零、风险实打实，两边不对称，所以直接关掉。
+// 若某台机器本就不会提升叠加层，这个开关只是空转，不改变任何行为。
+//
+// 必须在 app ready 之前 appendSwitch —— ready 之后再加是静默无效的（见 gpu-switches 单测）。
+// 仅 Windows 有 DirectComposition，其它平台不必附加。
+if (process.platform === 'win32') {
+  app.commandLine.appendSwitch('disable-direct-composition-video-overlays');
+}
+
 // 调试/测试：BAMBU_BUDDY_USER_DATA 指定独立数据目录（干净登录态、不动正式数据）。
 // 必须在 new Store() 之前生效——electron-store 在构造时就固定了 userData 路径。
 if (process.env.BAMBU_BUDDY_USER_DATA) app.setPath('userData', process.env.BAMBU_BUDDY_USER_DATA);
