@@ -1,16 +1,17 @@
 ## What's Changed
 
 ### New
-- **Intel Mac build.** macOS now ships in two flavors: `macOS-arm64` for Apple Silicon (M1/M2/M3…) and `macOS-x64` for Intel Macs. Download the one that matches your machine — Apple menu › About This Mac tells you which one you have. In-app updates pick the right build automatically.
+- **Live label preview.** Settings › Appearance now has a **Status text** card: preview the label as you tweak it, pick what it shows (Layers / Time Left / Done At), and set what happens when the text doesn't fit. Nine rows of switches are now four.
+- **Copy diagnostics.** Settings › About › **Copy diagnostics** puts your app, GPU, driver and display info on the clipboard, so display problems can be reported in one paste.
 
 ### Fixes
-- **No more flicker when a print starts.** In the first second of a job the panda could flash "Printing", "Finished" or "Idle" before settling on "Preparing". Those half-updated frames from the printer are now recognized for what they are, and a new state stabilizer holds back any single-frame state change until the printer confirms it — so the panda shows the state your printer is really in, without the twitch.
-- **Cloud printers come back online on their own.** After powering the printer off and on, the panda could stay offline for up to five minutes, or until you signed in again. It now recovers within 30 seconds, with no manual re-login.
-- **Rounded Dock icon on every macOS version.** The icon was a square image that relied on macOS to round the corners, which only macOS 26 does — on macOS 15 and earlier it showed up square. The rounded shape is now part of the icon itself.
+- **No more black block or black square on Windows.** Three driver-dependent causes fixed: the panda's video could be promoted to a hardware overlay that ignores window transparency, the status pill's `backdrop-filter` could make the whole window opaque, and the window could come up black after a resize, a re-show, or a display change.
+- **Smooth pet-size slider.** Dragging it no longer resizes the window on every pixel.
+- **Match Filament Color works on dual-nozzle printers again.** External spools and printers that don't report the active nozzle left the panda stuck on its default green; they now resolve, and anything still unknown falls back instead of giving up.
 
 ### Improvements
-- **Overnight prints show which day they finish.** A print that ends after midnight now reads "Done 08:00+1" instead of a bare "Done 08:00", so a 9-hour and a 33-hour job are no longer indistinguishable. The offset counts local calendar days, so it stays correct across daylight-saving changes, and it is not capped — a week-long print shows "+7".
+- **The label holds still.** Text that doesn't fit now ends in "…" instead of scrolling forever. Hover the panda to scroll it once, or choose **Scroll always** to keep the old behavior. Long printer names no longer push the status off the line.
 
 ### Under the hood
-- Release notes are now hand-written in English and enforced by CI, and the release pipeline builds, verifies, signs and mirrors both Mac architectures.
-- New developer script to preview the panda's label off-screen, so label wording and layout can be checked without a printer or a display.
+- Desktop label and settings preview share one text builder, so they can't drift apart.
+- New tests cover the transparent-window fixes and the filament-color fallbacks.
