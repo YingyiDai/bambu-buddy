@@ -191,6 +191,10 @@ function createWindow() {
     x: Math.round(x - (winW - sizePx) / 2),
     y,
     transparent: true,
+    // 显式给全透明底色。transparent:true 时 Electron 确实不会去套那个 #FFF 默认底，但「不设」
+    // 依赖的是默认值链路；显式写死零 alpha 才与「窗口就该是全透明」这一意图一一对应，也是
+    // 官方与社区对「部分 Windows 机器上透明失效/发黑」的通行建议。零风险、无观感变化。
+    backgroundColor: '#00000000',
     frame: false,
     hasShadow: false,
     resizable: false,
