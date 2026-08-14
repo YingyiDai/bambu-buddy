@@ -401,7 +401,37 @@ function applyWinWidth() {
   const next = petWindowBounds(petCenter, targetWinWidth(), currentSizePx(), targetExtraHeight());
   const b = win.getBounds();
   if (b.x === next.x && b.y === next.y && b.width === next.width && b.height === next.height) return;
+  // 尺寸真的变了才需要补重绘：改尺寸会让透明窗口的合成表面重建，重建后的首帧若早于渲染层
+  // 交出带 alpha 的新帧，整窗就以不透明黑呈现并一直保持（见 forceRepaint）。Electron 文档
+  // 对 transparent 窗口本就写着「不可 resize，设为 resizable 可能让透明失效」，而我们改
+  // 熊猫尺寸/标签行数时确实在 resize —— 那就至少保证每次 resize 后都排一次重绘。
+  // 纯移动（x/y 变化）不重建表面，无需重绘，故不在此触发。
+  const resized = b.width !== next.width || b.height !== next.height;
   win.setBounds(next);
+  if (resized) forceRepaint();
+}
+
+// 改尺寸的尾沿合并。设置页的尺寸滑杆是 input 事件驱动：从 220 拖到 380 会连发上百次
+// setPetSizePx，若逐次落到窗口上就是上百次「透明窗口 resize」——既浪费，也把「重建后回不到
+// 透明」的概率放大了两个数量级（每一次都是一张彩票）。首沿保住拖动时的即时跟手，尾沿保证
+// 停手后必有最后一次收敛到准确尺寸。节流不影响 applyWinWidth 的幂等性：它每次都据权威源
+// （petCenter + sizePx + labelSize）重算，晚一帧执行结果完全相同。
+const RESIZE_COALESCE_MS = 50;
+let resizeCoalesceTimer = null;
+let lastResizeAt = 0;
+function scheduleApplyWinWidth() {
+  if (resizeCoalesceTimer) return;
+  const wait = RESIZE_COALESCE_MS - (Date.now() - lastResizeAt);
+  if (wait <= 0) {
+    lastResizeAt = Date.now();
+    applyWinWidth();
+    return;
+  }
+  resizeCoalesceTimer = setTimeout(() => {
+    resizeCoalesceTimer = null;
+    lastResizeAt = Date.now();
+    applyWinWidth();
+  }, wait);
 }
 
 // 无极调整宠物窗口大小（80–400px），保持中心不动，持久化。
@@ -417,8 +447,9 @@ function setPetSizePx(px) {
     petCenter = { x: petTopLeft.x + px / 2, y: petTopLeft.y + px / 2 };
   }
   // 记忆熊猫方形左上角（历史口径），再经唯一入口 applyWinWidth 幂等落定窗口 bounds。
+  // 走节流版：滑杆连发时窗口不必每个像素都 resize 一次（见 scheduleApplyWinWidth）。
   store.set('window.position', petTopLeft);
-  applyWinWidth();
+  scheduleApplyWinWidth();
   rebuildTray();
 }
 
