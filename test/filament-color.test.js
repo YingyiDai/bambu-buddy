@@ -224,3 +224,64 @@ test('tray 缺 id 字段时按数组下标回退定位槽位', () => {
   };
   assert.equal(resolveFilamentColor(report), '#89c2ff');
 });
+
+// ── 「无颜色」哨兵 vs 真·黑色耗材 ──
+// 真机把「这一槽没有颜色信息」报成全零的 "00000000"（空槽 / 外挂料盘未设色 / AMS 刚重读完
+// RFID 的过渡帧），alpha=00 是它与真黑耗材 "000000FF" 的唯一区别。忽略 alpha 会把「不知道」
+// 读成「黑色」：用户实测白料打印时熊猫叼一卷黑丝，直到下次 pushall 才恢复。
+test('无颜色哨兵：tray_color 的 alpha=00 判未知，不得读成黑色', () => {
+  assert.equal(resolveFilamentColor({
+    ams: { tray_now: '0', ams: [{ id: '0', tray: [{ id: '0', tray_color: '00000000' }] }] },
+  }), null);
+  // 外挂料盘未设色同理
+  assert.equal(resolveFilamentColor({
+    ams: { tray_now: '254' }, vt_tray: { tray_color: '00000000' },
+  }), null);
+});
+
+test('真·黑色耗材（000000FF）仍正常取到黑色', () => {
+  assert.equal(resolveFilamentColor({
+    ams: { tray_now: '0', ams: [{ id: '0', tray: [{ id: '0', tray_color: '000000FF' }] }] },
+  }), '#000000');
+});
+
+test('只给 RRGGBB 六位（无 alpha）时按原样取色，不受哨兵判定影响', () => {
+  assert.equal(resolveFilamentColor({
+    ams: { tray_now: '0', ams: [{ id: '0', tray: [{ id: '0', tray_color: '000000' }] }] },
+  }), '#000000');
+});
+
+// 「唯一装料的喷头即主喷头」这条兜底只在**每个喷头的 snow 都读得到**时成立。
+// 若另一喷头的 snow 缺失，「只有一个装料」是信息不全的假象——据此认主喷头，
+// 会把闲置喷头的耗材色当成正在打的色（白料熊猫叼黑丝的成因之一）。
+test('双喷头：另一喷头 snow 字段缺失时不走「唯一装料」兜底，回落 tray_now', () => {
+  const report = {
+    ams: {
+      tray_now: '5', // AMS1 槽1 = 白，真正在打的料
+      ams: [
+        { id: '0', tray: [{ id: '0', tray_color: '000000FF' }] }, // 闲置喷头装的黑料
+        { id: '1', tray: [{ id: '0', tray_color: '112233FF' }, { id: '1', tray_color: 'FFFFFFFF' }] },
+      ],
+    },
+    device: {
+      extruder: {
+        info: [
+          { id: 0, snow: 0, stat: 0 }, // AMS0 槽0 = 黑，闲置
+          { id: 1 },                   // 这一帧没带该喷头的 snow —— 不是「空槽」
+        ],
+      },
+    },
+  };
+  assert.equal(resolveFilamentColor(report), '#ffffff');
+});
+
+test('双喷头：另一喷头明确空槽（snow=0xFFFF）时，唯一装料的喷头仍照认', () => {
+  const report = {
+    ams: { tray_now: '0', ams: [
+      { id: '0', tray: [{ id: '0', tray_color: '000000FF' }] },
+      { id: '1', tray: [{ id: '1', tray_color: 'FFFFFFFF' }] },
+    ] },
+    device: { extruder: { info: [{ id: 0, snow: 65535, stat: 0 }, { id: 1, snow: 257 }] } },
+  };
+  assert.equal(resolveFilamentColor(report), '#ffffff');
+});

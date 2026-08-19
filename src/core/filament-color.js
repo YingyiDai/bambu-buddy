@@ -1,7 +1,9 @@
 // 当前打印耗材颜色解析（纯函数，无 Electron 依赖）。
 // 字段语义以 OpenBambuAPI mqtt.md / pybambu 为准（CLAUDE.md：逆向协议以 pybambu 为真相源）：
 //   ams.tray_now: "255" 无耗材 | "254" 外挂料盘（vt_tray）| 其余 = ams_id*4 + tray_id
-//   tray_color: RRGGBBAA 十六进制（alpha 恒 FF，忽略）
+//   tray_color: RRGGBBAA 十六进制。⚠️ alpha **不是**恒 FF：真机把「这一槽没有颜色信息」
+//     报成全零的 "00000000"（空槽、外挂料盘未设色、AMS 刚重读完 RFID 的过渡帧都见得到），
+//     而真·黑色耗材是 "000000FF"。alpha 是区分二者的唯一线索，不可忽略。
 
 const TRAY_NOW_EXTERNAL = 254; // 外挂料盘 → vt_tray
 const TRAY_NOW_NONE = 255;     // 无耗材
@@ -10,11 +12,16 @@ const SLOT_NONE = 0xffff;      // extruder.snow 空槽哨兵（真机实测 6553
 // 254 对齐 tray_now 的外挂哨兵；255 是双喷头机第二个外挂位（pybambu 的 deputy 外挂）。
 const EXTERNAL_AMS_IDS = new Set([254, 255]);
 
-/** RRGGBBAA → '#rrggbb'；非法返回 null。 */
+/**
+ * RRGGBBAA → '#rrggbb'；非法或「无颜色」返回 null。
+ * alpha=00 = 无颜色哨兵，必须判 null 而不是取前 6 位：否则空槽/未设色的 "00000000"
+ * 会被读成真·黑色，白料打印时熊猫叼一卷黑丝（真黑耗材是 "000000FF"，不受影响）。
+ */
 function parseTrayColor(raw) {
   if (typeof raw !== 'string' || raw.length < 6) return null;
   const rgb = raw.slice(0, 6);
   if (!/^[0-9a-fA-F]{6}$/.test(rgb)) return null;
+  if (raw.slice(6, 8) === '00') return null; // alpha=00 → 无颜色，不是黑色
   return '#' + rgb.toLowerCase();
 }
 
@@ -69,15 +76,20 @@ function externalColor(report, slotId) {
 function resolveDualNozzleColor(report) {
   const info = report.device && report.device.extruder && report.device.extruder.info;
   if (!Array.isArray(info) || info.length < 2) return null; // 单喷头 → 走 tray_now
-  // 装着料的喷头（snow 非空槽哨兵）。stat 非 0 = 正在出料，优先按它认主喷头；
-  // 但 stat 只在一台真机上验证过，缺失/恒 0 的机型不能因此判「没有喷头在打」——
-  // 只有一个喷头装着料时它必然就是在打的那个，直接认它（这一步救回 stat 语义不符的机型）。
-  const loaded = info.filter((e) => {
-    const snow = Number(e && e.snow);
-    return Number.isFinite(snow) && snow !== SLOT_NONE;
-  });
+  // snow 可读的喷头。⚠️ 「snow 字段缺失」与「snow=0xFFFF 空槽」是两回事：前者只说明这一帧
+  //    没带这个喷头的装载信息（增量报文常态），后者才是打印机明说「这个喷头没装料」。
+  const known = info.filter((e) => Number.isFinite(Number(e && e.snow)));
+  const loaded = known.filter((e) => Number(e.snow) !== SLOT_NONE);
+  // stat 非 0 = 正在出料，优先按它认主喷头；但 stat 只在一台真机上验证过，缺失/恒 0 的机型
+  // 不能因此判「没有喷头在打」—— 只有一个喷头装着料时它必然就是在打的那个，直接认它
+  // （这一步救回 stat 语义不符的机型）。
+  // 该兜底只在**每个喷头的 snow 都读得到**时才成立：若另一个喷头的 snow 缺失，「只有一个装料」
+  // 是我们信息不全的假象而非事实，据此认主喷头会把闲置喷头的耗材色当成正在打的色
+  // （白料熊猫叼黑丝的成因之一）。信息不全就交回 tray_now，别自作主张。
+  const complete = known.length === info.length;
   // 两头同时出料时取第一个在打的即可。
-  const active = loaded.find((e) => Number(e.stat)) || (loaded.length === 1 ? loaded[0] : null);
+  const active = loaded.find((e) => Number(e.stat))
+    || (loaded.length === 1 && complete ? loaded[0] : null);
   if (!active) return null;
 
   const snow = Number(active.snow);
