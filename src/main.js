@@ -10,6 +10,7 @@ const WINDOW_ICON = path.join(__dirname, '..', 'assets', 'icon', process.platfor
 const { resolveState, extractTemps, fmtRemain, isPrintActive } = require('./core/state-machine');
 const { applyCompletionState } = require('./core/completion-state');
 const { StateStabilizer } = require('./core/state-stabilizer');
+const { shouldRefreshOnColorLoss } = require('./core/filament-refresh');
 const { buildLiveTelemetry } = require('./core/live-telemetry');
 const { MockDataSource } = require('./core/mock');
 const { BambuCloudDataSource, BambuLanDataSource, classifyLanProbe } = require('./core/bambu-mqtt');
@@ -147,7 +148,7 @@ const MOCK_SERIAL = '__mock__';
 // 托盘状态区顶层最多展开几台的完整状态块。超出的台按「关注度」折进「其余 N 台」子菜单
 // （见 buildMenuTemplate）——账号绑很多台时（打印农场/教室）避免菜单被顶得极长、把设置/退出挤到要滚动。
 const MAX_TRAY_PRINTERS = 3;
-const runtimes = new Map(); // serial → { lastReport, lastState, completionTimer, stabilizer, stabilizeTimer }
+const runtimes = new Map(); // serial → 见 getRuntime 的初值
 let mockSource = null; // 仅 mock 模式非空（MockDataSource）
 const errorTables = new Map(); // "<lang>_<model>" → 解析后的官方错误码表（打印失败时查大类）
 const errorTablePending = new Set(); // 正在下载中的表 key，避免并发重复下载
@@ -158,7 +159,10 @@ let lastAuthNotifyAt = 0;
 function getRuntime(serial) {
   let rt = runtimes.get(serial);
   if (!rt) {
-    rt = { lastReport: null, lastState: null, completionTimer: null, stabilizer: null, stabilizeTimer: null };
+    rt = {
+      lastReport: null, lastState: null, completionTimer: null, stabilizer: null, stabilizeTimer: null,
+      lastFilamentColor: null, filamentRefreshAt: null, // 见 applyReport 里的「耗材色丢失即补拉」
+    };
     runtimes.set(serial, rt);
   }
   return rt;
@@ -626,6 +630,8 @@ function applyReport(serial, report) {
   const rt = getRuntime(serial);
   rt.lastReport = report; // 保留原始报文供托盘菜单
   let state = resolveState(report);
+  // 去抖/完成态改写之前的原始耗材色 —— 「丢失即补拉」判的是数据源解析结果，不是对外显示值。
+  const rawFilamentColor = state.filamentColor || null;
   // 打印失败：用官方码表把错误归到「大类」（断料/堵头/…），熊猫/托盘/卡片统一显示「打印失败 · 大类」。
   // 具体长句原因太专业，不在熊猫展示 —— 用户要细节请查 Bambu Studio。认不出大类则保持通用「打印失败」。
   if (state.stateKey === 'failed') {
@@ -658,6 +664,23 @@ function applyReport(serial, report) {
     rt.stabilizer.reset();
     clearStabilizeTimer(rt);
   }
+
+  // 耗材色「已知 → 未知」：合并快照里的 tray_color / extruder 解不出了。主动请求一次完整状态，
+  // 别干等最长 5 分钟的定时 pushall（成本与冷却权衡见 core/filament-refresh.js）。
+  if (live) {
+    const now = Date.now();
+    if (shouldRefreshOnColorLoss({
+      prevColor: rt.lastFilamentColor,
+      nextColor: rawFilamentColor,
+      printActive: isPrintActive(report),
+      lastRefreshAt: rt.filamentRefreshAt,
+      now,
+    })) {
+      rt.filamentRefreshAt = now;
+      hub.refresh(serial);
+    }
+  }
+  rt.lastFilamentColor = rawFilamentColor;
 
   rt.lastState = state;
   schedulePetPush();
