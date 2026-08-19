@@ -116,6 +116,21 @@ test('双喷头：device 增量帧（仅 cam）不应冲掉 device.extruder → 
   assert.equal(r.device.cam.timelapse, 'disable', '增量字段应正常更新');
 });
 
+// 「条目只剩 id = 该槽已退料」是 **AMS 料盘专有**语义，套到 device.extruder.info 上会闯祸：
+// {id} 只表示这一帧没带该喷头的字段，按「已空」整条替换会擦掉 snow/stat，取色随即把闲置喷头
+// 当成主喷头 —— 用户实测「白料打印中熊猫叼黑丝、约 5 分钟后（定时 pushall）自己变回来」。
+test('extruder.info 的 {id} 条目不按「已空」整条替换 → 不擦掉 snow/stat', () => {
+  const base = new BambuMQTTBase();
+  let r = feed(base, { command: 'push_status', gcode_state: 'RUNNING', ...X2D_FULL });
+  assert.equal(resolveFilamentColor(r), '#f55a74');
+  r = feed(base, { device: { extruder: { info: [{ id: 1 }] } } });
+  assert.deepEqual(r.device.extruder.info[1], { id: 1, snow: 257, stat: 197376 }, 'snow/stat 不应被擦掉');
+  assert.equal(resolveFilamentColor(r), '#f55a74', '颜色不应跳到闲置喷头');
+  // 后续普通增量帧同样不该把它带偏（错值会一直粘到下次 pushall）
+  r = feed(base, { mc_percent: 68, device: { cam: { timelapse: 'enable' } } });
+  assert.equal(resolveFilamentColor(r), '#f55a74');
+});
+
 test('vt_tray（外挂料盘）增量帧同样深合并', () => {
   const base = new BambuMQTTBase();
   feed(base, { ams: { tray_now: '254' }, vt_tray: { tray_color: '00FF00FF', tray_type: 'PETG' } });
@@ -188,4 +203,17 @@ test('refresh()：未连接 / 无 client 时安全空操作，不发布不抛错
   assert.strictEqual(published.length, 0, '未连接不应发布');
   base._client = null;
   assert.doesNotThrow(() => base.refresh(), '无 client 不应抛错');
+});
+
+// 空槽/未设色哨兵 "00000000"（alpha=00）不是真黑色：当成黑色会让白料打印的熊猫叼一卷黑丝。
+test('槽位报「无颜色」哨兵 00000000 时判为未知，而不是黑色', () => {
+  const base = new BambuMQTTBase();
+  feed(base, {
+    ams: { tray_now: '1', ams: [{ id: '0', tray: [
+      { id: '0', tray_color: '000000FF' },
+      { id: '1', tray_color: 'FFFFFFFF' },
+    ] }] },
+  });
+  const r = feed(base, { ams: { ams: [{ id: '0', tray: [{ id: '1', tray_color: '00000000' }] }] } });
+  assert.equal(resolveFilamentColor(r), null, '无颜色哨兵应判未知（渲染层保持原始素材色），不得读成 #000000');
 });

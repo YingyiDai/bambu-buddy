@@ -46,19 +46,28 @@ function isPlainObject(v) {
   return v != null && typeof v === 'object' && !Array.isArray(v);
 }
 
+// 「patch 条目只有 id 一个键」= 该槽已空（对齐 pybambu AMSTray.print_update），需整条替换
+// 旧条目而非合并，避免退料后残留旧 tray_color。⚠️ 这是 **AMS 料盘（tray）专有**语义，只能按
+// 字段名放行，绝不可对所有 id 数组一概而论：device.extruder.info 的 {id} 条目只说明「这一帧
+// 没带这个喷头的字段」，按「已空」整条替换会擦掉该喷头的 snow/stat —— 双喷头取色随即把闲置
+// 喷头当成正在出料的主喷头，白料打印时熊猫叼黑丝；而且这份错值粘在合并快照里，之后的增量帧
+// 几乎不再重发 extruder（真机 device 增量绝大多数只带 {cam}/{fan}），要等 5 分钟后的定时
+// pushall 送来完整快照才自愈 —— 正是用户报的「打印中颜色错了约 5 分钟又自己变回来」。
+const EMPTIED_BY_ID_KEYS = new Set(['tray']);
+
 /**
  * 按 id 合并对象数组：patch 条目覆盖同 id 旧条目的对应字段，patch 未提及的旧条目保留。
- * 特例（对齐 pybambu AMSTray.print_update）：patch 条目只有 id 一个键 = 「该槽已空」，
- * 整条替换旧条目而非合并，避免退料后残留旧 tray_color。
  * 任一侧存在无 id 条目时不做按 id 合并，整体以 patch 为准（语义未知，宁可不猜）。
+ * @param {string} key - 该数组在父对象里的字段名，决定是否适用上面的「只有 id = 已空」特例。
  */
-function mergeArrayById(prev, patch) {
+function mergeArrayById(prev, patch, key) {
   const hasId = (e) => isPlainObject(e) && e.id != null;
   if (!prev.every(hasId) || !patch.every(hasId)) return patch;
+  const allowEmptied = EMPTIED_BY_ID_KEYS.has(key);
   const out = prev.slice();
   for (const entry of patch) {
     const i = out.findIndex((e) => String(e.id) === String(entry.id));
-    const emptied = Object.keys(entry).length === 1;
+    const emptied = allowEmptied && Object.keys(entry).length === 1;
     if (i === -1) out.push(entry);
     else out[i] = emptied ? entry : deepMergePatch(out[i], entry);
   }
@@ -72,7 +81,7 @@ function deepMergePatch(prev, patch) {
   for (const [k, v] of Object.entries(patch)) {
     const p = out[k];
     if (isPlainObject(p) && isPlainObject(v)) out[k] = deepMergePatch(p, v);
-    else if (Array.isArray(p) && Array.isArray(v)) out[k] = mergeArrayById(p, v);
+    else if (Array.isArray(p) && Array.isArray(v)) out[k] = mergeArrayById(p, v, k);
     else out[k] = v;
   }
   return out;
