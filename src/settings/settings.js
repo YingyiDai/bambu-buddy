@@ -80,7 +80,7 @@ function printerImage(model) {
     ['x1carbon', 'X1C'], ['x1c', 'X1C'], ['x1e', 'X1E'], ['x1', 'X1C'],
     ['p1s', 'P1S'], ['p2s', 'P2S'],
     ['a1mini', 'A1mini'], ['a1m', 'A1mini'], ['a2l', 'a2l'], ['a1', 'A1'],
-    ['h2d', 'H2D'], ['h2s', 'H2S'], ['h2c', 'h2c'], ['x2d', 'X2D'],
+    ['h2d', 'H2D'], ['h2s', 'H2S'], ['h2c', 'h2c'], ['h3c', 'H3C'], ['x2d', 'X2D'],
   ];
   for (const [k, img] of table) if (norm.includes(k)) return '../../assets/printer/' + img + '.png';
   return FALLBACK_PRINTER_IMG;
