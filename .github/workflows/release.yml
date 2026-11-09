@@ -39,7 +39,13 @@ env:
 
 jobs:
   build-mac:
-    runs-on: macos-latest
+    # 钉在 macos-15，不用 macos-latest：2026-11 起 macos-latest 升到 macOS 26.6，electron-builder
+    # 25.x 的已知缺陷随之暴露——它给自建的临时 keychain 用随机密码，却拿 .p12 证书密码去跑
+    # `security set-key-partition-list -k`，macOS 26.6 不再放行，签名阶段直接报
+    # 「SecKeychainUnlock: The user name or passphrase you entered is not correct」。
+    # 根治是把 electron-builder 升到 26.17+（上游已修）；那是签名/公证工具链的大版本升级，
+    # 需单独验证后再做，届时可改回 macos-latest。
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
         with:
