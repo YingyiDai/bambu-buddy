@@ -459,3 +459,30 @@ test('filamentColor：外挂料盘（tray_now=254）读 vt_tray', () => {
   });
   assert.equal(r.filamentColor, '#00ae42');
 });
+
+test('extractTemps：H3C 取当前打印头（不在工具架上的那项）的温度', () => {
+  const r = extractTemps({
+    ams: { ams: [{ id: '0', info: '10006', tray: [] }] },
+    device: {
+      holder: { info2: 2 },
+      extruder: { info: [{ id: 0, temp: (0 << 16) | 35 }] },
+      nozzle: { info: [{ id: 0x00, addr_id: 3, temp: (250 << 16) | 247 }, { id: 0x13, addr_id: 3, temp: 0 }] },
+      bed: { info: { temp: (65 << 16) | 64 } },
+    },
+  });
+  assert.equal(r.nozzleTemp, 247);
+  assert.equal(r.targetNozzleTemp, 250);
+  assert.equal(r.bedTemp, 64);
+});
+
+test('extractTemps：H3C 当前打印头没带 temp 时回落挤出机温度', () => {
+  const r = extractTemps({
+    device: {
+      holder: { info2: 2 },
+      extruder: { info: [{ id: 0, temp: (220 << 16) | 219 }] },
+      nozzle: { info: [{ id: 0x00, addr_id: 3 }] },
+    },
+  });
+  assert.equal(r.nozzleTemp, 219);
+  assert.equal(r.targetNozzleTemp, 220);
+});

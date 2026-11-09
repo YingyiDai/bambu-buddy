@@ -58,6 +58,9 @@ const FAILURE_CATEGORIES = [
   ['motion', ['撞', '碰撞', '丢步', '掉步', '错层', '电机', '过载', 'collision', 'step loss', 'motor', 'overload']],
   ['calibration', ['校准', '调平', 'calibrat', 'leveling']],
   ['plate', ['打印板', '热床', '前盖脱落', '编码板', 'build plate', 'heatbed', 'plate']],
+  // 换刀机（H3C）的「打印头」（PrintTool）。只有 H3C 码表（32X）用这两个词，不影响其他机型；
+  // 排在 nozzle 前：「n 号打印头的热端…」这类文本归打印头更准确。
+  ['tool', ['打印头', 'printtool', 'print tool']],
   ['nozzle', ['喷嘴', '挤出机', 'ptfe', '切刀', 'nozzle', 'extruder']],
   ['ams', ['ams']],
 ];

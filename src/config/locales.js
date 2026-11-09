@@ -46,6 +46,7 @@ const STRINGS = {
     'label.failed.motion': '打印失败 · 机械',
     'label.failed.calibration': '打印失败 · 校准',
     'label.failed.plate': '打印失败 · 打印板',
+    'label.failed.tool': '打印失败 · 打印头',
     'label.failed.nozzle': '打印失败 · 喷嘴',
     'label.failed.ams': '打印失败 · AMS',
 
@@ -440,6 +441,7 @@ const STRINGS = {
     'label.failed.motion': 'Print Failed · Mechanical',
     'label.failed.calibration': 'Print Failed · Calibration',
     'label.failed.plate': 'Print Failed · Build Plate',
+    'label.failed.tool': 'Print Failed · PrintTool',
     'label.failed.nozzle': 'Print Failed · Nozzle',
     'label.failed.ams': 'Print Failed · AMS',
 

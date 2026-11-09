@@ -2,7 +2,7 @@
 // 解析优先级见技术文档 §6.2，labelKey 映射见 §6.4。
 
 const { STAGE, CHANGING_FILAMENT_STAGES, VIDEO, STAGE_VIDEO } = require('../config/state-map');
-const { resolveFilamentColor } = require('./filament-color');
+const { resolveFilamentColor, isDirectRackPrinter, mountedTool } = require('./filament-color');
 
 // 任一已知 stg_cur 的精确文案 key（取自 Bambu Studio，见 locales.js label.stage.<n>）。
 // 未知 stage 返回 null，由调用方走大状态兜底。
@@ -325,7 +325,12 @@ function extractTemps(report) {
   // 新固件：温度嵌套在 device.* 且用一个 int 打包（低 16 位=当前，高 16 位=目标）。
   const extInfo = dev.extruder && Array.isArray(dev.extruder.info) ? dev.extruder.info : null;
   const extEntry = extInfo ? (extInfo.find((e) => e && (e.id === 0 || e.id === 1)) || extInfo[0]) : null;
-  const extPacked = extEntry && Number.isFinite(extEntry.temp) ? extEntry.temp : null;
+  // 直连式换刀机（H3C）：9 个打印头各有加热块，正在用的那个是 device.nozzle.info 里不在工具架上的一项，
+  // 它的 temp 同样是「低 16 位当前 / 高 16 位目标」（BambuStudio DevNozzleSystem）。取不到再回落挤出机温度。
+  const tool = isDirectRackPrinter(r) ? mountedTool(r) : null;
+  const toolPacked = tool && Number.isFinite(tool.temp) ? tool.temp : null;
+  const extPacked = toolPacked != null ? toolPacked
+    : (extEntry && Number.isFinite(extEntry.temp) ? extEntry.temp : null);
   const bedPacked = dev.bed && dev.bed.info && Number.isFinite(dev.bed.info.temp) ? dev.bed.info.temp : null;
   const ctcPacked = dev.ctc && dev.ctc.info && Number.isFinite(dev.ctc.info.temp) ? dev.ctc.info.temp : null;
 

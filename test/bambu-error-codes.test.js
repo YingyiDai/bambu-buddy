@@ -94,3 +94,9 @@ test('failureCategory：报文 → 大类（fail_reason 命中官方文案后归
   assert.equal(failureCategory({ fail_reason: String(0x03004006) }, t), 'clog');
   assert.equal(failureCategory({ fail_reason: '999999' }, t), null);
 });
+
+test('categorizeFailure：H3C 的「打印头 / PrintTool」归 tool 大类，断料/堵头等更具体的仍优先', () => {
+  assert.equal(categorizeFailure('耗材可能未完全进入 9 号打印头的热端。建议先拉出耗材，再点击耗材页的“进料”按钮。'), 'tool');
+  assert.equal(categorizeFailure('Filament may not have fully reached the hotend of PrintTool 9.'), 'tool');
+  assert.equal(categorizeFailure('请检查1号打印头外挂耗材是否缠料或者料盘是否卡住。'), 'clog');
+});
