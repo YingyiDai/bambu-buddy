@@ -25,14 +25,109 @@ function parseTrayColor(raw) {
   return '#' + rgb.toLowerCase();
 }
 
-/** 从合并后的报文取 AMS 单元 amsId 的 slotId 槽颜色；缺 id 时按数组下标回退。 */
-function colorAtSlot(report, amsId, slotId) {
+function amsUnits(report) {
   const ams = report.ams;
-  const units = ams && Array.isArray(ams.ams) ? ams.ams : [];
-  const unit = units.find((u) => u && Number(u.id) === amsId) || units[amsId];
+  return ams && Array.isArray(ams.ams) ? ams.ams : [];
+}
+
+/**
+ * 从合并后的报文取 AMS 单元 amsId 的 slotId 槽颜色；缺 id 时按数组下标回退。
+ * strict=true 只认 id、不按下标回退：换刀机（H3C）上单元/槽的 id 不是 0 起的连续下标，
+ * 按下标兜底会落到别的槽上，宁可无结论。
+ */
+function colorAtSlot(report, amsId, slotId, strict = false) {
+  const units = amsUnits(report);
+  const unit = units.find((u) => u && Number(u.id) === amsId) || (strict ? null : units[amsId]);
   const trays = unit && Array.isArray(unit.tray) ? unit.tray : [];
-  const tray = trays.find((t) => t && Number(t.id) === slotId) || trays[slotId];
+  const tray = trays.find((t) => t && Number(t.id) === slotId) || (strict ? null : trays[slotId]);
   return parseTrayColor(tray && tray.tray_color);
+}
+
+// ── 直连式换刀机（H3C）──────────────────────────────────────────────
+// 依据 BambuStudio 2.9.1 开源实现（DevNozzleSystem / DevNozzleRack / DevFilaSystem），H3C 尚无真机报文验证：
+//   · device.holder.info2 位 1–4 = 工具架类型；>0（RackType_A/B/C）= 「直连式」工具架：每个打印头（PrintTool）
+//     有自己的进料通道，AMS 槽 n 直通 addr_id=n 的打印头。H2C 的 Vortek 是 RackType_AB(0)，不算直连。
+//   · AMS 单元 info（十六进制串）最低 4 位 = 类型；6/7 = ZMULTI_A/B（6 即 H3C 的 AMS 3H，9 槽）。
+//   · device.nozzle.info[]：id 低 4 位 = 喷嘴号，次低 4 位 == 1 表示「挂在工具架上」；
+//     不在架上的那项 = 当前装在挤出机上、正在用的打印头。其 snow = 高字节 ams_id | 低字节槽号（低字节 0xFF=空），
+//     addr_id = 打印头编号（0–8），temp = 低 16 位当前 / 高 16 位目标温度。
+//   · device.extruder.state 位 4–7 = 当前挤出机号。
+const RACK_AMS_TYPES = new Set([6, 7]); // ZMULTI_A（AMS 3H）/ ZMULTI_B
+
+/** AMS 单元类型：info 十六进制串的最低 4 位；取不到返回 null。 */
+function amsUnitType(unit) {
+  const hex = unit && typeof unit.info === 'string' ? unit.info.replace(/[^0-9a-fA-F]/g, '') : '';
+  return hex ? parseInt(hex.slice(-1), 16) : null;
+}
+
+/** 是否「直连式工具架」换刀机（H3C 这一类）。只认 BambuStudio 明确给出的两个信号。 */
+function isDirectRackPrinter(report) {
+  if (!report) return false;
+  const holder = report.device && report.device.holder;
+  const info2 = holder && Number(holder.info2);
+  if (Number.isFinite(info2) && ((info2 >> 1) & 0xf) > 0) return true;
+  return amsUnits(report).some((u) => RACK_AMS_TYPES.has(amsUnitType(u)));
+}
+
+/**
+ * 当前装在挤出机上的打印头（device.nozzle.info 里不在工具架上的那项）。
+ * 有多项不在架上时按 extruder.state 的当前挤出机号挑；挑不出唯一一项返回 null。
+ */
+function mountedTool(report) {
+  const dev = report && report.device;
+  const info = dev && dev.nozzle && dev.nozzle.info;
+  if (!Array.isArray(info)) return null;
+  const mounted = info.filter((n) => n && Number.isFinite(Number(n.id)) && ((Number(n.id) >> 4) & 0xf) !== 1);
+  if (mounted.length === 1) return mounted[0];
+  const state = dev.extruder && Number(dev.extruder.state);
+  if (mounted.length > 1 && Number.isFinite(state)) {
+    const cur = (state >> 4) & 0xf;
+    const hit = mounted.filter((n) => (Number(n.id) & 0xf) === cur);
+    if (hit.length === 1) return hit[0];
+  }
+  return null;
+}
+
+/** 外挂料盘里 id 恰为 trayId 的那条的颜色（不兜底取第一条）。 */
+function externalColorStrict(report, trayId) {
+  const vt = report.vt_tray;
+  const list = Array.isArray(vt) ? vt : (vt ? [vt] : []);
+  const t = list.find((x) => x && Number(x.id) === trayId);
+  return parseTrayColor(t && t.tray_color);
+}
+
+/**
+ * 直连式换刀机取色：当前打印头 → 它的进料槽 → tray_color。
+ * ⚠️ 这条路径**没有真机验证**，所以拿不到结论就返回 null（熊猫保持原色），
+ *    不回落到 tray_now / 双喷头逻辑 —— 后两者的槽号编码（ams_id*4+槽）在 9 槽 AMS 上必然算错，
+ *    「显示错色」比「不改色」更误导人。
+ */
+function resolveRackToolColor(report) {
+  const tool = mountedTool(report);
+  if (!tool) return null;
+
+  // 1) snow：打印头当前装载的槽（与双喷头机的 extruder.snow 同一编码）。
+  const snow = Number(tool.snow);
+  if (Number.isFinite(snow) && (snow & 0xff) !== 0xff) {
+    const amsId = (snow >> 8) & 0xff;
+    const slotId = snow & 0xff;
+    const c = EXTERNAL_AMS_IDS.has(amsId)
+      ? externalColorStrict(report, slotId)
+      : colorAtSlot(report, amsId, slotId, true);
+    if (c) return c;
+  }
+
+  // 2) addr_id：直连式工具架上 AMS 3H 的槽 n 直通 n 号打印头；外挂料盘 id = 255 - n
+  //    （BambuStudio DevAmsTray::get_nozzle_addr_id 的反向映射）。
+  const addr = Number(tool.addr_id);
+  if (!Number.isFinite(addr)) return null;
+  for (const unit of amsUnits(report)) {
+    if (!RACK_AMS_TYPES.has(amsUnitType(unit)) || !Array.isArray(unit.tray)) continue;
+    const tray = unit.tray.find((t) => t && Number(t.id) === addr);
+    const c = parseTrayColor(tray && tray.tray_color);
+    if (c) return c;
+  }
+  return externalColorStrict(report, 255 - addr);
 }
 
 /**
@@ -106,6 +201,9 @@ function resolveDualNozzleColor(report) {
 function resolveFilamentColor(report) {
   if (!report) return null;
 
+  // 直连式换刀机（H3C）走专用路径，解不出就是 null，不进下面按 4 槽编码的老路径。
+  if (isDirectRackPrinter(report)) return resolveRackToolColor(report);
+
   // 双喷头精修：能定位到正在出料的喷头就用它的色，否则（含单喷头机）交回下面的 tray_now。
   const dual = resolveDualNozzleColor(report);
   if (dual) return dual;
@@ -118,7 +216,11 @@ function resolveFilamentColor(report) {
 
   if (now === TRAY_NOW_EXTERNAL) return externalColor(report, TRAY_NOW_EXTERNAL);
 
+  // AMS HT（单槽）：tray_now 0x80–0x87 直接就是单元 id，槽号恒 0
+  // （BambuStudio DevExtruderSystem 解析 tray_now 的分支）。按 /4 拆会得到不存在的单元 32–33。
+  if (now >= 0x80 && now <= 0x87) return colorAtSlot(report, now, 0, true);
+
   return colorAtSlot(report, Math.floor(now / 4), now % 4);
 }
 
-module.exports = { resolveFilamentColor };
+module.exports = { resolveFilamentColor, isDirectRackPrinter, mountedTool };

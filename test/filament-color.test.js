@@ -285,3 +285,84 @@ test('双喷头：另一喷头明确空槽（snow=0xFFFF）时，唯一装料的
   };
   assert.equal(resolveFilamentColor(report), '#ffffff');
 });
+
+// ── 直连式换刀机（H3C）──────────────────────────────────────────────
+// 报文形状按 BambuStudio 2.9.1 的解析代码构造（DevNozzleSystem / DevNozzleRack / DevFilaSystem），
+// 尚无真机抓包。AMS 3H：info 最低 4 位 = 6；打印头：device.nozzle.info[].id 次低 4 位 == 1 = 在工具架上。
+function h3cReport({ mountedSnow, mountedAddr = 2, withHolder = true, amsType = '6', vt } = {}) {
+  const trays = Array.from({ length: 9 }, (_, i) => ({ id: String(i), tray_color: 'C0C0C0FF' }));
+  trays[2] = { id: '2', tray_color: 'FF6A13FF' }; // 3 号打印头（addr 2）的料：橙
+  trays[7] = { id: '7', tray_color: '1E90FFFF' }; // 8 号打印头（addr 7）的料：蓝
+  const nozzleInfo = [
+    { id: 0x00, addr_id: mountedAddr, temp: (230 << 16) | 228, ...(mountedSnow != null ? { snow: mountedSnow } : {}) },
+    ...Array.from({ length: 9 }, (_, i) => ({ id: 0x10 + i, addr_id: i, temp: 0 })),
+  ];
+  const report = {
+    // tray_now 故意给一个按「ams_id*4+槽」解会落到别处的值，确认 H3C 不走这条老路径。
+    ams: { tray_now: '7', ams: [{ id: '0', info: '1000' + amsType, tray: trays }] },
+    device: {
+      extruder: { state: 0x01, info: [{ id: 0, snow: 0xffff, temp: (230 << 16) | 228 }] },
+      nozzle: { info: nozzleInfo },
+      ...(withHolder ? { holder: { info2: 1 << 1 } } : {}),
+    },
+  };
+  if (vt) report.vt_tray = vt;
+  return report;
+}
+
+test('H3C：当前打印头的 snow 指向 AMS 3H 槽 → 取该槽颜色', () => {
+  assert.equal(resolveFilamentColor(h3cReport({ mountedSnow: (0 << 8) | 7 })), '#1e90ff');
+});
+
+test('H3C：snow 缺失时按 addr_id 直通 AMS 3H 同号槽', () => {
+  assert.equal(resolveFilamentColor(h3cReport({ mountedAddr: 2 })), '#ff6a13');
+});
+
+test('H3C：没有 holder 字段，仅凭 AMS 3H 类型也识别为换刀机', () => {
+  assert.equal(resolveFilamentColor(h3cReport({ mountedAddr: 2, withHolder: false })), '#ff6a13');
+});
+
+test('H3C：打印头吃外挂料盘（外挂 id = 255 - addr）', () => {
+  const report = h3cReport({
+    mountedAddr: 4,
+    vt: [{ id: '255', tray_color: '000000FF' }, { id: '251', tray_color: '9ACD32FF' }],
+  });
+  // 每个打印头只有一路进料：4 号走外挂，AMS 3H 的 4 号槽就是空的。
+  report.ams.ams[0].tray[4] = { id: '4' };
+  assert.equal(resolveFilamentColor(report), '#9acd32');
+  // snow 明说「外挂位 id 251」时同样认得出（高字节 255 = 外挂哨兵）。
+  const viaSnow = h3cReport({ mountedSnow: (255 << 8) | 251, mountedAddr: 4, vt: report.vt_tray });
+  assert.equal(resolveFilamentColor(viaSnow), '#9acd32');
+});
+
+test('H3C：snow 指向不存在的单元且 addr 也对不上 → null，不回落 tray_now 老路径', () => {
+  const report = h3cReport({ mountedSnow: (9 << 8) | 0, mountedAddr: 42 });
+  assert.equal(resolveFilamentColor(report), null);
+});
+
+test('H3C：所有打印头都在工具架上（换刀途中）→ null', () => {
+  const report = h3cReport({ mountedAddr: 2 });
+  report.device.nozzle.info = report.device.nozzle.info.filter((n) => n.id >= 0x10);
+  assert.equal(resolveFilamentColor(report), null);
+});
+
+test('H2C 一类非直连工具架（holder.info2 类型=0、普通 AMS）不受影响，照旧走 tray_now', () => {
+  const report = {
+    ams: { tray_now: '1', ams: [{ id: '0', info: '10001', tray: [{ id: '0', tray_color: '111111FF' }, { id: '1', tray_color: 'ABCDEFFF' }] }] },
+    device: { holder: { info2: 0 }, nozzle: { info: [{ id: 0x00, snow: 0 }] } },
+  };
+  assert.equal(resolveFilamentColor(report), '#abcdef');
+});
+
+test('AMS HT：tray_now 0x80 直接是单元 id、槽 0', () => {
+  const report = {
+    ams: {
+      tray_now: '128',
+      ams: [
+        { id: '0', tray: [{ id: '0', tray_color: '111111FF' }] },
+        { id: '128', tray: [{ id: '0', tray_color: 'DDA0DDFF' }] },
+      ],
+    },
+  };
+  assert.equal(resolveFilamentColor(report), '#dda0dd');
+});
